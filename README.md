@@ -1,8 +1,8 @@
 [![DOI](https://zenodo.org/badge/211224999.svg)](https://zenodo.org/badge/latestdoi/211224999) ![license MIT](https://img.shields.io/github/license/kamal0013/PowNet) 
 # PowNet: Power system analysis model in Python
-PowNet is a least-cost optimization model for simulating the Unit Commitment and Economic Dispatch (UC/ED) of large-scale (regional to country) power systems. In PowNet, a power system is represented by a set of nodes that include power plants, high-voltage substations, and import/export stations (for cross-border systems). The model schedules and dispatches the electricity supply from power plant units to meet hourly electricity demand in substations (at a minimum cost). It considers the techno-economic constraints of both generating units and high-voltage transmission network. The power flow calculation is based on a Direct Current (DC) network (with N-1 criterion), which provides a reasonable balance between modelling accuracy and data and computational requirements. PowNet can easily integrate information about variable renewable resources (e.g., hydro, wind, solar) into the UC/ED process. For example, it can be linked with models that estimate the electricity supply available from renewable resources as a function of the climatic conditions. In addition, PowNet has provision to account for the effect of droughts on the generation of dispatchable thermal units (e.g., coal, oil, gas fired units) that depend on freshwater availability. These features facilitate the application of PowNet to problems in the water-energy nexus domain that investigate the impact of water availability on electricity supply and demand. More details about the functionalities of PowNet are provided in Chowdhury et al. (2019).
+PowNet is a least-cost optimization model for simulating the Unit Commitment and Economic Dispatch (UC/ED) of large-scale (regional to country) power systems. In PowNet, a power system is represented by a set of nodes that include power plants, high-voltage substations, and import/export stations (for cross-border systems). The model schedules and dispatches the electricity supply from power plant units to meet hourly electricity demand in substations (at a minimum cost). It considers the techno-economic constraints of both generating units and high-voltage transmission network. The power flow calculation is based on a Direct Current (DC) network (with N-1 criterion), which provides a reasonable balance between modelling accuracy and data and computational requirements. PowNet can easily integrate information about variable renewable resources (e.g., hydro, wind, solar) into the UC/ED process. For example, it can be linked with models that estimate the electricity supply available from renewable resources as a function of the climatic conditions. In addition, PowNet has provision to account for the effect of droughts on the generation of dispatchable thermal units (e.g., coal, oil, gas fired units) that depend on freshwater availability. These features facilitate the application of PowNet to problems in the water-energy nexus domain that investigate the impact of water availability on electricity supply and demand. More details about the functionalities of PowNet are provided in [Chowdhury et al. (2019)](https://arxiv.org/pdf/1909.12529.pdf).
 
-This repository provides PowNet version 1.1, whose functionalities are demonstrated on the Cambodian power system. Computational requirements and instructions on how to run and customize the model are presented below.
+This repository provides PowNet version v1.1, whose functionalities are demonstrated on the Cambodian power system. Computational requirements and instructions on how to run and customize the model are presented below.
 
 # Requirements
 PowNet is written in Python 3.5. It requires the following Python packages: (i) Pyomo, (ii) NumPy, (iii) Pandas, and (iv) Matplotlib (optional for plotting). It also requires Jupyter Notebook and an optimization solver (e.g., Gurobi, CPLEX). Note that the Python packages and Jupyter Notebook are freely available, while academic users can obtain a free license of Gurobi or CPLEX. PowNet has been tested on both Windows 10 and Linux Ubuntu 16.04 operating systems.
@@ -28,6 +28,14 @@ The implementation of PowNet for any other power system requires the customizati
 
 # License
 PowNet is released under the MIT license. Please read it carefully before employing the model.
+
+# Citation
+If you use PowNet for your research, please cite the following paper:
+
+A. K. Chowdhury, J. Kern, T. D. Dang, and S. Galelli. PowNet: a power systems analysis model for large-scale water-energy nexus studies. [arXiv:1909.12529v1](https://arxiv.org/abs/1909.12529v1), 2019.
+
+In addition, each release of PowNet is achieved on Zenodo with a DOI, that can be found here [![DOI](https://zenodo.org/badge/211224999.svg)](https://zenodo.org/badge/latestdoi/211224999).
+
 
 # Acknowledgment
 PowNet development is supported by Singapore's Ministry of Education (MoE) through the Tier 2 project “Linking water availability to hydropower supply – an engineering systems approach” (Award No. MOE2017-T2-1-143).
