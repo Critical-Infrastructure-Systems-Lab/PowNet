@@ -32,7 +32,7 @@ PowNet is released under the MIT license. Please read it carefully before employ
 # Citation
 If you use PowNet for your research, please cite the following paper:
 
-A. K. Chowdhury, J. Kern, T. D. Dang, and S. Galelli. PowNet: a power systems analysis model for large-scale water-energy nexus studies. [arXiv:1909.12529v1](https://arxiv.org/abs/1909.12529v1), 2019.
+Chowdhury, A.F.M.K., Kern, J., Dang, T.D. and Galelli, S., 2020. PowNet: A Network-Constrained Unit Commitment/Economic Dispatch Model for Large-Scale Power Systems Analysis. Journal of Open Research Software, 8(1), p.5. DOI: http://doi.org/10.5334/jors.302
 
 In addition, each release of PowNet is achieved on Zenodo with a DOI, that can be found here [![DOI](https://zenodo.org/badge/211224999.svg)](https://zenodo.org/badge/latestdoi/211224999).
 
