@@ -26,6 +26,12 @@ The implementation of PowNet for any other power system requires the customizati
 6.	Customize B.11.3 according to the number of nodes with dispatchable generating units;
 7.	To include or exclude any variable renewable resource (e.g., hydro, wind, solar), uncomment or comment the code provided in Segment A.5, A.9, B.2, B.6, B.7, B.10, B.11.2, and C.5.
 
+# Cambodian Power System
+Figure below shows the main generation and transmission components of the Cambodian power system (as of 2016), whose data are extracted from publicly available technical reports, published by Electricite Du Cambodge (EDC).
+
+![](https://github.com/kamal0013/PowNet/blob/master/fig2_Cambodia_grid.jpg)
+
+
 # License
 PowNet is released under the MIT license. Please read it carefully before employing the model.
 
@@ -36,6 +42,8 @@ Chowdhury, A.F.M.K., Kern, J., Dang, T.D. and Galelli, S., 2020. PowNet: A Netwo
 
 In addition, each release of PowNet is achieved on Zenodo with a DOI, that can be found here [![DOI](https://zenodo.org/badge/211224999.svg)](https://zenodo.org/badge/latestdoi/211224999).
 
+# Contact
+For questions and feedback related to PowNet, please send an email to afm.chowdhury@uon.edu.au (AFM Kamal Chowdhury) or stefano_galelli@sutd.edu.sg (Stefano Galelli).
 
 # Acknowledgment
 PowNet development is supported by Singapore's Ministry of Education (MoE) through the Tier 2 project “Linking water availability to hydropower supply – an engineering systems approach” (Award No. MOE2017-T2-1-143).
