@@ -4,6 +4,8 @@ PowNet is a least-cost optimization model for simulating the Unit Commitment and
 
 This repository provides PowNet version v1.1, whose functionalities are demonstrated on the Cambodian power system. Computational requirements and instructions on how to run and customize the model are presented below.
 
+NOTE: [PowNet-Laos](https://github.com/kamal0013/PowNet-Laos), an implementation of PowNet for Laotian power system (with sample data) is now available [here](https://github.com/kamal0013/PowNet-Laos).
+
 # Requirements
 PowNet is written in Python 3.5. It requires the following Python packages: (i) Pyomo, (ii) NumPy, (iii) Pandas, and (iv) Matplotlib (optional for plotting). It also requires Jupyter Notebook and an optimization solver (e.g., Gurobi, CPLEX). Note that the Python packages and Jupyter Notebook are freely available, while academic users can obtain a free license of Gurobi or CPLEX. PowNet has been tested on both Windows 10 and Linux Ubuntu 16.04 operating systems.
 
