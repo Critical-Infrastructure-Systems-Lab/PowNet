@@ -1,10 +1,10 @@
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3756750.svg)](https://doi.org/10.5281/zenodo.3756750) ![license MIT](https://img.shields.io/github/license/kamal0013/PowNet) 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4020167.svg)](https://doi.org/10.5281/zenodo.4020167) ![license MIT](https://img.shields.io/github/license/kamal0013/PowNet) 
 # PowNet: Unit Commitment / Economic Dispatch model in Python with data for Cambodian power system
 PowNet is a least-cost optimization model for simulating the Unit Commitment and Economic Dispatch (UC/ED) of large-scale (regional to country) power systems. In PowNet, a power system is represented by a set of nodes that include power plants, high-voltage substations, and import/export stations (for cross-border systems). The model schedules and dispatches the electricity supply from power plant units to meet hourly electricity demand in substations (at a minimum cost). It considers the techno-economic constraints of both generating units and high-voltage transmission network. The power flow calculation is based on a Direct Current (DC) network (with N-1 criterion), which provides a reasonable balance between modelling accuracy and data and computational requirements. PowNet can easily integrate information about variable renewable resources (e.g., hydro, wind, solar) into the UC/ED process. For example, it can be linked with models that estimate the electricity supply available from renewable resources as a function of the climatic conditions. In addition, PowNet has provision to account for the effect of droughts on the generation of dispatchable thermal units (e.g., coal, oil, gas fired units) that depend on freshwater availability. These features facilitate the application of PowNet to problems in the water-energy nexus domain that investigate the impact of water availability on electricity supply and demand. More details about the functionalities of PowNet are provided in [Chowdhury et al. (2020)](https://openresearchsoftware.metajnl.com/articles/10.5334/jors.302/).
 
 # Versions and implementations
 ### Current version
-PowNet v1.2 ([GitHub](https://github.com/kamal0013/PowNet/tree/v1.2) | [Zenodo](link))
+PowNet v1.2 ([GitHub](https://github.com/kamal0013/PowNet/tree/v1.2) | [Zenodo](https://zenodo.org/record/4020167#.X1hqrGhKguU))
 
 ### Previous version(s)
 PowNet v1.1 ([GitHub](https://github.com/kamal0013/PowNet/tree/v1.1) | [Zenodo](https://zenodo.org/record/3756750))
@@ -49,9 +49,9 @@ PowNet is released under the MIT license. Please read it carefully before employ
 # Citation
 If you use PowNet for your research, please cite the following paper:
 
-Chowdhury, A.F.M.K., Kern, J., Dang, T.D. and Galelli, S., 2020. PowNet: A Network-Constrained Unit Commitment/Economic Dispatch Model for Large-Scale Power Systems Analysis. Journal of Open Research Software, 8(1), p.5. DOI: http://doi.org/10.5334/jors.302
+Chowdhury, A.F.M.K., Kern, J., Dang, T.D. and Galelli, S., 2020. PowNet: A Network-Constrained Unit Commitment/Economic Dispatch Model for Large-Scale Power Systems Analysis. Journal of Open Research Software, 8(1), p.5. DOI: http://doi.org/10.5334/jors.302.
 
-In addition, each release of PowNet is archived on Zenodo with a DOI, that can be found [here](https://doi.org/10.5281/zenodo.3756750).
+In addition, each release of PowNet is archived on Zenodo with a DOI, that can be found [here](https://zenodo.org/record/4020167#.X1hsSWhKguU).
 
 # Contact
 For questions and feedback related to PowNet, please send an email to afm.chowdhury@uon.edu.au (AFM Kamal Chowdhury) or stefano_galelli@sutd.edu.sg (Stefano Galelli).
