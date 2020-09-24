@@ -45,7 +45,7 @@ A basic framework of PowNet is shown in the figure below (adapted from [Chowdhur
 
 ![]( https://github.com/kamal0013/PowNet/blob/master/Appendix/fig_pownet_model.PNG)
 
-Figure below (adapted from Chowdhury et al., 2020a) shows the main generation and transmission components of the Cambodian power system (as of 2016), used to describe PowNet in this repository. The data are mostly extracted from publicly available technical reports, published by Electricite Du Cambodge (EDC).
+Figure below (adapted from [Chowdhury et al., 2020a](https://openresearchsoftware.metajnl.com/articles/10.5334/jors.302/)) shows the main generation and transmission components of the Cambodian power system (as of 2016), used to describe PowNet in this repository. The data are mostly extracted from publicly available technical reports, published by Electricite Du Cambodge (EDC).
 
 ![]( https://github.com/kamal0013/PowNet/blob/master/Appendix/fig_Cambodia_grid.jpg)
 
