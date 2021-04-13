@@ -111,14 +111,11 @@ model.st_cost = Param(model.Generators,within=Any)
 #Ramp rate
 model.ramp  = Param(model.Generators,within=Any)
 
-#Minimun up time
+#Minimum up time
 model.minup = Param(model.Generators,within=Any)
 
-#Minmun down time
+#Minimum down time
 model.mindn = Param(model.Generators,within=Any)
-
-#Derate_factor as percent of maximum capacity of water-dependant generators
-model.deratef = Param(model.Generators,within=NonNegativeReals)
 
 #heat rates and import unit costs
 model.gen_cost = Param(model.Generators,within=NonNegativeReals)
