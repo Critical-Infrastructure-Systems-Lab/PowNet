@@ -40,7 +40,7 @@ df_gen['ini_on']=0
 df_gen['ini_mwh']=0
 
 #read derate factors of dispatchable units for the simulation year
-df_gen_deratef = pd.read_csv('input/data_camb_genparams_deratef.csv',header=0)
+df_gen_deratef = pd.read_csv('input/data_camb_genparams_deratef_'+str(yr)+'.csv',header=0)
 gen_units = list(df_gen_deratef.columns[4:])
 
 ##hourly ts of dispatchable hydropower at each domestic dam
