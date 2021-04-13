@@ -34,19 +34,20 @@ data_name = 'pownet_data_camb_'+str(yr)+''
 ######=================================================########
 
 #read parameters for dispatchable resources (coal/gas/oil/biomass generators, imports) 
-df_gen = pd.read_csv('data_camb_genparams.csv',header=0)
+df_gen = pd.read_csv('input/data_camb_genparams.csv',header=0)
 df_gen['gen_cost'] = df_gen['typ'].map(gen_cost)
 df_gen['ini_on']=0
+df_gen['ini_mwh']=0
 
 #read derate factors of dispatchable units for the simulation year
-df_gen_deratef = pd.read_csv('data_camb_genparams_deratef.csv',header=0)
-df_gen['deratef'] = df_gen_deratef['deratef_'+str(yr)+'']
+df_gen_deratef = pd.read_csv('input/data_camb_genparams_deratef.csv',header=0)
+gen_units = list(df_gen_deratef.columns[4:])
 
 ##hourly ts of dispatchable hydropower at each domestic dam
-df_hydro = pd.read_csv('data_camb_hydro_'+str(yr)+'.csv',header=0)
+df_hydro = pd.read_csv('input/data_camb_hydro_'+str(yr)+'.csv',header=0)
 
 ##hourly ts of dispatchable hydropower at each import dam
-df_hydro_import = pd.read_csv('data_camb_hydro_import_'+str(yr)+'.csv',header=0)
+df_hydro_import = pd.read_csv('input/data_camb_hydro_import_'+str(yr)+'.csv',header=0)
 
 ####hourly ts of dispatchable solar-power at each plant
 ##df_solar = pd.read_csv('data_solar.csv',header=0)   
@@ -55,10 +56,10 @@ df_hydro_import = pd.read_csv('data_camb_hydro_import_'+str(yr)+'.csv',header=0)
 ##df_wind = pd.read_csv('data_wind.csv',header=0)
 
 ##hourly ts of load at substation-level
-df_load = pd.read_csv('data_camb_load_2016.csv',header=0) 
+df_load = pd.read_csv('input/data_camb_load_2016.csv',header=0) 
 
 #capacity and susceptence of each transmission line (one direction)
-df_trans1 = pd.read_csv('data_camb_transparam.csv',header=0)
+df_trans1 = pd.read_csv('input/data_camb_transparam.csv',header=0)
 
 #hourly minimum reserve as a function of load (e.g., 15% of current load)
 df_reserves = pd.DataFrame((df_load.iloc[:,4:].sum(axis=1)*res_margin).values,columns=['Reserve'])
@@ -105,7 +106,7 @@ types = ['coal_st','oil_ic','oil_st','imp_viet','imp_thai','slack'] ##,'biomass_
 ######=================================================########
 
 ######====== write data.dat file ======########
-with open(''+str(data_name)+'.dat', 'w') as f:
+with open('input/'+str(data_name)+'.dat', 'w') as f:
 
 ###### generator sets by generator nodes
     for z in gd_nodes:
@@ -407,6 +408,13 @@ with open(''+str(data_name)+'.dat', 'w') as f:
 ##        for h in range(0,len(df_wind)): 
 ##            f.write(z + '\t' + str(h+1) + '\t' + str(df_wind.loc[h,z]) + '\n')
 ##    f.write(';\n\n')
+
+    # Deratef (hourly)
+    f.write('param:' + '\t' + 'SimDeratef:=' + '\n')      
+    for z in gen_units:
+        for h in range(0,len(df_gen_deratef)): 
+            f.write(z + '\t' + str(h+1) + '\t' + str(df_gen_deratef.loc[h,z]) + '\n')
+    f.write(';\n\n')
     
 ###### System-wide hourly reserve
     f.write('param' + '\t' + 'SimReserves:=' + '\n')
