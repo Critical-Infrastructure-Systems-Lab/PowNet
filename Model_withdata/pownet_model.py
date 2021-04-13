@@ -157,7 +157,6 @@ model.SD_periods = RangeSet(1,model.SimDays+1)
 model.HorizonHours = Param(within=PositiveIntegers)
 model.HH_periods = RangeSet(0,model.HorizonHours)
 model.hh_periods = RangeSet(1,model.HorizonHours)
-model.ramp_periods = RangeSet(2,24)
 
 ######=================================================########
 ######               Segment B.6                       ########
@@ -187,9 +186,14 @@ model.SimHydroImport = Param(model.h_imports, model.SH_periods, within=NonNegati
 #Hydro import over horizon
 model.HorizonHydroImport = Param(model.h_imports,model.hh_periods,within=NonNegativeReals,mutable=True)
 
+##Deratef over simulation period 
+model.SimDeratef = Param(model.Generators*model.SH_periods, within=NonNegativeReals)
+##Horizon Deratef 
+model.HorizonDeratef = Param(model.Generators*model.hh_periods,within=NonNegativeReals,mutable=True)
+
 ##Initial conditions
 model.ini_on = Param(model.Generators, within=NonNegativeReals, mutable=True)
-
+model.ini_mwh = Param(model.Generators, within=NonNegativeReals, mutable=True)
 
 ######=================================================########
 ######               Segment B.7                       ########
@@ -266,9 +270,12 @@ model.SystemCost = Objective(rule=SysCost, sense=minimize)
 ######=================================================########
 
 ######========== Logical Constraint =========#############
-def OnCon(model,j,i):
-    return model.mwh[j,i] <= model.on[j,i] * model.m
-model.OnConstraint = Constraint(model.Generators,model.HH_periods,rule = OnCon)
+def MwhCon_initial(model,j,i): #v1.3
+    if i == 0:
+        return (model.mwh[j,i] == model.ini_mwh[j])
+    else:
+      return Constraint.Skip
+model.initial_mwh_constr = Constraint(model.Generators,model.HH_periods, rule=MwhCon_initial)
 
 def OnCon_initial(model,j,i):
     if i == 0:
@@ -293,7 +300,7 @@ model.Switch4Constraint = Constraint(model.Generators,model.hh_periods,rule = Sw
 ######========== Up/Down Time Constraint =========#############
 ##Min Up time
 def MinUp(model,j,i,k):
-    if i > 0 and k > i and k < min(i+model.minup[j]-1,model.HorizonHours):
+    if i > 0 and k > i and k <= min(i+model.minup[j]-1,model.HorizonHours):
         return model.on[j,i] - model.on[j,i-1] <= model.on[j,k]
     else: 
         return Constraint.Skip
@@ -301,7 +308,7 @@ model.MinimumUp = Constraint(model.Generators,model.HH_periods,model.HH_periods,
 
 ##Min Down time
 def MinDown(model,j,i,k):
-   if i > 0 and k > i and k < min(i+model.mindn[j]-1,model.HorizonHours):
+   if i > 0 and k > i and k <= min(i+model.mindn[j]-1,model.HorizonHours):
        return model.on[j,i-1] - model.on[j,i] <= 1 - model.on[j,k]
    else:
        return Constraint.Skip
@@ -311,15 +318,21 @@ model.MinimumDown = Constraint(model.Generators,model.HH_periods,model.HH_period
 ######==========Ramp Rate Constraints =========#############
 def Ramp1(model,j,i):
     a = model.mwh[j,i]
-    b = model.mwh[j,i-1]
+    if i == 1:
+        b = model.ini_mwh[j]
+    else:
+        b = model.mwh[j,i-1]
     return a - b <= model.ramp[j] 
-model.RampCon1 = Constraint(model.Generators,model.ramp_periods,rule=Ramp1)
+model.RampCon1 = Constraint(model.Generators,model.hh_periods,rule=Ramp1)
 
 def Ramp2(model,j,i):
     a = model.mwh[j,i]
-    b = model.mwh[j,i-1]
-    return b - a <= model.ramp[j] 
-model.RampCon2 = Constraint(model.Generators,model.ramp_periods,rule=Ramp2)
+    if i == 1:
+        b = model.ini_mwh[j]
+    else:
+        b = model.mwh[j,i-1]
+    return b - a <= model.ramp[j]  
+model.RampCon2 = Constraint(model.Generators,model.hh_periods,rule=Ramp2)
 
 
 ######=================================================########
@@ -328,9 +341,9 @@ model.RampCon2 = Constraint(model.Generators,model.ramp_periods,rule=Ramp2)
 
 ######=========== Capacity Constraints ============##########
 #Constraints for Max & Min Capacity of dispatchable resources
-#derate factor can be below 1 for dry years, otherwise 1
+#derate factor can be below 1 for dry months, otherwise 1
 def MaxC(model,j,i):
-    return model.mwh[j,i]  <= model.on[j,i] * model.maxcap[j] *model.deratef[j]
+    return model.mwh[j,i]  <= model.on[j,i] * model.maxcap[j] *model.HorizonDeratef[j,i]
 model.MaxCap= Constraint(model.Generators,model.hh_periods,rule=MaxC)
 
 def MinC(model,j,i):
@@ -568,18 +581,18 @@ model.SpinReq = Constraint(model.hh_periods,rule=SpinningReq)
 
 ##Spinning reserve can only be offered by units that are online
 def SpinningReq2(model,j,i):
-    return model.srsv[j,i] <= model.on[j,i]*model.maxcap[j] *model.deratef[j]
+    return model.srsv[j,i] <= model.on[j,i]*model.maxcap[j] *model.HorizonDeratef[j,i]
 model.SpinReq2= Constraint(model.Generators,model.hh_periods,rule=SpinningReq2) 
 
 ##Non-Spinning reserve can only be offered by units that are offline
 def NonSpinningReq(model,j,i):
-    return model.nrsv[j,i] <= (1 - model.on[j,i])*model.maxcap[j] *model.deratef[j]
+    return model.nrsv[j,i] <= (1 - model.on[j,i])*model.maxcap[j] *model.HorizonDeratef[j,i]
 model.NonSpinReq= Constraint(model.Generators,model.hh_periods,rule=NonSpinningReq)
 
 
 ######========== Zero Sum Constraint =========#############
 def ZeroSum(model,j,i):
-    return model.mwh[j,i] + model.srsv[j,i] + model.nrsv[j,i] <= model.maxcap[j]
+    return model.mwh[j,i] + model.srsv[j,i] + model.nrsv[j,i] <= model.maxcap[j] *model.HorizonDeratef[j,i]
 model.ZeroSumConstraint=Constraint(model.Generators,model.hh_periods,rule=ZeroSum)
 
 
