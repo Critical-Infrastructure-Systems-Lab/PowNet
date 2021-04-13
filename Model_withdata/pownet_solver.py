@@ -1,7 +1,7 @@
 import os
 ##os.chdir('C:\\Users\\...')
 
-from pyomo.opt import SolverFactory
+from pyomo.opt import SolverFactory, SolverStatus
 from pyomo.core import Var
 from pyomo.core import Param
 from operator import itemgetter
@@ -37,7 +37,7 @@ from pownet_model import model
 
 #exec(open('pownet_datasetup.py').read()) ##uncomment to run datasetup within solver
 
-instance = model.create_instance('pownet_data_camb_'+str(yr)+'.dat')
+instance = model.create_instance('input/pownet_data_camb_'+str(yr)+'.dat')
 
 
 ######=================================================########
@@ -47,6 +47,7 @@ instance = model.create_instance('pownet_data_camb_'+str(yr)+'.dat')
 ###solver and number of threads to use for simulation
 opt = SolverFactory("gurobi") ##SolverFactory("cplex")
 opt.options["threads"] = 1
+#opt.options["TimeLimit"] = 2 #in seconds
 H = instance.HorizonHours
 K=range(1,H+1)
 
@@ -99,10 +100,17 @@ for day in range(start,end+1):
     for z in instance.h_imports:
      #load Hydropower time series data
         for i in K:
-            instance.HorizonHydroImport[z,i] = instance.SimHydroImport[z,(day-1)*24+i]     
+            instance.HorizonHydroImport[z,i] = instance.SimHydroImport[z,(day-1)*24+i]  
+            
+    for z in instance.Generators:
+     #load Deratef time series data
+        for i in K:
+            instance.HorizonDeratef[z,i] = instance.SimDeratef[z,(day-1)*24+i]
      
     result = opt.solve(instance) ##,tee=True to check number of variables
     # instance.display()
+    if result.solver.status == SolverStatus.aborted: #max time limit reached 
+        result.solver.status = SolverStatus.warning #change status so that results can be loaded
     instance.solutions.load_from(result)   
  
 #  #The following section is for storing and sorting results
@@ -142,11 +150,13 @@ for day in range(start,end+1):
                     if index[0] in instance.nodes:
                         vlt_angle.append((index[0],index[1]+((day-1)*24),varobject[index].value))   
 
-        if a=='mwh':  
+        if a=='mwh':
+            ini_mwh_ = {}
             for index in varobject:
                 if int(index[1]>0 and index[1]<25):
-                    mwh.append((index[0],index[1]+((day-1)*24),varobject[index].value))                            
-
+                    mwh.append((index[0],index[1]+((day-1)*24),varobject[index].value))
+                if int(index[1])==24:
+                    ini_mwh_[index[0]] = varobject[index].value
                         
         if a=='on':       
             ini_on_ = {}  
@@ -171,9 +181,10 @@ for day in range(start,end+1):
                 if int(index[1]>0 and index[1]<25):
                     nrsv.append((index[0],index[1]+((day-1)*24),varobject[index].value))                             
     
-    # Update initialization values for "on" 
+    # Update initialization values for "on" and "mwh"
     for z in instance.Generators:
         instance.ini_on[z] = round(ini_on_[z])
+        instance.ini_mwh[z] = max(ini_mwh_[z],0)
     
     print(day)
     print(str(datetime.now()))
@@ -195,18 +206,18 @@ nrsv_pd=pd.DataFrame(nrsv,columns=('Generator','Time','Value'))
 
 
 ###save outputs to csv files
-mwh_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_mwh.csv')
+mwh_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_mwh.csv')
 
-hydro_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_hydro.csv')
-hydro_import_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_hydro_import.csv')
-#solar_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_solar.csv')
-#wind_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_wind.csv')
+hydro_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_hydro.csv')
+hydro_import_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_hydro_import.csv')
+#solar_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_solar.csv')
+#wind_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_wind.csv')
 
-vlt_angle_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_vlt_angle.csv')
+vlt_angle_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_vlt_angle.csv')
 
-on_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_on.csv')
-switch_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_switch.csv')
-srsv_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_srsv.csv')
-nrsv_pd.to_csv('out_camb_R'+str(run_no)+'_'+str(yr)+'_nrsv.csv')
+on_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_on.csv')
+switch_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_switch.csv')
+srsv_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_srsv.csv')
+nrsv_pd.to_csv('output/out_camb_R'+str(run_no)+'_'+str(yr)+'_nrsv.csv')
  
 
