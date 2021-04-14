@@ -6,7 +6,7 @@ PowNet is a least-cost optimization model for simulating the Unit Commitment and
 The latest and previous versions of PowNet are listed below. Please, check the [release notes](https://github.com/kamal0013/PowNet/releases) for a list of modifications made in each version. 
 ### Current version
 PowNet v1.3 ([GitHub](https://github.com/kamal0013/PowNet/tree/v1.3) | [Zenodo](https://zenodo.org/record/4688309#.YHc5euhKguU))
-### Previous version(s)
+### Previous versions
 PowNet v1.1 ([GitHub](https://github.com/kamal0013/PowNet/tree/v1.1) | [Zenodo](https://zenodo.org/record/3756750))
 
 PowNet v1.2 ([GitHub](https://github.com/kamal0013/PowNet/tree/v1.2) | [Zenodo](https://zenodo.org/record/4020167#.X1hqrGhKguU))
