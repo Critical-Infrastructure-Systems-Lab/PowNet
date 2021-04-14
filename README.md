@@ -41,7 +41,7 @@ The implementation of PowNet for any other power system requires the customizati
 7.	To include or exclude any variable renewable resource (e.g., hydro, wind, solar), uncomment or comment the code provided in Segment A.2, A.5, A.9, B.2, B.6, B.7, B.10, B.11.2, and C.5.
 
 # Schematics
-A basic framework of PowNet is shown in the figure below (adapted from [Chowdhury et al., 2020c](https://www.essoar.org/doi/abs/10.1002/essoar.10504393.1)).
+A basic framework of PowNet is shown in the figure below (adapted from [Chowdhury et al., 2021](https://doi.org/10.1029/2020EF001814)).
 
 ![]( https://github.com/kamal0013/PowNet/blob/master/Appendix/fig_pownet_model.PNG)
 
@@ -67,6 +67,6 @@ PowNet development is supported by Singapore's Ministry of Education (MoE) throu
 
 # Publications
 Following is a list of papers that used PowNet:
-1.	Chowdhury, A.K., Dang, T.D., Nguyen, H.T., Koh, R., and Galelli, S., (2020c). The Greater Mekong's climate-water-energy nexus: how ENSO-triggered regional droughts affect power supply and CO2 emissions. Submitted to Earth’s Future, DOI: https://doi.org/10.1002/essoar.10504393.1.
+1.	Chowdhury, A.K., Dang, T.D., Nguyen, H.T., Koh, R., and Galelli, S., (2021). The Greater Mekong's climate-water-energy nexus: how ENSO-triggered regional droughts affect power supply and CO2 emissions. Earth’s Future, 9, e2020EF001814, DOI: https://doi.org/10.1029/2020EF001814.
 2.	Chowdhury, A.K., Dang, T.D., Bagchi, A., and Galelli, S., (2020b). Expected benefits of Laos' hydropower development curbed by hydro-climatic variability and limited transmission capacity—opportunities to reform. Journal of Water Resources Planning and Management, DOI: https://doi.org/10.1061/(ASCE)WR.1943-5452.0001279, [(RG-link)](https://www.researchgate.net/publication/341276238_Expected_benefits_of_Laos'_hydropower_development_curbed_by_hydro-climatic_variability_and_limited_transmission_capacity--opportunities_to_reform).
-3.	Chowdhury, A.K., Kern, J., Dang, T.D. and Galelli, S., (2020a). PowNet: A Network-Constrained Unit Commitment/Economic Dispatch Model for Large-Scale Power Systems Analysis. Journal of Open Research Software, 8(1), p.5. DOI: http://doi.org/10.5334/jors.302, [(RG-link)]( https://www.researchgate.net/publication/339885402_PowNet_A_Network-Constrained_Unit_CommitmentEconomic_Dispatch_Model_for_Large-Scale_Power_Systems_Analysis).
+3.	Chowdhury, A.K., Kern, J., Dang, T.D. and Galelli, S., (2020a). PowNet: A Network-Constrained Unit Commitment/Economic Dispatch Model for Large-Scale Power Systems Analysis. Journal of Open Research Software, 8(1), p.5. DOI: http://doi.org/10.5334/jors.302.
