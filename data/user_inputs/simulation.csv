@@ -1,0 +1,5 @@
+name,typ,node,maxcap,mincap,heat_rate,var_om,fix_om,st_cost,ramp,minup,mindn
+pGas,gas_cc,pGas,1200,10,7.65,2,1.2,70,287.67,4,4
+pOil,oil_st,pOil,35,1,10.19,3.17,1.5,50,6,1,1
+pBiomass,biomass_st,pBiomass,9.9,2,14.1,26,1,1,9.9,2,2
+slack_Node1,slack,node1,10000,1,100,1000,1000,1000,5000,1,1
