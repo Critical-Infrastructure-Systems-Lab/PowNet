@@ -10,7 +10,7 @@ import gurobipy as gp
 from gurobipy import GRB
 import pandas as pd
 
-from process_data import process_transmission_data, get_arcs
+from process_data import process_transmission_data, get_arcs, create_init_condition, get_fuel_prices
 
 
 
@@ -48,6 +48,12 @@ re_units = [col for col in re_units if col not in DATE_COLS]
 
 all_units = set(thermal_units).union(set(re_units))
 
+thermal_econ_params = pd.read_csv(
+    '..\\data\\user_inputs\\generators.csv', 
+    header = 0, index_col = 'name', 
+    usecols = ['name', 'operation_cost', 'fixed_cost', 'heat_rate']
+    )
+
 
 nodes = pd.read_csv(
     '..\\data\\user_inputs\\transmission.csv', 
@@ -63,7 +69,6 @@ node_neighbors = {a:[] for (a, b) in arcs}
 for (a, b) in arcs:
     node_neighbors[a].append(b)
 
-
 max_node = pd.read_csv(
     '..\\data\\user_inputs\\demand.csv', header = 0)\
     .drop(DATE_COLS, axis=1).idxmax().idxmax()
@@ -74,31 +79,11 @@ nodes_w_demand = pd.read_csv(
 
 #---- Section: Thermal unit parameters
 
-# Treat the initial dispatched power as a constant that will be updated
-# at every simulation period
-initial_p = pd.read_csv(
-    '..\\data\\user_inputs\\initial_condition.csv', 
-    header=0, index_col='name', usecols=['name', 'init_p']).to_dict()['init_p']
+# Get the initial conditions
+(
+ initial_p, initial_u, initial_v, initial_min_on, initial_min_off
+ ) = create_init_condition()
 
-initial_u = pd.read_csv(
-    '..\\data\\user_inputs\\initial_condition.csv', 
-    header=0, index_col='name', usecols=['name', 'init_u']).to_dict()['init_u']
-
-initial_v = None
-
-
-# When the units are on at t=0, then the minimum uptime takes effect
-initial_min_on = pd.read_csv(
-    '..\\data\\user_inputs\\initial_condition.csv', 
-    header=0, index_col='name', usecols=['name', 'init_min_uptime'])\
-    .to_dict()['init_min_uptime']
-
-# When the units are initially off, then the minimum downtime takes effect
-# At the first simulation, the units are all off and can be switched on immediately
-initial_min_off = pd.read_csv(
-    '..\\data\\user_inputs\\initial_condition.csv', 
-    header=0, index_col='name', usecols=['name', 'init_min_downtime'])\
-    .to_dict()['init_min_downtime']
 
 # Max/min capacity of thermal units
 max_cap = pd.read_csv(
@@ -146,7 +131,9 @@ demand = pd.read_csv('..\\data\\user_inputs\\demand.csv', header = 0)\
 
 spin_req = demand.sum(axis=1) * 0.15
 
-re_cap = None
+re_cap = pd.read_csv(
+    '..\\data\\user_inputs\\renewables.csv', 
+    header = 0).drop(DATE_COLS, axis=1)
 
 # Transmission parameters
 if HOURLY_TRANSMISSION_AVAI:
@@ -176,7 +163,7 @@ max_linecap = linecap.max().max()
 p = model.addVars(all_units, range(1,T+1), vtype=GRB.CONTINUOUS, lb=0, name='p')
 
 # The maximum power available above minimum capacity is in MW
-pbar = model.addVars(all_units, timesteps, vtype=GRB.CONTINUOUS, lb=0, name='pbar')
+pbar = model.addVars(thermal_units, timesteps, vtype=GRB.CONTINUOUS, lb=0, name='pbar')
 
 # Spinning reserve is in MW
 spin = model.addVars(thermal_units, timesteps, vtype=GRB.CONTINUOUS, lb=0, name='spin')
@@ -200,14 +187,15 @@ u = model.addVars(thermal_units, timesteps, vtype=GRB.BINARY, name='status')
 v = model.addVars(thermal_units, timesteps, vtype=GRB.BINARY, name='on')
 
 # The volt angles are in radians
-theta = model.addVars(nodes, timesteps, vtype=GRB.CONTINUOUS, lb=-pi, ub=pi, name='volt_angle')
+# theta = model.addVars(nodes, timesteps, vtype=GRB.CONTINUOUS, lb=-pi, ub=pi, name='volt_angle')
+theta = model.addVars(nodes, timesteps, vtype=GRB.CONTINUOUS, name='volt_angle')
 
 # Load mismatch variables
-load_over = model.addVars(
-    nodes, timesteps, vtype=GRB.CONTINUOUS, lb = 0, name='load_over')
+s_pos = model.addVars(
+    nodes, timesteps, vtype=GRB.CONTINUOUS, lb = 0, name='s_pos')
 
-load_under = model.addVars(
-    nodes, timesteps, vtype=GRB.CONTINUOUS, lb = 0, name='load_under')
+s_neg = model.addVars(
+    nodes, timesteps, vtype=GRB.CONTINUOUS, lb = 0, name='s_neg')
 
 # System wide excess. I don't think we need this
 # sys_shortfall = model.addVars(timesteps, vtype=GRB.CONTINUOUS, lb = 0, name='load_under')
@@ -215,6 +203,56 @@ load_under = model.addVars(
 model.update()
 
 
+#---- Section: Objective function
+def set_objective():
+    '''The objective function has four components: fixed cost, variable cost,
+    start-up cost, and shortfall cost.
+    '''
+    fuel_prices = pd.read_csv(
+        '..\\data\\user_inputs\\fuel_price.csv', header = 0
+        ).drop(DATE_COLS, axis=1)
+    
+    econ_params = pd.read_csv(
+        '..\\data\\user_inputs\\generators.csv', 
+        header = 0, index_col = 'name', 
+        usecols = ['name', 'operation_cost', 'fixed_cost', 'startup_cost']
+        )
+    
+    heat_rates = pd.read_csv(
+        '..\\data\\user_inputs\\generators.csv', 
+        header = 0, index_col = 'name', 
+        usecols = ['name', 'heat_rate']
+        )
+    
+    opex_coeffs = {
+        (unit_g, t): (fuel_prices.loc[t, unit_g] * heat_rates.loc[unit_g])[0]
+            + econ_params.loc[unit_g, 'operation_cost']
+        for t in range(1, 25) for unit_g in thermal_units
+        }
+    
+    fixed_coeffs = {
+        (unit_g, t): max_cap[unit_g] * econ_params.loc[unit_g, 'fixed_cost']
+        for t in range(1, 25) for unit_g in thermal_units
+        }
+    
+    startup_coeffs = {
+        (unit_g, t): max_cap[unit_g] * econ_params.loc[unit_g, 'startup_cost']
+        for t in range(1, 25) for unit_g in thermal_units
+        }
+    
+    # Define costs
+    operation_expr = p.prod(opex_coeffs)
+    fixed_expr = u.prod(fixed_coeffs)
+    startup_expr = v.prod(startup_coeffs)
+    shortfall_expr = (
+        fuel_prices.loc[0, 'shortfall'] * (gp.quicksum(s_pos) + gp.quicksum(s_neg))
+        )
+    
+    model.setObjective(
+        operation_expr + fixed_expr + startup_expr + shortfall_expr,
+        sense = GRB.MINIMIZE)
+    
+    
 
 #---- Section: Ramping limits
 
@@ -234,8 +272,8 @@ def c_link_unit_status():
     # the system at t=0
     model.addConstrs(
         (
-            u[unit_g, 1] - initial_p[unit_g] 
-            <= initial_min_on[unit_g] 
+            u[unit_g, 1] - initial_p[unit_g][24] # Last hour of the previous iteration
+            <= initial_min_on[unit_g][24]
             for unit_g in thermal_units
             ),
         name = 'link_uv_init'
@@ -254,7 +292,7 @@ def c_link_unit_status():
 def c_min_up_init():
     for unit_g in thermal_units:
         # Find the min between the required uptime and the simulation horizon
-        min_UT = min(initial_min_on[unit_g], T)
+        min_UT = min(initial_min_on[unit_g][24], T)
         model.addConstr(
             u.sum(unit_g, range(1, min_UT+1)) == min_UT,
             name = 'minUpInit'
@@ -264,7 +302,7 @@ def c_min_up_init():
 def c_min_down_init():
     for unit_g in thermal_units:
         # Find the min between the required downtime and the simulation horizon
-        min_DT = min(initial_min_off[unit_g], T)
+        min_DT = min(initial_min_off[unit_g][24], T)
         model.addConstr(
             u.sum(unit_g, range(1, min_DT+1)) == 0,
             name = 'minDownInit'
@@ -288,7 +326,7 @@ def c_min_down():
         t = TD_g
         LHS =  gp.quicksum([v[unit_g, i] for i in range(t-TD_g+1, t+1)])
         model.addConstr(
-            LHS <= 1 - initial_u[unit_g], 
+            LHS <= 1 - initial_u[unit_g][24], 
             name = 'minDown' + f'_{unit_g}_{t}')
         
         for t in range(TD_g+1, T+1):
@@ -324,11 +362,11 @@ def c_switch_ramp_bound():
                 + (SD[unit_g] - max_cap[unit_g])*v[unit_g, t+1]
             for t in range(1, 24) for unit_g in thermal_units if TU[unit_g] > 1
             ),
-        name = 'switchBound'
+        name = 'switchBnd'
         )
 
 
-def c_peak_up_bound(unit_g):
+def c_peak_up_bound():
     # The inequalities apply when TU == 1
     model.addConstrs(
         (
@@ -336,11 +374,11 @@ def c_peak_up_bound(unit_g):
             <= (max_cap[unit_g] - min_cap[unit_g])*u[unit_g, t]
             for t in timesteps for unit_g in thermal_units if TU[unit_g] == 1
          ),
-        name = 'peakUpBound'
+        name = 'peakUpBnd'
         )
 
 
-def c_peak_down_bound(unit_g):
+def c_peak_down_bound():
     # The inequalities apply when TU == 1
     model.addConstrs(
         (
@@ -350,76 +388,143 @@ def c_peak_down_bound(unit_g):
                 + (SD[unit_g] - max_cap[unit_g])*v[unit_g, t+1]
             for t in range(1, 24) for unit_g in thermal_units if TU[unit_g] == 1
          ),
-        name = 'peakDownBound'
+        name = 'peakDownBnd'
         )
 
 
-def c_trajec_up_bound(unit_g):
-    # When t=1, the inequalities involve an edge case when the system 
-    # turns on the unit at the last time period
-    
+def c_trajec_up_bound():
     for unit_g in thermal_units:
         # Calculate the time to full ramp-up
         time_RU = floor((max_cap[unit_g] - SU[unit_g])/RU[unit_g])
         
-        # # The inequalities require taking the minimum val
-        # min_val = min(TU[unit_g]-2, time_RU)
-
+        # The min of (TU - 2, TRU) is the number of periods in the previous
+        # simulation that must be traced back to address the changing
+        # upper bound due to ramping.
+        min_val = min(TU[unit_g]-2, time_RU)
         
-        # # Define the summation term
-        # sum_term = gp.quicksum(
-        #     (max_cap[unit_g] - SU[unit_g] - i*RU[unit_g])*v[unit_g, t-i]
-        #     for i in range(0, min_val+1)
-        #     )
-        
-        # (
-        #  pbar[unit_g, t]
-        #  <= (max_cap[unit_g] - 2*min_cap[unit_g] + SD[unit_g])*u[unit_g, t]
-        #      + (max_cap[unit_g] - SD[unit_g])*u[unit_g, t+1]
-        #      + (SD - max_cap[unit_g])*v[unit_g, t+1]
-        #      - gp.quicksum((max_cap[ for i in range(0, min_val+1))
-        #  ))
+        # Since the ineqalities involve t+1 index, we only iterate thru T-1
+        for t in range(1,24):
+            # Define the summation term
+            sum_term = 0
+            for i in range(0, min_val+1):
+                # Decide if we need to refer back to the previous iteration
+                if t-i > 0:
+                    sum_term += (
+                        (max_cap[unit_g] - SU[unit_g] - i*RU[unit_g]) 
+                            * v[unit_g, t-i]
+                        )
+                else:
+                    sum_term += (
+                        (max_cap[unit_g] - SU[unit_g] - i*RU[unit_g]) 
+                            * initial_v[unit_g][24 + t - i]
+                        )
+            
+            model.addConstr(
+                (
+                    pbar[unit_g, t]
+                    <= (max_cap[unit_g] - 2*min_cap[unit_g] + SD[unit_g])*u[unit_g, t]
+                        + (max_cap[unit_g] - SD[unit_g])*u[unit_g, t+1]
+                        + (SD[unit_g] - max_cap[unit_g])*v[unit_g, t+1]
+                        - sum_term
+                        ),
+                name = 'trajecUpBnd' + f'_{unit_g}_{t}'
+                )
+            
+        # When UT-2 < time_RU, the above inequalities do not cover
+        # the entire start-up and ramping trajectory. Hence, we can
+        # cover an additional time period with additional inequalities
+        # up to the last hour of T.
+        if TU[unit_g]-2 < time_RU:
+            
+            # Note TU_g - 1, which is different from the above
+            min_val = min(TU[unit_g]-1, time_RU)
+            
+            for t in timesteps:
+                # Define the summation term
+                sum_term = 0
+                for i in range(0, min_val+1):
+                    # Decide if we need to refer back to the previous iteration
+                    if t-i > 0:
+                        sum_term += (
+                            (max_cap[unit_g] - SU[unit_g] - i*RU[unit_g]) 
+                                * v[unit_g, t-i]
+                            )
+                    else:
+                        sum_term += (
+                            (max_cap[unit_g] - SU[unit_g] - i*RU[unit_g]) 
+                                * initial_v[unit_g][24 + t - i]
+                            )
+            
+            model.addConstr(
+                (
+                    pbar[unit_g, t]
+                    <= (max_cap[unit_g] - min_cap[unit_g])*u[unit_g, t]
+                        - sum_term
+                        ),
+                name = 'trajecUpBnd2' + f'_{unit_g}_{t}'
+                )
 
 
-def c_trajec_up_bound_short(unit_g):
+def c_trajec_down_bound():
     for unit_g in thermal_units:
-        time_RU = floor((max_cap[unit_g] - SU[unit_g])/RU[unit_g])
-        min_val = min(TU[unit_g]-1, time_RU)
         
-        model.addConstrs(
-         (
-             pbar[unit_g, t]
-             <= (max_cap[unit_g] - min_cap[unit_g])*u[unit_g, t]
-                 - gp.quicksum(
-                     max_cap[unit_g] - SU[unit_g] - i*RU[unit_g]*v[unit_g, t-i]
-                     for i in range(0, min_val+1)
-                     )
-            for t in timesteps
-                 ),
-         name = 'trajecUpBoundShort' + f'_{unit_g}'
-         )
-
-
-def c_trajec_down_bound(unit_g):
-    pass
-
-
+        time_RU = floor((max_cap[unit_g] - SU[unit_g])/RU[unit_g])
+        time_RD = floor((max_cap[unit_g] - SU[unit_g])/RD[unit_g])
+        
+        for t in timesteps:
+            KSD_t = min(time_RD, TU[unit_g]-1, T-t-1)
+            
+            # Omit adding inequalities if KSD < 0 because
+            # c_trajec_up_bound dominates.
+            if KSD_t <= 0:
+                continue
+            
+            # KSD_t must be positive, but we have already checked above
+            KSU_t = min( time_RU, TU[unit_g] - 2 - KSD_t, t-1 )
+            
+            # First summation term
+            sum_1 = 0
+            for i in range(KSD_t+1):    
+                sum_1 += (
+                    (max_cap[unit_g] - SD[unit_g] - i*RD[unit_g])
+                        * (u[unit_g, t+i] - u[unit_g, t+1+i] + v[unit_g, t+1+i])
+                    )
+            
+            # Second summation term
+            sum_2 = 0
+            for i in range(KSU_t+1):
+                
+                sum_2 += (
+                    (max_cap[unit_g] - SU[unit_g] - i*RU[unit_g])*v[unit_g, t-i]
+                    )
+            
+            model.addConstr(
+                (
+                    p[unit_g, t]
+                    <= (
+                        max_cap[unit_g] - min_cap[unit_g])*u[unit_g, t]
+                        - sum_1 - sum_2
+                    ),
+                name = 'trajecDownBnd'
+                )
+            
+            
 
 #---- Section: Ramp limits
 
-def c_ramp_up(unit_g):
+def c_ramp_up():
     model.addConstrs(
         (
             pbar[unit_g, t] - p[unit_g, t-1] 
-            <= (SU[unit_g] - min_cap[unit_g] - RU[unit_g])
-            * v[unit_g, t] + RU*u[unit_g, t]
-            for t in range(2, T+1)
+            <= (SU[unit_g] - min_cap[unit_g] - RU[unit_g]) * v[unit_g, t]
+                + RU[unit_g]*u[unit_g, t]
+            for t in range(2, T+1) for unit_g in thermal_units
             ),
         name = 'rampUp'
         )
 
 
-def c_ramp_down(unit_g):
+def c_ramp_down():
     # Ramping when t=1 is dependent on the initial condition at t=0
     model.addConstrs(
         (
@@ -427,7 +532,7 @@ def c_ramp_down(unit_g):
             <= (SD[unit_g] - min_cap[unit_g] - RD[unit_g])
                 * (u[unit_g, t] - u[unit_g, t+1] + v[unit_g, t+1])
                 + RD[unit_g]*u[unit_g, t-1]
-            for t in range(2, T+1)
+            for t in range(2, T) for unit_g in thermal_units
             ),
         name = 'rampDownInit'
         )
@@ -439,7 +544,7 @@ def c_ramp_down(unit_g):
             <= (SD[unit_g] - min_cap[unit_g] - RD[unit_g])
                 * (u[unit_g, t] - u[unit_g, t+1] + v[unit_g, t+1])
                 + RD[unit_g]*u[unit_g, t-1]
-            for t in range(2, T+1)
+            for t in range(2, T) for unit_g in thermal_units
             ),
         name = 'rampDown'
         )
@@ -503,6 +608,7 @@ def c_flow_balance():
                     + gp.quicksum(
                         flow[x, y, t] for (x, y) in arcs if (x==a) or (y==a)
                         )
+                    + (s_pos[a, t] - s_neg[a, t])
                 == demand_a_t
                 )
         
@@ -511,7 +617,7 @@ def c_reserve_req():
     # Modified equation 67 but exclude the system-wide shortfall
     model.addConstrs(
         (
-            gp.quicksum(pbar[unit_g, t] for unit_g in all_units)
+            gp.quicksum(pbar[unit_g, t] for unit_g in thermal_units)
             >= gp.quicksum(demand.loc[t, n] for n in nodes_w_demand) + spin_req[t]
             for t in timesteps
             ),
@@ -525,18 +631,18 @@ def c_renewables_bound():
             p[unit_w, t] <= re_cap.loc[t, unit_w]
             for t in timesteps for unit_w in re_units
             ),
-        name = 'reLimit'
+        name = 'renewLimit'
         )
 
 
 #---- Section: Update parameters for the next simulation
-initial_min_on = None
-initial_min_off = None
+# initial_min_on = None
+# initial_min_off = None
 
-initial_u = None
+# initial_u = None
 
-initial_p = None
-initial_pbar = None
+# initial_p = None
+# initial_pbar = None
 
 
 
