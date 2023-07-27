@@ -5,6 +5,9 @@ import numpy as np
 import pandas as pd
 
 
+# TODO: Map units to fuel type such that we can price the fuel cost per type and operation
+
+
 
 DATE_COLS = ['year', 'month', 'day', 'hour']
 DATE_START = '2016-01-01'
@@ -94,3 +97,39 @@ def get_arcs():
         ).index.tolist()
 
     return gp.tuplelist(arcs_ab + arcs_ba)
+
+
+def create_init_condition():
+    "Return dicts of system statuses in the format {unit: {t:value}}"
+
+    thermal_units = pd.read_csv(
+        '..\\data\\user_inputs\\initial_condition.csv', 
+        header=0, usecols=['name']).name.tolist()
+    
+    # If the user does not specify the initial condition, then we assume 
+    # the system will start from a blank state with every units off.
+    initial_p = {unit_g: {t: 0 for t in range(1,25)} for unit_g in thermal_units}
+    initial_u = initial_p.copy()
+    initial_v = initial_p.copy()
+    initial_min_on = initial_p.copy()
+    initial_min_off = initial_p.copy()
+    
+    return initial_p, initial_u, initial_v, initial_min_on, initial_min_off
+
+
+def get_fuel_prices():
+    df = pd.read_csv(
+        '..\\data\\user_inputs\\fuel_price.csv', header = 0
+        ).drop(DATE_COLS, axis=1)
+    
+    df = df.iloc[:24]
+    df.index = df.index+1
+    
+    fuel_types = df.columns.to_list()
+    
+    fuel_prices = {
+        (fuel_type, t): df.loc[t, fuel_type] 
+        for t in range(1, 25) for fuel_type in fuel_types
+        }
+    
+    return fuel_prices
