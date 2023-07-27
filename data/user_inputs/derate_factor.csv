@@ -1,4 +1,4 @@
-year,month,day,hour,slack_Node1,pGas,pBiomass,pOil
+year,month,day,hour,Node1,pGas,pBiomass,pOil
 2016,1,1,0,1,1,1,1
 2016,1,1,1,1,1,1,1
 2016,1,1,2,1,1,1,1
