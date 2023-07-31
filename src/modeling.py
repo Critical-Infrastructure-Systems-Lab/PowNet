@@ -60,8 +60,8 @@ nodes = pd.read_csv(
     header = 0, usecols = ['source', 'sink'])
 nodes = set(nodes.source).union(set(nodes.sink))
 
-arcs = get_arcs()
 
+arcs = get_arcs()
 
 # Define the neighbors of each node
 node_neighbors = {a:[] for (a, b) in arcs}
@@ -160,10 +160,16 @@ max_linecap = linecap.max().max()
 
 #---- Section: Variables
 # The power above minimum capacity is in MW
-p = model.addVars(all_units, range(1,T+1), vtype=GRB.CONTINUOUS, lb=0, name='p')
+p = model.addVars(thermal_units, range(1,T+1), vtype=GRB.CONTINUOUS, lb=0, name='p')
 
 # The maximum power available above minimum capacity is in MW
 pbar = model.addVars(thermal_units, timesteps, vtype=GRB.CONTINUOUS, lb=0, name='pbar')
+
+# Separate the renewable dispatch variable
+p_w = model.addVars(
+    re_units, range(1,T+1), vtype=GRB.CONTINUOUS, lb=0, name='p_w')
+
+p2 = model.addVars(thermal_units, range(1,T+1), vtype=GRB.CONTINUOUS, lb=0, name='p')
 
 # Spinning reserve is in MW
 spin = model.addVars(thermal_units, timesteps, vtype=GRB.CONTINUOUS, lb=0, name='spin')
@@ -176,7 +182,7 @@ spin = model.addVars(thermal_units, timesteps, vtype=GRB.CONTINUOUS, lb=0, name=
 # We set the bounds based on the largest transmission line.
 flow = model.addVars(
     arcs, timesteps,
-    lb = 0,
+    lb = -max_linecap,
     ub = max_linecap,
     vtype = GRB.CONTINUOUS,
     name = 'flow'
@@ -187,8 +193,12 @@ u = model.addVars(thermal_units, timesteps, vtype=GRB.BINARY, name='status')
 v = model.addVars(thermal_units, timesteps, vtype=GRB.BINARY, name='on')
 
 # The volt angles are in radians
-# theta = model.addVars(nodes, timesteps, vtype=GRB.CONTINUOUS, lb=-pi, ub=pi, name='volt_angle')
-theta = model.addVars(nodes, timesteps, vtype=GRB.CONTINUOUS, name='volt_angle')
+# theta = model.addVars(
+# nodes, timesteps, vtype=GRB.CONTINUOUS, lb=-pi, ub=pi, name='volt_angle')
+
+theta = model.addVars(
+    nodes, timesteps, lb=-200000000, vtype=GRB.CONTINUOUS, name='volt_angle'
+    )
 
 # Load mismatch variables
 s_pos = model.addVars(
@@ -255,6 +265,26 @@ def set_objective():
     
 
 #---- Section: Ramping limits
+# def c_link_pu():
+#     'Might not need this when using other ramping constraints'
+#     model.addConstrs(
+#         (
+#             pbar[unit_g, t] == p[unit_g, t] + spin[unit_g, t]
+#             for unit_g in thermal_units for t in timesteps
+#             ),
+#         name = 'link_pu'
+#         )
+    
+
+def c_get_p():
+    model.addConstrs(
+        (
+            p2[unit_g, t] == p[unit_g, t] + min_cap[unit_g] * u[unit_g, t]
+            for unit_g in thermal_units for t in timesteps
+            ),
+        name = 'get_p'
+        )
+
 
 def c_link_p():
     # Linking the p, pbar, and spin together
@@ -272,8 +302,8 @@ def c_link_unit_status():
     # the system at t=0
     model.addConstrs(
         (
-            u[unit_g, 1] - initial_p[unit_g][24] # Last hour of the previous iteration
-            <= initial_min_on[unit_g][24]
+            u[unit_g, 1] - initial_u[unit_g][T] # Last hour of the previous iteration
+            <= initial_v[unit_g][T]
             for unit_g in thermal_units
             ),
         name = 'link_uv_init'
@@ -292,7 +322,7 @@ def c_link_unit_status():
 def c_min_up_init():
     for unit_g in thermal_units:
         # Find the min between the required uptime and the simulation horizon
-        min_UT = min(initial_min_on[unit_g][24], T)
+        min_UT = min(initial_min_on[unit_g][T], T)
         model.addConstr(
             u.sum(unit_g, range(1, min_UT+1)) == min_UT,
             name = 'minUpInit'
@@ -302,7 +332,7 @@ def c_min_up_init():
 def c_min_down_init():
     for unit_g in thermal_units:
         # Find the min between the required downtime and the simulation horizon
-        min_DT = min(initial_min_off[unit_g][24], T)
+        min_DT = min(initial_min_off[unit_g][T], T)
         model.addConstr(
             u.sum(unit_g, range(1, min_DT+1)) == 0,
             name = 'minDownInit'
@@ -326,7 +356,7 @@ def c_min_down():
         t = TD_g
         LHS =  gp.quicksum([v[unit_g, i] for i in range(t-TD_g+1, t+1)])
         model.addConstr(
-            LHS <= 1 - initial_u[unit_g][24], 
+            LHS <= 1 - initial_u[unit_g][T], 
             name = 'minDown' + f'_{unit_g}_{t}')
         
         for t in range(TD_g+1, T+1):
@@ -351,8 +381,7 @@ def c_p_bound():
 
 def c_switch_ramp_bound():
     # Note we exclude the last timestep of T. 
-    # This constraint applies only when TU_g > 1 because the RHS can be negative
-    # Also, RHS can be zero when a unit has been turned on which is incorrect.
+    # This constraint applies only when TU_g > 1 otherwise the RHS is negative
     model.addConstrs(
         (
             p[unit_g, t] + spin[unit_g, t]
@@ -360,7 +389,7 @@ def c_switch_ramp_bound():
                 + (SU[unit_g] - max_cap[unit_g])*v[unit_g, t]
                 + (max_cap[unit_g] - SD[unit_g])*u[unit_g, t+1]
                 + (SD[unit_g] - max_cap[unit_g])*v[unit_g, t+1]
-            for t in range(1, 24) for unit_g in thermal_units if TU[unit_g] > 1
+            for t in range(1, T) for unit_g in thermal_units if TU[unit_g] > 1
             ),
         name = 'switchBnd'
         )
@@ -371,7 +400,8 @@ def c_peak_up_bound():
     model.addConstrs(
         (
             p[unit_g, t] + spin[unit_g, t]
-            <= (max_cap[unit_g] - min_cap[unit_g])*u[unit_g, t]
+            <= (max_cap[unit_g] - min_cap[unit_g]) * u[unit_g, t]
+                - (max_cap[unit_g] - SU[unit_g]) * v[unit_g, t]
             for t in timesteps for unit_g in thermal_units if TU[unit_g] == 1
          ),
         name = 'peakUpBnd'
@@ -383,10 +413,10 @@ def c_peak_down_bound():
     model.addConstrs(
         (
             p[unit_g, t] + spin[unit_g, t]
-            <= (SD[unit_g] - min_cap[unit_g])*u[unit_g, t]
-                + (max_cap[unit_g] - SD[unit_g])*u[unit_g, t+1]
-                + (SD[unit_g] - max_cap[unit_g])*v[unit_g, t+1]
-            for t in range(1, 24) for unit_g in thermal_units if TU[unit_g] == 1
+            <= (SD[unit_g] - min_cap[unit_g]) * u[unit_g, t]
+                + (max_cap[unit_g] - SD[unit_g]) * u[unit_g, t+1]
+                + (SD[unit_g] - max_cap[unit_g]) * v[unit_g, t+1]
+            for t in range(1, T) for unit_g in thermal_units if TU[unit_g] == 1
          ),
         name = 'peakDownBnd'
         )
@@ -403,7 +433,7 @@ def c_trajec_up_bound():
         min_val = min(TU[unit_g]-2, time_RU)
         
         # Since the ineqalities involve t+1 index, we only iterate thru T-1
-        for t in range(1,24):
+        for t in range(1, T):
             # Define the summation term
             sum_term = 0
             for i in range(0, min_val+1):
@@ -416,7 +446,7 @@ def c_trajec_up_bound():
                 else:
                     sum_term += (
                         (max_cap[unit_g] - SU[unit_g] - i*RU[unit_g]) 
-                            * initial_v[unit_g][24 + t - i]
+                            * initial_v[unit_g][T + t - i]
                         )
             
             model.addConstr(
@@ -452,7 +482,7 @@ def c_trajec_up_bound():
                     else:
                         sum_term += (
                             (max_cap[unit_g] - SU[unit_g] - i*RU[unit_g]) 
-                                * initial_v[unit_g][24 + t - i]
+                                * initial_v[unit_g][T + t - i]
                             )
             
             model.addConstr(
@@ -517,7 +547,7 @@ def c_ramp_up():
         (
             pbar[unit_g, t] - p[unit_g, t-1] 
             <= (SU[unit_g] - min_cap[unit_g] - RU[unit_g]) * v[unit_g, t]
-                + RU[unit_g]*u[unit_g, t]
+                + RU[unit_g] * u[unit_g, t]
             for t in range(2, T+1) for unit_g in thermal_units
             ),
         name = 'rampUp'
@@ -526,13 +556,14 @@ def c_ramp_up():
 
 def c_ramp_down():
     # Ramping when t=1 is dependent on the initial condition at t=0
+    t = 1
     model.addConstrs(
         (
-            p[unit_g, t-1] - pbar[unit_g, t]
+            initial_p[unit_g][T+t-1] - p[unit_g, t]
             <= (SD[unit_g] - min_cap[unit_g] - RD[unit_g])
                 * (u[unit_g, t] - u[unit_g, t+1] + v[unit_g, t+1])
-                + RD[unit_g]*u[unit_g, t-1]
-            for t in range(2, T) for unit_g in thermal_units
+                + RD[unit_g] * initial_u[unit_g][T+t-1]
+                for unit_g in thermal_units
             ),
         name = 'rampDownInit'
         )
@@ -540,7 +571,7 @@ def c_ramp_down():
     # Ramping at other timesteps
     model.addConstrs(
         (
-            p[unit_g, t-1] - pbar[unit_g, t]
+            p[unit_g, t-1] - p[unit_g, t]
             <= (SD[unit_g] - min_cap[unit_g] - RD[unit_g])
                 * (u[unit_g, t] - u[unit_g, t+1] + v[unit_g, t+1])
                 + RD[unit_g]*u[unit_g, t-1]
@@ -552,23 +583,38 @@ def c_ramp_down():
 
 
 #---- Section: System constraints
-def c_angle_dff():
-    model.addConstrs(
-        (
-            flow[a, b, t] == suscept.loc[t, (a, b)] * (theta[a, t] - theta[b, t])
-            for (a, b) in arcs for t in timesteps
-        ),
-        name = 'angleDiff'
-        )
-
-
-def c_max_flow():
+def c_flow_bound():
     model.addConstrs(
         (
             flow[a, b, t] <= linecap[(a, b)]
             for (a, b) in arcs for t in timesteps
             ),
         name = 'maxFlow'
+        )
+    model.addConstrs(
+        (
+            flow[a, b, t] >= -linecap[(a, b)]
+            for (a, b) in arcs for t in timesteps
+            ),
+        name = 'minFlow'
+        )
+    
+
+def c_angle_dff():
+    model.addConstrs(
+        (
+            flow[a, b, t] == suscept.loc[t, (a, b)] * (theta[a, t] - theta[b, t])
+            for (a, b) in arcs for t in timesteps
+        ),
+        name = 'angleDiffForward'
+        )
+    
+    model.addConstrs(
+        (
+            flow[a, b, t] == suscept.loc[t, (a, b)] * (theta[a, t] - theta[b, t])
+            for (a, b) in arcs for t in timesteps
+        ),
+        name = 'angleDiffBack'
         )
     
 
@@ -581,9 +627,8 @@ def c_ref_node():
 
 def c_flow_balance():
     
-    for (a, b) in arcs:
-        for t in timesteps:
-            
+    for t in timesteps:
+        for (a, b) in arcs:
             # If n is a thermal unit, then it can generate energy
             if a in thermal_units:
                 thermal_gen = p[a, t] + min_cap[a]*u[a, t]
@@ -592,7 +637,7 @@ def c_flow_balance():
             
             # If n has renewables, then it can generate energy
             if a in re_units:
-                re_gen = p[a, t]
+                re_gen = p_w[a, t]
             else:
                 re_gen = 0
                 
@@ -601,12 +646,14 @@ def c_flow_balance():
                 demand_a_t = demand.loc[t, a]
             else:
                 demand_a_t = 0
-                
+       
             model.addConstr(
-                thermal_gen 
-                    + re_gen 
+                thermal_gen + re_gen 
+                    - gp.quicksum(
+                        flow[x, y, t] for (x, y) in arcs if (x==a) # flow out
+                        )
                     + gp.quicksum(
-                        flow[x, y, t] for (x, y) in arcs if (x==a) or (y==a)
+                        flow[x, y, t] for (x, y) in arcs if (y==a) # flow in
                         )
                     + (s_pos[a, t] - s_neg[a, t])
                 == demand_a_t
@@ -628,7 +675,7 @@ def c_reserve_req():
 def c_renewables_bound():
     model.addConstrs(
         (
-            p[unit_w, t] <= re_cap.loc[t, unit_w]
+            p_w[unit_w, t] <= re_cap.loc[t, unit_w]
             for t in timesteps for unit_w in re_units
             ),
         name = 'renewLimit'
