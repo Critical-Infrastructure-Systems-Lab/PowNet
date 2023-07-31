@@ -97,6 +97,7 @@ def get_arcs():
         ).index.tolist()
 
     return gp.tuplelist(arcs_ab + arcs_ba)
+    # return gp.tuplelist(arcs_ab)
 
 
 def create_init_condition():
