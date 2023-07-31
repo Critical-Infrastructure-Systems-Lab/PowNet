@@ -10,7 +10,8 @@ def build_model():
     
     # Extra constraints
     # c_get_p()
-    c_link_p()
+    # c_link_p()
+    # c_link_pu()
     
     # Working constraints
     c_link_unit_status()
@@ -32,12 +33,12 @@ def build_model():
     ######### Constraints to test
     # These three constraints might need to be replaced
     # c_switch_ramp_bound() # We do not have this for the three bins
-    # c_peak_up_bound()
-    # c_peak_down_bound()
+    c_peak_up_bound()
+    c_peak_down_bound()
     
     # # Trajectories up makes the model infeasible
-    # c_trajec_up_bound()
-    # c_trajec_down_bound()
+    c_trajec_up_bound()
+    c_trajec_down_bound()
     
     # Need to check these ramp up/down
     c_ramp_up()
@@ -52,6 +53,3 @@ def build_model():
 # CONS = model.getConstrs()
 # for con in CONS:
 #     print(model.getRow(con), con.sense, con.rhs)
-
-a = 'pBiomass'
-t = 1
