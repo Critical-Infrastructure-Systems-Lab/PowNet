@@ -1,0 +1,8 @@
+name,unit_type,fuel_type
+pGas,gas_cc,gas
+pOil,oil_st,oil
+pBiomass,biomass_st,biomass
+Node1,slack,slack
+pHydro,hydro,hydro
+Node2,shortfall,shortfall
+Node3,shortfall,shortfall
