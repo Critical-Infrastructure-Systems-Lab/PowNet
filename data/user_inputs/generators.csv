@@ -2,4 +2,3 @@ name,unit_type,fuel_type,max_capacity,min_capacity,heat_rate,operation_cost,fixe
 pGas,gas_cc,gas,1200,10,7.65,2,1.2,70,287.67,4,4
 pOil,oil_st,oil,35,1,10.19,3.17,1.5,50,6,1,1
 pBiomass,biomass_st,biomass,9.9,2,14.1,26,1,1,9.9,2,2
-Node1,slack,slack,10000,1,100,1000,1000,1000,5000,1,1

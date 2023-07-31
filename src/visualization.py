@@ -100,6 +100,7 @@ total_dispatch.plot.bar(
 ax.legend(bbox_to_anchor=(1, 1))
 ax.set_ylabel('Power (MW)')
 ax.set_xlabel('Hour')
+ax.set_ylim([0, 750])
 plt.show()
 
 
