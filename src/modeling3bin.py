@@ -204,7 +204,7 @@ w = model.addVars(thermal_units, timesteps, vtype=GRB.BINARY, name='shut')
 # nodes, timesteps, vtype=GRB.CONTINUOUS, lb=-pi, ub=pi, name='volt_angle')
 
 theta = model.addVars(
-    nodes, timesteps, lb=-200000000, vtype=GRB.CONTINUOUS, name='volt_angle'
+    nodes, timesteps, lb=-2000000000, vtype=GRB.CONTINUOUS, name='volt_angle'
     )
 
 # Load mismatch variables
@@ -274,6 +274,7 @@ def set_objective():
 #---- Section: Ramping limits   
 
 def c_get_p():
+    ''' A variable in case we do not want to manually dispatch'''
     model.addConstrs(
         (
             p2[unit_g, t] == p[unit_g, t] + min_cap[unit_g] * u[unit_g, t]
@@ -281,7 +282,17 @@ def c_get_p():
             ),
         name = 'get_p'
         )
-
+    
+    
+def c_link_pu():
+    model.addConstrs(
+        (
+            p2[unit_g, t] <= max_cap[unit_g] * u[unit_g, t]
+            for unit_g in thermal_units for t in timesteps
+            ),
+        name = 'link_pu'
+        )
+    
 
 def c_link_p():
     # Linking the p, pbar, and spin together
@@ -642,18 +653,20 @@ def c_flow_balance():
             # Get the demand of node n at time t
             if a in nodes_w_demand:
                 demand_a_t = demand.loc[t, a]
+                shortfall = s_pos[a, t] - s_neg[a, t]
             else:
                 demand_a_t = 0
-       
+                shortfall = 0
+            
             model.addConstr(
                 thermal_gen + re_gen 
                     - gp.quicksum(
-                        flow[x, y, t] for (x, y) in arcs if (x==a) # flow out
+                        flow[x, y, t] for (x, y) in arcs if (x==a)
                         )
                     + gp.quicksum(
-                        flow[x, y, t] for (x, y) in arcs if (y==a) # flow in
+                        flow[x, y, t] for (x, y) in arcs if (y==a)
                         )
-                    + (s_pos[a, t] - s_neg[a, t])
+                    + shortfall
                 == demand_a_t
                 )
         
