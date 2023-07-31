@@ -25,21 +25,26 @@ values = model.getAttr("X", all_vars)
 names = model.getAttr("VarName", all_vars)
 
 results = pd.DataFrame({'varname':names, 'value':values})
-
+pat_vartype = r'(\w+)\['
+results[['vartype']] = results['varname'].str.extract(pat_vartype, expand=True)
 
 
 ###### Process variables
+# Extract the unit status
+on_df = results[results['vartype'] == 'status']
+on_df = pd.concat(
+    [get_nodehour(on_df, varname='on'), on_df[['varname', 'value']]], 
+    axis=1)
+
+on_map = on_df[['node', 'hour', 'value']].set_index(['node', 'hour']).to_dict()['value']
+
+
 # Extract the thermal dispatch
-pat_vartype = r'(\w+)\['
-results[['vartype']] = results['varname'].str.extract(pat_vartype, expand=True)
 p_df = results[results['vartype'] == 'p']
-
-
 thermal_dispatch = get_nodehour(p_df, varname='p')
-
 thermal_dispatch = pd.concat([thermal_dispatch, p_df[['varname', 'value']]], axis=1)
 thermal_dispatch['dispatch'] = thermal_dispatch.apply(
-    lambda x: x['value'] + min_cap[x['node']], axis=1)
+    lambda x: x['value'] + min_cap[x['node']]*on_map[x['node'], x['hour']], axis=1)
 
 thermal_dispatch = thermal_dispatch.set_index('varname')
 thermal_dispatch = thermal_dispatch.drop('value', axis=1)
@@ -71,6 +76,9 @@ total_dispatch = pd.concat(
 
 total_dispatch['fuel_type'] = total_dispatch.apply(lambda x: fuel_map[x['node']], axis=1)
 
+
+total_dispatch = total_dispatch.reset_index(drop=True)
+
 total_dispatch = total_dispatch[['fuel_type', 'dispatch', 'hour']]\
     .groupby(['fuel_type', 'hour']).sum()
     
@@ -90,15 +98,15 @@ total_dispatch.plot.bar(
     ax = ax
     )
 ax.legend(bbox_to_anchor=(1, 1))
+ax.set_ylabel('Power (MW)')
+ax.set_xlabel('Hour')
+plt.show()
+
 
 
 
 
 ###### Plot the on/off status of individual thermal units
-on_df = results[results['vartype'] == 'on']
-on_df = pd.concat(
-    [get_nodehour(on_df, varname='on'), on_df[['varname', 'value']]], 
-    axis=1)
 
 # Check that each thermal unit satisfies the minimum on/off duration
 for unit_g in thermal_dispatch.node.unique():
@@ -106,10 +114,12 @@ for unit_g in thermal_dispatch.node.unique():
     df1 = thermal_dispatch[thermal_dispatch.node == unit_g]
     df2 = on_df[on_df['node'] == unit_g]
     
-    fig, ax1 = plt.subplots()
+    fig, ax1 = plt.subplots(figsize=(8, 5))
     ax2 = ax1.twinx()
     
-    line1 = ax1.step(df1['hour'], df1['dispatch'], color='b', label='Power')
+    line1 = ax1.step(
+        df1['hour'], df1['dispatch'], 
+        where = 'mid', color = 'b', label = 'Power')
     line2 = ax2.bar(
         df2['hour'], df2['value'], 
         color='k', alpha=0.2,
@@ -118,9 +128,9 @@ for unit_g in thermal_dispatch.node.unique():
     ax1.set_xlabel('Hour')
     ax1.set_ylabel('Power (MW)')
     
-    # # added these three lines
-    # lines = line1 + line2
-    # labels = [l.get_label() for l in lines]
-    # ax1.legend(lines, labels, loc=0)
+    ax1.set_xticks(range(1,25))
+    ax1.tick_params(axis='x', labelrotation=45)
+    
+    plt.title(unit_g)
     
     plt.show()
