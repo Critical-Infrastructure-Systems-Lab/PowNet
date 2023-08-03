@@ -18,7 +18,7 @@ class Simulator:
         
     def run(self) -> None:
         # Instantiate objects
-        system_record = SystemRecord()
+        system_record = SystemRecord(self.T)
         
         system_input = SystemInput(model_folder=self.model_folder, T=self.T)
         builder = ModelBuilder(system_input)
@@ -31,7 +31,7 @@ class Simulator:
         
         # The indexing of 'i' starts at zero because we use this to
         # index the parameters of future simulation periods (t + self.i*self.T)
-        for k in range(0, steps):
+        for k in range(0, 1):#steps):
             # Create a gurobipy model for each simulation period
             model = builder.build(
                 k = k,
@@ -39,16 +39,18 @@ class Simulator:
             
             model.optimize()
             
-            system_record.keep(model)
-            init_conds = system_record.get_init_conds()
+            # Need k to increment the hours field
+            system_record.keep(model, k)
+            init_conds = system_record.get_init_conds(k)
         
-        # Export the final results somewhere
-        system_record.to_csv()
-        return system_record.get_record()
+        # # Export the final results somewhere
+        # system_record.to_csv()
+        # return system_record.get_record()
+        return model
     
     
     
     
 if __name__ == '__main__':
     simulator = Simulator(T=24, model_folder='user_inputs')
-    simulator.run()
+    model = simulator.run()
