@@ -8,12 +8,12 @@ from process_result import get_nodehour
 ###### Model Results
 # Load parameters
 min_cap = pd.read_csv(
-    '..\\data\\user_inputs\\generators.csv', 
+    '..\\user_inputs\\unit_param.csv', 
     header=0, index_col='name', usecols=['name', 'min_capacity'])\
     .to_dict()['min_capacity']
 
 fuel_map = pd.read_csv(
-    '..\\data\\user_inputs\\fuel_map.csv', 
+    '..\\user_inputs\\fuel_map.csv', 
     header = 0, index_col='name', usecols = ['name', 'fuel_type']).to_dict()['fuel_type']
 
 
