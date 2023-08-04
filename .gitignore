@@ -1,5 +1,6 @@
-
+# Ignore testing script
 src/scratch.py
-src/__pycache__/process_data.cpython-310.pyc
+
+# Ignore irrelevant files
 *.pyc
 *.pptx

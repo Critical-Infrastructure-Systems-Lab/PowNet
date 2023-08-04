@@ -1,0 +1,127 @@
+import os
+
+import gurobipy as gp
+import pandas as pd
+
+from processing.functions import get_arcs, get_linecap, get_suscept
+
+
+
+# Current code does not need these columns
+DATE_COLS = ['year', 'month', 'day', 'hour']
+
+
+
+class SystemInput:
+    def __init__(self, T: int, model_folder: str, F_SPIN: float = 0.15) -> None:
+        '''
+        Read the user inputs that define the power system over one year.
+
+        Returns
+        -------
+        None
+
+        '''
+        self.T = T
+
+        self.model_dir: str = os.path.join(os.pardir, model_folder)
+        
+        # User inputs
+        self.demand: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, 'demand.csv'),
+            header=0).drop(DATE_COLS, axis=1)
+        self.demand.index += 1
+        
+        self.derating: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, 'derate_factor.csv'),
+            header=0).drop(DATE_COLS, axis=1)
+        self.derating.index += 1
+        
+        self.fuelmap: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, 'fuel_map.csv'),
+            header=0)
+        
+        self.fuelprice: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, 'fuel_price.csv'),
+            header=0).drop(DATE_COLS, axis=1)
+        self.fuelprice.index += 1
+        
+        self.rnw_cap: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, 'renewable.csv'),
+            header=0).drop(DATE_COLS, axis=1)
+        self.rnw_cap.index += 1
+        
+        self.thermal_units: list = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'), 
+            header = 0, index_col='name', usecols = ['name']).index.tolist()
+        
+        self.transmission: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, 'transmission.csv'),
+            header = 0)
+        
+        self.unit_econ: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'),
+            header = 0, index_col = 'name',
+            usecols = ['name', 'operation_cost', 'fixed_cost', 'startup_cost']
+            )
+        
+        self.heat_rate: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'),
+            header = 0, index_col = 'name', 
+            usecols = ['name', 'heat_rate']
+            )
+        
+        # System nodes
+        self.nodes_w_demand: list = self.demand.columns.tolist()
+        self.nodes: set = set(self.transmission.source)\
+                              .union(set(self.transmission.sink))\
+                                  .union(set(self.nodes_w_demand))
+        self.re_units: list = self.rnw_cap.columns.tolist()
+        
+        # Transmission lines
+        self.arcs: gp.tuplelist = get_arcs(self.transmission)
+        self.linecap: pd.DataFrame = get_linecap(self.transmission)
+        
+        self.suscept: pd.DataFrame = get_suscept(self.transmission)
+        self.suscept.index += 1
+        
+        # Thermal unit params
+        self.max_cap: dict = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'),
+            header=0, index_col='name', usecols=['name', 'max_capacity']
+            ).to_dict()['max_capacity']
+        
+        self.min_cap: dict = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'),
+            header=0, index_col='name', usecols=['name', 'min_capacity']
+            ).to_dict()['min_capacity']
+        
+        self.TD: dict = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'),
+            header=0, index_col='name', usecols=['name', 'min_downtime']
+            ).to_dict()['min_downtime']
+        
+        self.TU: dict = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'),
+            header=0, index_col='name', usecols=['name', 'min_uptime']
+            ).to_dict()['min_uptime']
+        
+        self.SD: dict = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'), 
+            header=0, index_col='name', usecols=['name', 'min_capacity']
+            ).to_dict()['min_capacity']
+        self.SU: dict = self.SD.copy()
+        
+        self.RD: dict = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'),
+            header=0, index_col='name', usecols=['name', 'ramp_rate']
+            ).to_dict()['ramp_rate']
+        self.RU: dict = self.RD.copy()
+        
+        # Calculated parameters
+        self.max_node: str = self.demand.idxmax().idxmax()
+        self.max_linecap: int = self.linecap.max().max()
+        # The first index of spin_req is already at 1
+        self.spin_req: pd.DataFrame = self.demand.sum(axis=1) * F_SPIN
+        
+        
