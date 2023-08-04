@@ -4,3 +4,9 @@ src/scratch.py
 # Ignore irrelevant files
 *.pyc
 *.pptx
+
+# Ignore outputs
+outputs/*
+
+# Ignore user inputs
+user_inputs/*
