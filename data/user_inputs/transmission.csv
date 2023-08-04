@@ -1,7 +1,0 @@
-source,sink,susceptance,line_cap
-pGas,Node3,2.97E-05,1762
-Node3,Node1,2.97E-05,1762
-Node1,Node2,2.97E-05,100
-pHydro,Node2,2.97E-05,100
-pOil,Node3,2.97E-05,200
-pBiomass,Node2,2.97E-05,300
