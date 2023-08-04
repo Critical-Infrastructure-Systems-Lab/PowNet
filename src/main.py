@@ -1,3 +1,5 @@
+import os
+
 from processing.input import SystemInput
 from core.simulation import Simulator
 from core.visualize import Visualizer
@@ -8,7 +10,12 @@ if __name__ == '__main__':
     #------- User defined inputs
     # The default simulation horizon T is 24 hours
     T = 24
+    
     model_folder = 'user_inputs'
+    
+    # We need a folder to store the figures
+    if not os.path.exists('..//outputs'):
+        os.makedirs('..//outputs')
     
     system_input = SystemInput(T=T, model_folder=model_folder)
     
