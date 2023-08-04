@@ -12,7 +12,7 @@ from processing.input import SystemInput
 class ModelBuilder():
     def __init__(self, inputs: SystemInput) -> None:
 
-        self.model = gp.Model('UCED_Simulation')
+        self.model = None
         
         # Variables
         self.p = None
@@ -101,8 +101,8 @@ class ModelBuilder():
         # At t=1, the variables are linked to the initial_v
         self.model.addConstrs(
             (
-                self.u[unit_g, 1] - self.initial_u[unit_g][self.T] # Last hour of the previous iteration
-                <= self.initial_v[unit_g][self.T]
+                self.u[unit_g, 1] - self.initial_u[unit_g, self.T] # Last hour of the previous iteration
+                <= self.initial_v[unit_g, self.T]
                 for unit_g in self.inputs.thermal_units
                 ),
             name = 'link_uv_init'
@@ -121,7 +121,8 @@ class ModelBuilder():
     def _c_min_up_init(self) -> None:
         for unit_g in self.inputs.thermal_units:
             # Find the min between the required uptime and the simulation horizon
-            min_UT = min(self.initial_min_on[unit_g][self.T], self.T)
+            min_UT = min(self.initial_min_on[unit_g], self.T)
+            print(self.initial_min_on[unit_g])
             self.model.addConstr(
                 self.u.sum(unit_g, range(1, min_UT+1)) == min_UT,
                 name = 'minUpInit'
@@ -131,7 +132,7 @@ class ModelBuilder():
     def _c_min_down_init(self) -> None:
         for unit_g in self.inputs.thermal_units:
             # Find the min between the required downtime and the simulation horizon
-            min_DT = min(self.initial_min_off[unit_g][self.T], self.T)
+            min_DT = min(self.initial_min_off[unit_g], self.T)
             self.model.addConstr(
                 self.u.sum(unit_g, range(1, min_DT+1)) == 0,
                 name = 'minDownInit'
@@ -154,7 +155,7 @@ class ModelBuilder():
             t = TD_g
             LHS =  gp.quicksum([self.w[unit_g, i] for i in range(t-TD_g+1, t+1)])
             self.model.addConstr(
-                LHS <= 1 - self.initial_u[unit_g][self.T], 
+                LHS <= 1 - self.initial_u[unit_g, self.T], 
                 name = 'minDown' + f'_{unit_g}_{t}')
             
             for t in range(TD_g+1, self.T+1):
@@ -230,7 +231,7 @@ class ModelBuilder():
                         else:
                             sum_term += (
                                 (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
-                                    * self.initial_v[unit_g][self.T + t - i]
+                                    * self.initial_v[unit_g, self.T + t - i]
                                 )
                     
                     self.model.addConstr(
@@ -266,7 +267,7 @@ class ModelBuilder():
                         else:
                             sum_term += (
                                 (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
-                                    * self.initial_v[unit_g][self.T + t - i]
+                                    * self.initial_v[unit_g, self.T + t - i]
                                 )
                 
                 self.model.addConstr(
@@ -333,7 +334,7 @@ class ModelBuilder():
         t = 1
         self.model.addConstrs(
             (
-                self.pbar[unit_g, t] - self.initial_p[unit_g][self.T] 
+                self.pbar[unit_g, t] - self.initial_p[unit_g, self.T] 
                 <= (self.inputs.SU[unit_g] - self.inputs.min_cap[unit_g] - self.inputs.RU[unit_g]) * self.v[unit_g, t]
                     + self.inputs.RU[unit_g] * self.u[unit_g, t]
                 for unit_g in self.inputs.thermal_units
@@ -357,9 +358,9 @@ class ModelBuilder():
         t = 1
         self.model.addConstrs(
             (
-                self.initial_p[unit_g][self.T+t-1] - self.p[unit_g, t]
+                self.initial_p[unit_g, self.T+t-1] - self.p[unit_g, t]
                 <= (self.inputs.SD[unit_g] - self.inputs.min_cap[unit_g] - self.inputs.RD[unit_g]) * self.w[unit_g, t]
-                    + self.inputs.RD[unit_g] * self.initial_u[unit_g][self.T]
+                    + self.inputs.RD[unit_g] * self.initial_u[unit_g, self.T]
                 for unit_g in self.inputs.thermal_units
                 ),
             name = 'rampDownInit'
@@ -395,7 +396,7 @@ class ModelBuilder():
 
 
     def _c_angle_dff(self):
-        # Note the indexing of the susceptance dataframe is running
+        # Note the indexing of the susceptance dataframe is incremented
         # along with the simulation step k
         self.model.addConstrs(
             (
@@ -490,7 +491,7 @@ class ModelBuilder():
             k: int,
             init_conds: dict[str, dict],
             ) -> gp.Model:
-        
+
         self.k = k
         
         self.initial_p = init_conds['initial_p']
@@ -498,6 +499,8 @@ class ModelBuilder():
         self.initial_v = init_conds['initial_v']
         self.initial_min_on = init_conds['initial_min_on']
         self.initial_min_off = init_conds['initial_min_off']
+        
+        self.model = gp.Model('UCED_Simulation')
         
         #---------------- Section: Variables
         # Relative dispatch of thermal units. Unit: MW
@@ -570,7 +573,7 @@ class ModelBuilder():
         # nodes, timesteps, vtype=GRB.CONTINUOUS, lb=-pi, ub=pi, name='volt_angle')
         self.theta = self.model.addVars(
             self.inputs.nodes, self.timesteps,
-            vtype = GRB.CONTINUOUS, lb = -2e9, name = 'volt_angle')
+            vtype = GRB.CONTINUOUS, lb = -5e10, name = 'volt_angle')
         
         self.model.update()
         
@@ -582,7 +585,6 @@ class ModelBuilder():
         self._c_link_p()
         self._c_link_unit_status()
         
-        self._c_link_unit_status()
         self._c_p_bound()
         
         self._c_reserve_req()
@@ -593,10 +595,10 @@ class ModelBuilder():
         self._c_angle_dff()
         self._c_flow_balance()
         
-        self._c_min_up_init()
-        self._c_min_down_init()
-        self._c_min_up()
-        self._c_min_down()
+        # self._c_min_up_init()
+        # self._c_min_down_init()
+        # self._c_min_up()
+        # self._c_min_down()
         
         self._c_peak_up_bound()
         self._c_peak_down_bound()

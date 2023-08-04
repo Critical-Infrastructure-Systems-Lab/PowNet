@@ -5,6 +5,7 @@ from core.builder import ModelBuilder
 from processing.functions import create_init_condition
 from processing.input import SystemInput
 from processing.record import SystemRecord
+from processing.visualize import Visualizer
 
 
 # TODO: Implement warm start
@@ -27,30 +28,44 @@ class Simulator:
         steps = floor(8760/self.T)
         
         # Initially, we can define the initial conditions
-        init_conds = create_init_condition(system_input.thermal_units)
+        init_conds = create_init_condition(system_input.thermal_units, self.T)
         
         # The indexing of 'i' starts at zero because we use this to
         # index the parameters of future simulation periods (t + self.i*self.T)
-        for k in range(0, 1):#steps):
+        for k in range(0, 4):#steps):
             # Create a gurobipy model for each simulation period
+            print('\n\n\n============')
+            print(f'Simulate step {k+1}\n\n')
             model = builder.build(
                 k = k,
                 init_conds = init_conds)
             
             model.optimize()
             
+            # Check model status
+            if model.status == 3:
+                print(f'Iteration: {k} is infeasible.')
+                model.computeIIS()
+                model.write('infeasible.ilp')
+                break
+            
             # Need k to increment the hours field
-            system_record.keep(model, k)
+            system_record.keep(model, k, system_input)
             init_conds = system_record.get_init_conds(k)
         
         # # Export the final results somewhere
         # system_record.to_csv()
-        # return system_record.get_record()
-        return model
+        return system_record.get_record()
+    
     
     
     
     
 if __name__ == '__main__':
+    
     simulator = Simulator(T=24, model_folder='user_inputs')
-    model = simulator.run()
+    var_node_t, var_flow, var_syswide = simulator.run()
+    
+    # simulator.visualize()
+    # visualizer = Visualizer(var_node_t)
+    

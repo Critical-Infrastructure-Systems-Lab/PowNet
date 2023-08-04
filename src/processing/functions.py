@@ -72,15 +72,17 @@ def get_arcs(transmission: pd.DataFrame) -> gp.tuplelist:
     return gp.tuplelist(arcs_ab + arcs_ba)
 
 
-def create_init_condition(thermal_units) -> dict[str, dict]:
+def create_init_condition(thermal_units: list, T: int) -> dict[(str, int), dict]:
     "Return dicts of system statuses in the format {unit: {t:value}}"
     # If the user does not specify the initial condition, then we assume 
     # the system will start from a blank state with every units off.
-    initial_p = {unit_g: {t: 0 for t in range(1, 25)} for unit_g in thermal_units}
+    initial_p = {(unit_g, t): 0 for unit_g in thermal_units for t in range(1, T+1)}
+    #initial_p = {unit_g: {t: 0 for t in range(1, 25)} for unit_g in thermal_units}
     initial_u = initial_p.copy()
     initial_v = initial_p.copy()
-    initial_min_on = initial_p.copy()
-    initial_min_off = initial_p.copy()
+    
+    initial_min_on = {unit_g: 0 for unit_g in thermal_units}
+    initial_min_off = initial_min_on.copy()
     
     return {
         'initial_p': initial_p, 
