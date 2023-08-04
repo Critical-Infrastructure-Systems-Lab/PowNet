@@ -1,38 +1,35 @@
 from math import floor
-import pandas as pd
 
 from core.builder import ModelBuilder
 from processing.functions import create_init_condition
 from processing.input import SystemInput
 from processing.record import SystemRecord
-from processing.visualize import Visualizer
 
 
 # TODO: Implement warm start
 
 
 class Simulator:
-    def __init__(self, T: int, model_folder: str) -> None:
+    def __init__(self, T: int, system_input: SystemInput) -> None:
         self.T = T
-        self.model_folder = model_folder
+        self.system_input = system_input
         
         
     def run(self) -> None:
         # Instantiate objects
         system_record = SystemRecord(self.T)
         
-        system_input = SystemInput(model_folder=self.model_folder, T=self.T)
-        builder = ModelBuilder(system_input)
+        builder = ModelBuilder(self.system_input)
         
         # One year has 8760 hours. If T = 24, then we have 365 steps.
         steps = floor(8760/self.T)
         
         # Initially, we can define the initial conditions
-        init_conds = create_init_condition(system_input.thermal_units, self.T)
+        init_conds = create_init_condition(self.system_input.thermal_units, self.T)
         
         # The indexing of 'i' starts at zero because we use this to
         # index the parameters of future simulation periods (t + self.i*self.T)
-        for k in range(0, 4):#steps):
+        for k in range(0, 1):#steps):
             # Create a gurobipy model for each simulation period
             print('\n\n\n============')
             print(f'Simulate step {k+1}\n\n')
@@ -50,7 +47,7 @@ class Simulator:
                 break
             
             # Need k to increment the hours field
-            system_record.keep(model, k, system_input)
+            system_record.keep(model, k, self.system_input)
             init_conds = system_record.get_init_conds(k)
         
         # # Export the final results somewhere
@@ -62,10 +59,5 @@ class Simulator:
     
     
 if __name__ == '__main__':
-    
-    simulator = Simulator(T=24, model_folder='user_inputs')
-    var_node_t, var_flow, var_syswide = simulator.run()
-    
-    # simulator.visualize()
-    # visualizer = Visualizer(var_node_t)
+    print('Jigglypuffs')
     

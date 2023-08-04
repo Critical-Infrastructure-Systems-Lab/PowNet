@@ -13,7 +13,7 @@ DATE_COLS = ['year', 'month', 'day', 'hour']
 
 
 class SystemInput:
-    def __init__(self, model_folder: str, T: int, F_SPIN: float = 0.15) -> None:
+    def __init__(self, T: int, model_folder: str, F_SPIN: float = 0.15) -> None:
         '''
         Read the user inputs that define the power system over one year.
 
