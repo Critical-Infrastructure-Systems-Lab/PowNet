@@ -590,10 +590,10 @@ class ModelBuilder():
         self._c_angle_dff()
         self._c_flow_balance()
         
-        # self._c_min_up_init()
-        # self._c_min_down_init()
-        # self._c_min_up()
-        # self._c_min_down()
+        self._c_min_up_init()
+        self._c_min_down_init()
+        self._c_min_up()
+        self._c_min_down()
         
         self._c_peak_up_bound()
         self._c_peak_down_bound()
