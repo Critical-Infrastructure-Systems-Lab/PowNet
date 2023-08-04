@@ -1,11 +1,12 @@
 from processing.input import SystemInput
-from simulation import Simulator
-from visualize import Visualizer
+from core.simulation import Simulator
+from core.visualize import Visualizer
 
 
 
 if __name__ == '__main__':
-    # User defined inputs
+    #------- User defined inputs
+    # The default simulation horizon T is 24 hours
     T = 24
     model_folder = 'user_inputs'
     
@@ -17,5 +18,5 @@ if __name__ == '__main__':
     visualizer = Visualizer()
     visualizer.load(df=var_node_t, system_input=system_input)
     
-    visualizer.plot_fuelmix()
-    visualizer.plot_thermal_units()
+    visualizer.plot_fuelmix(to_save=True)
+    visualizer.plot_thermal_units(to_save=True)

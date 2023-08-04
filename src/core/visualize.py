@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -53,7 +55,7 @@ class Visualizer():
         self.shortfall = self.shortfall.reset_index(drop=True)
         
     
-    def plot_fuelmix(self) -> None:
+    def plot_fuelmix(self, to_save: bool) -> None:
         total_dispatch = pd.concat(
             [self.thermal_dispatch, self.rnw_dispatch, self.shortfall], axis = 0)
         
@@ -81,12 +83,16 @@ class Visualizer():
         ax.set_ylabel('Power (MW)')
         ax.set_xlabel('Hour')
         ax.set_ylim(bottom=0)
+        
+        if to_save:
+            c_time = datetime.now().strftime("%Y%m%d_%H%M")
+            plt.savefig(f'..//outputs//{c_time}_fuelmix.png')
         plt.show()
                 
 
     
     
-    def plot_thermal_units(self) -> None:
+    def plot_thermal_units(self, to_save: bool) -> None:
         ''' Plot the on/off status of individual thermal units
         '''
         for unit_g in self.thermal_units:
@@ -116,4 +122,8 @@ class Visualizer():
             ax1.tick_params(axis='x', labelrotation=45)
         
             plt.title(unit_g)
+            
+            if to_save:
+                c_time = datetime.now().strftime("%Y%m%d_%H%M")
+                plt.savefig(f'..//outputs//{c_time}_{unit_g}.png')
             plt.show()
