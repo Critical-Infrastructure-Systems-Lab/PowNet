@@ -24,9 +24,11 @@ all_vars = model.getVars()
 values = model.getAttr("X", all_vars)
 names = model.getAttr("VarName", all_vars)
 
-results = pd.DataFrame({'varname':names, 'value':values})
-pat_vartype = r'(\w+)\['
-results[['vartype']] = results['varname'].str.extract(pat_vartype, expand=True)
+
+results = var_node_t.copy()
+# results = pd.DataFrame({'varname':names, 'value':values})
+# pat_vartype = r'(\w+)\['
+# results[['vartype']] = results['varname'].str.extract(pat_vartype, expand=True)
 
 
 ###### Process variables
