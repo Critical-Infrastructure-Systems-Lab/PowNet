@@ -72,8 +72,10 @@ class SystemInput:
             )
         
         # System nodes
-        self.nodes: set = set(self.transmission.source).union(set(self.transmission.sink))
         self.nodes_w_demand: list = self.demand.columns.tolist()
+        self.nodes: set = set(self.transmission.source)\
+                              .union(set(self.transmission.sink))\
+                                  .union(set(self.nodes_w_demand))
         self.re_units: list = self.rnw_cap.columns.tolist()
         
         # Transmission lines

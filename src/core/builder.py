@@ -400,18 +400,11 @@ class ModelBuilder():
         # along with the simulation step k
         self.model.addConstrs(
             (
-                self.flow[a, b, t] == self.inputs.suscept.loc[t + self.T*self.k, (a, b)] * (self.theta[a, t] - self.theta[b, t])
+                self.flow[a, b, t] == self.inputs.suscept.loc[t + self.T*self.k, (a, b)] 
+                    * (self.theta[a, t] - self.theta[b, t])
                 for (a, b) in self.inputs.arcs for t in self.timesteps
             ),
             name = 'angleDiffForward'
-            )
-        
-        self.model.addConstrs(
-            (
-                self.flow[a, b, t] == self.inputs.suscept.loc[t + self.T*self.k, (a, b)] * (self.theta[a, t] - self.theta[b, t])
-                for (a, b) in self.inputs.arcs for t in self.timesteps
-            ),
-            name = 'angleDiffBack'
             )
 
     def _c_ref_node(self):
@@ -427,37 +420,39 @@ class ModelBuilder():
         # In reality, if the demand is zero, then there should be no flow
         # Must link flow to generation...
         for t in self.timesteps:
-            for (a, b) in self.inputs.arcs:
+            for node in self.inputs.nodes:
                 # If n is a thermal unit, then it can generate energy
-                if a in self.inputs.thermal_units:
-                    thermal_gen = self.p[a, t] + self.inputs.min_cap[a] * self.u[a, t]
+                if node in self.inputs.thermal_units:
+                    thermal_gen = self.p[node, t] + self.inputs.min_cap[node] * self.u[node, t]
                 else: 
                     thermal_gen = 0
                 
                 # If n has renewables, then it can generate energy
-                if a in self.inputs.re_units:
-                    re_gen = self.prnw[a, t]
+                if node in self.inputs.re_units:
+                    re_gen = self.prnw[node, t]
                 else:
                     re_gen = 0
                     
                 # Get the demand of node n at time t
-                if a in self.inputs.nodes_w_demand:
-                    demand_a_t = self.inputs.demand.loc[t + self.T*self.k, a]
-                    shortfall = self.s_pos[a, t] - self.s_neg[a, t]
+                if node in self.inputs.nodes_w_demand:
+                    demand_n_t = self.inputs.demand.loc[t + self.T*self.k, node]
+                    shortfall = self.s_pos[node, t] - self.s_neg[node, t]
                 else:
-                    demand_a_t = 0
+                    demand_n_t = 0
                     shortfall = 0
+                    
+                # Flow into a node is positive, while flow out is negative
+                arc_flow = 0
+                for (x, y) in self.inputs.arcs: 
+                    if x == node:
+                        arc_flow -= self.flow[x, y, t]
+                    elif y == node:
+                        arc_flow += self.flow[x, y, t]
                 
+                # Given the above terms, we can specify the energy balance
                 self.model.addConstr(
-                    thermal_gen + re_gen 
-                        - gp.quicksum(
-                            self.flow[x, y, t] for (x, y) in self.inputs.arcs if (x==a)
-                            )
-                        + gp.quicksum(
-                            self.flow[x, y, t] for (x, y) in self.inputs.arcs if (y==a)
-                            )
-                        + shortfall
-                    == demand_a_t
+                    thermal_gen + re_gen + arc_flow + shortfall
+                    == demand_n_t
                     )
 
 

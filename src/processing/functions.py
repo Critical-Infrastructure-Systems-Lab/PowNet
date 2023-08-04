@@ -67,9 +67,8 @@ def get_linecap(transmission: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_arcs(transmission: pd.DataFrame) -> gp.tuplelist:
-    arcs_ab = transmission.set_index(['source', 'sink']).index.tolist()
-    arcs_ba = transmission.set_index(['sink', 'source']).index.tolist()
-    return gp.tuplelist(arcs_ab + arcs_ba)
+    return gp.tuplelist(
+        transmission.set_index(['source', 'sink']).index.tolist())
 
 
 def create_init_condition(thermal_units: list, T: int) -> dict[(str, int), dict]:
