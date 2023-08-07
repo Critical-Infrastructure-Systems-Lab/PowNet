@@ -4,7 +4,7 @@ from gurobipy import GRB
 import gurobipy as gp
 import pandas as pd
 
-from processing.input import SystemInput
+from core.input import SystemInput
 
 
 
@@ -122,7 +122,6 @@ class ModelBuilder():
         for unit_g in self.inputs.thermal_units:
             # Find the min between the required uptime and the simulation horizon
             min_UT = min(self.initial_min_on[unit_g], self.T)
-            print(self.initial_min_on[unit_g])
             self.model.addConstr(
                 self.u.sum(unit_g, range(1, min_UT+1)) == min_UT,
                 name = 'minUpInit'

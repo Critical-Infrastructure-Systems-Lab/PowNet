@@ -1,9 +1,9 @@
 from math import floor
 
 from core.builder import ModelBuilder
+from core.input import SystemInput
+from core.record import SystemRecord
 from processing.functions import create_init_condition
-from processing.input import SystemInput
-from processing.record import SystemRecord
 
 
 # TODO: Implement warm start
@@ -15,21 +15,18 @@ class Simulator:
         self.system_input = system_input
         
         
-    def run(self) -> None:
+    def run(self, steps) -> None:
         # Instantiate objects
         system_record = SystemRecord(self.T)
         
         builder = ModelBuilder(self.system_input)
-        
-        # One year has 8760 hours. If T = 24, then we have 365 steps.
-        steps = floor(8760/self.T)
         
         # Initially, we can define the initial conditions
         init_conds = create_init_condition(self.system_input.thermal_units, self.T)
         
         # The indexing of 'i' starts at zero because we use this to
         # index the parameters of future simulation periods (t + self.i*self.T)
-        for k in range(0, 1):#steps):
+        for k in range(0, steps):
             # Create a gurobipy model for each simulation period
             print('\n\n\n============')
             print(f'Simulate step {k+1}\n\n')

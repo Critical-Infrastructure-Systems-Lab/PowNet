@@ -4,6 +4,7 @@ src/scratch.py
 # Ignore irrelevant files
 *.pyc
 *.pptx
+temp/*
 
 # Ignore outputs
 outputs/*

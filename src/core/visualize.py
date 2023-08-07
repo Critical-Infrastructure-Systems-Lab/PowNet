@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from processing.input import SystemInput
+from core.input import SystemInput
 
 
 
