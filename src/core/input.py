@@ -34,7 +34,7 @@ class SystemInput:
         
         # User inputs
         self.demand: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, 'demand.csv'),
+            os.path.join(self.model_dir, 'demand_export.csv'),
             header=0).drop(DATE_COLS, axis=1)
         self.demand.index += 1
         
