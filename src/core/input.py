@@ -77,12 +77,22 @@ class SystemInput:
             usecols = ['name', 'heat_rate']
             )
         
+        # Import nodes are treated similary to a renewable but with higher cost
+        fn_import =   os.path.join(self.model_dir, 'import.csv')
+        if os.path.exists(fn_import):
+            self.p_import: pd.DataFrame = pd.read_csv(
+                fn_import,
+                header=0).drop(DATE_COLS, axis=1)
+            self.p_import.index += 1
+        
+        
         # System nodes
         self.nodes_w_demand: list = self.demand.columns.tolist()
         self.nodes: set = set(self.transmission.source)\
                               .union(set(self.transmission.sink))\
                                   .union(set(self.nodes_w_demand))
         self.re_units: list = self.rnw_cap.columns.tolist()
+        self.nodes_import: list = self.p_import.columns.tolist()
         
         # Transmission lines
         self.arcs: gp.tuplelist = get_arcs(self.transmission)
