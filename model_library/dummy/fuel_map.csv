@@ -1,0 +1,8 @@
+name,unit_type,fuel_type,fuel_price_optional
+pGas,gas_cc,gas,5.85
+pOil,oil_st,oil,6.85
+pBiomass,biomass_st,biomass,7.85
+pHydro,hydro,hydro,0
+Node1,shortfall,shortfall,1000
+Node2,shortfall,shortfall,1000
+Node3,shortfall,shortfall,1000

@@ -2,7 +2,7 @@ import gurobipy as gp
 import pandas as pd
 import numpy as np
 
-from processing.input import SystemInput
+from core.input import SystemInput
 
 
 def increment_hour(df: pd.DataFrame, T: int, k: int):
