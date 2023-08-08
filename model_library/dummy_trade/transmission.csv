@@ -5,4 +5,5 @@ Node1,Node2,2.97E-05,100
 pHydro,Node2,2.97E-05,100
 pOil,Node3,2.97E-05,200
 pBiomass,Node2,2.97E-05,300
-Impp,pHydro,2.97E-05,300
+Buyer,pHydro,2.97E-05,300
+Supplier,Node1,2.97E-05,80

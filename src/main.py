@@ -13,7 +13,7 @@ def main():
     
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # steps = floor(8760/self.T)
-    steps = 10
+    steps = 1
     
     model_folder = 'user_inputs'
     
