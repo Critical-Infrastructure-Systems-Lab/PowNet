@@ -89,7 +89,7 @@ class ModelBuilder():
         rnw_expr = self.prnw.prod(rnw_coeffs)
         import_expr = self.pimp.prod(import_coeffs)
         
-        # Assume that the shortfall cost is constant throughout the simulation period
+        # The cost of shortfall is the slack variable (s_pos) needed to meet demand
         shortfall_expr = (
             self.inputs.fuelprice.loc[1, 'shortfall'] * (gp.quicksum(self.s_pos) + gp.quicksum(self.s_neg))
             )
