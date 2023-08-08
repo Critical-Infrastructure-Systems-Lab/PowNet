@@ -40,24 +40,37 @@ class Visualizer():
         self.thermal_dispatch['dispatch'] = self.thermal_dispatch.apply(
             lambda x: x['value'] + system_input.min_cap[x['node']]*status_map[x['node'], x['hour']], 
             axis=1)
-        self.thermal_dispatch = self.thermal_dispatch.drop('value', axis=1)
         
+        self.thermal_dispatch = self.thermal_dispatch.drop('value', axis=1)
         self.thermal_dispatch = self.thermal_dispatch.reset_index(drop=True)
+        
+        self.thermal_dispatch['fuel_type'] = self.thermal_dispatch.apply(
+            lambda x: self.fuelmap[x['node']], axis=1)
         
         # Calculate the renewable dispatch from the variable prnw
         self.rnw_dispatch = df[df['vartype'] == 'prnw']
         self.rnw_dispatch = self.rnw_dispatch.rename(columns={'value':'dispatch'})
         self.rnw_dispatch = self.rnw_dispatch.reset_index(drop=True)
         
+        self.rnw_dispatch['fuel_type'] = self.rnw_dispatch.apply(
+            lambda x: self.fuelmap[x['node']], axis=1)
+        
+        
         # Calculate the import from the variable pimp
         self.p_import = df[df['vartype'] == 'pimp']
         self.p_import = self.p_import.rename(columns={'value':'dispatch'})
         self.p_import = self.p_import.reset_index(drop=True)
+        self.p_import['fuel_type'] = 'import'
+        
         
         # Calculate the shortfall from the variable s_pos
         self.shortfall = df[df['vartype'] == 's_pos']
         self.shortfall = self.shortfall.rename(columns={'value':'dispatch'})
         self.shortfall = self.shortfall.reset_index(drop=True)
+        self.shortfall['fuel_type'] = 'shortfall'
+        
+        # Fix numerical issue
+        self.shortfall.loc[self.shortfall['dispatch'] <= 0, 'dispatch'] = 0
         
     
     def plot_fuelmix(self, to_save: bool) -> None:
@@ -65,11 +78,7 @@ class Visualizer():
             [self.thermal_dispatch, self.rnw_dispatch, self.p_import, self.shortfall], 
             axis = 0)
         
-        total_dispatch['fuel_type'] = total_dispatch.apply(
-            lambda x: self.fuelmap[x['node']], axis=1)
-        
         total_dispatch = total_dispatch.reset_index(drop=True)
-        
         total_dispatch = total_dispatch[['fuel_type', 'dispatch', 'hour']]\
             .groupby(['fuel_type', 'hour']).sum()
             
