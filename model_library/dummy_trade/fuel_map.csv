@@ -6,5 +6,4 @@ pHydro,hydro,hydro,0
 Node1,shortfall,shortfall,1000
 Node2,shortfall,shortfall,1000
 Node3,shortfall,shortfall,1000
-Supplier,import,import,5
-Buyer,shortfall,shortfall,1000
+Expp,import,import,3

@@ -49,6 +49,11 @@ class Visualizer():
         self.rnw_dispatch = self.rnw_dispatch.rename(columns={'value':'dispatch'})
         self.rnw_dispatch = self.rnw_dispatch.reset_index(drop=True)
         
+        # Calculate the import from the variable pimp
+        self.p_import = df[df['vartype'] == 'pimp']
+        self.p_import = self.p_import.rename(columns={'value':'dispatch'})
+        self.p_import = self.p_import.reset_index(drop=True)
+        
         # Calculate the shortfall from the variable s_pos
         self.shortfall = df[df['vartype'] == 's_pos']
         self.shortfall = self.shortfall.rename(columns={'value':'dispatch'})
@@ -57,7 +62,8 @@ class Visualizer():
     
     def plot_fuelmix(self, to_save: bool) -> None:
         total_dispatch = pd.concat(
-            [self.thermal_dispatch, self.rnw_dispatch, self.shortfall], axis = 0)
+            [self.thermal_dispatch, self.rnw_dispatch, self.p_import, self.shortfall], 
+            axis = 0)
         
         total_dispatch['fuel_type'] = total_dispatch.apply(
             lambda x: self.fuelmap[x['node']], axis=1)

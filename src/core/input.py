@@ -88,11 +88,13 @@ class SystemInput:
         
         # System nodes
         self.nodes_w_demand: list = self.demand.columns.tolist()
+        self.rnw_units: list = self.rnw_cap.columns.tolist()
+        self.nodes_import: list = self.p_import.columns.tolist()
+        # A node does not need to be connected. In this case,
+        # we are concerned about unconnected nodes with demand.
         self.nodes: set = set(self.transmission.source)\
                               .union(set(self.transmission.sink))\
-                                  .union(set(self.nodes_w_demand))
-        self.re_units: list = self.rnw_cap.columns.tolist()
-        self.nodes_import: list = self.p_import.columns.tolist()
+                                .union(set(self.nodes_w_demand))\
         
         # Transmission lines
         self.arcs: gp.tuplelist = get_arcs(self.transmission)

@@ -2,7 +2,6 @@ from math import floor
 
 from gurobipy import GRB
 import gurobipy as gp
-import pandas as pd
 
 from core.input import SystemInput
 
@@ -17,7 +16,9 @@ class ModelBuilder():
         # Variables
         self.p = None
         self.pbar = None
-        self.prnw = None
+        
+        self.prnw = None # renewables
+        self.pimp = None # import
         
         self.spin = None
         self.rsys = None
@@ -71,10 +72,22 @@ class ModelBuilder():
             for t in self.timesteps for unit_g in self.inputs.thermal_units
             }
         
-        # Define the four types of costs
+        rnw_coeffs = {
+            (rnw_unit, t): self.inputs.fuelprice.loc[t + self.k*self.T, rnw_unit]
+            for t in self.timesteps for rnw_unit in self.inputs.rnw_units
+            }
+        
+        import_coeffs = {
+            (import_node, t): self.inputs.fuelprice.loc[t + self.k*self.T, import_node]
+            for t in self.timesteps for import_node in self.inputs.nodes_import
+            }
+        
+        # Define costs
         operation_expr = self.p.prod(opex_coeffs)
         fixed_expr = self.u.prod(fixed_coeffs)
         startup_expr = self.v.prod(startup_coeffs)
+        rnw_expr = self.prnw.prod(rnw_coeffs)
+        import_expr = self.pimp.prod(import_coeffs)
         
         # Assume that the shortfall cost is constant throughout the simulation period
         shortfall_expr = (
@@ -82,7 +95,12 @@ class ModelBuilder():
             )
         
         self.model.setObjective(
-            operation_expr + fixed_expr + startup_expr + shortfall_expr,
+            (
+                operation_expr + fixed_expr + startup_expr
+                    + rnw_expr 
+                    + import_expr
+                    + shortfall_expr
+                ),
             sense = GRB.MINIMIZE)
         
     
@@ -427,10 +445,16 @@ class ModelBuilder():
                     thermal_gen = 0
                 
                 # If n has renewables, then it can generate energy
-                if node in self.inputs.re_units:
+                if node in self.inputs.rnw_units:
                     re_gen = self.prnw[node, t]
                 else:
                     re_gen = 0
+                    
+                # If n is an import node, then it can generate energy
+                if node in self.inputs.nodes_import:
+                    imp_gen = self.pimp[node, t]
+                else:
+                    imp_gen = 0
                     
                 # Get the demand of node n at time t
                 if node in self.inputs.nodes_w_demand:
@@ -450,7 +474,7 @@ class ModelBuilder():
                 
                 # Given the above terms, we can specify the energy balance
                 self.model.addConstr(
-                    thermal_gen + re_gen + arc_flow + shortfall
+                    thermal_gen + re_gen + imp_gen + arc_flow + shortfall
                     == demand_n_t
                     )
 
@@ -474,9 +498,18 @@ class ModelBuilder():
         self.model.addConstrs(
             (
                 self.prnw[unit_w, t] <= self.inputs.rnw_cap.loc[t + self.T*self.k, unit_w]
-                for t in self.timesteps for unit_w in self.inputs.re_units
+                for t in self.timesteps for unit_w in self.inputs.rnw_units
                 ),
             name = 'renewLimit'
+            )
+        
+    def _c_import_bound(self):
+        self.model.addConstrs(
+            (
+                self.pimp[import_node, t] <= self.inputs.p_import.loc[t + self.T*self.k, import_node]
+                for t in self.timesteps for import_node in self.inputs.nodes_import
+                ),
+            name = 'importLimit'
             )
     
 
@@ -510,8 +543,13 @@ class ModelBuilder():
 
         # The dispatch from renewables is in absolute term. Unit: MW
         self.prnw = self.model.addVars(
-            self.inputs.re_units, self.timesteps, 
+            self.inputs.rnw_units, self.timesteps, 
             vtype = GRB.CONTINUOUS, lb = 0, name = 'prnw')
+        
+        # The import from neighboring system in absolute term. Unit: MW
+        self.pimp = self.model.addVars(
+            self.inputs.nodes_import, self.timesteps, 
+            vtype = GRB.CONTINUOUS, lb = 0, name = 'pimp')
         
         # Spinning reserve. Unit: MW
         self.spin = self.model.addVars(
