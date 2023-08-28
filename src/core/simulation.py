@@ -1,21 +1,21 @@
 from math import floor
 
 from core.builder import ModelBuilder
+from core.dw_builder import DWBuilder
 from core.input import SystemInput
 from core.record import SystemRecord
 from processing.functions import create_init_condition
 
-
-# TODO: Implement warm start
 
 
 class Simulator:
     def __init__(self, T: int, system_input: SystemInput) -> None:
         self.T = T
         self.system_input = system_input
+        self.model = None
         
         
-    def run(self, steps) -> None:
+    def run(self, steps: int) -> SystemRecord:
         # Instantiate objects
         system_record = SystemRecord(self.T)
         
@@ -30,21 +30,29 @@ class Simulator:
             # Create a gurobipy model for each simulation period
             print('\n\n\n============')
             print(f'Simulate step {k+1}\n\n')
-            model = builder.build(
-                k = k,
-                init_conds = init_conds)
             
-            model.optimize()
+            if k == 0:
+                self.model = builder.build(
+                    k = k,
+                    init_conds = init_conds)
+            else:
+                # TODO: Implement warm start
+                # Optimization is quicker with a warm start
+                self.model = builder.update(
+                    k = k,
+                    init_conds = init_conds)
+            
+            self.model.optimize()
             
             # Check model status
-            if model.status == 3:
+            if self.model.status == 3:
                 print(f'Iteration: {k} is infeasible.')
-                model.computeIIS()
-                model.write('infeasible.ilp')
+                self.model.computeIIS()
+                self.model.write('infeasible.ilp')
                 break
             
             # Need k to increment the hours field
-            system_record.keep(model, k, self.system_input)
+            system_record.keep(self.model, k, self.system_input)
             init_conds = system_record.get_init_conds(k)
         
         # # Export the final results somewhere
@@ -52,6 +60,16 @@ class Simulator:
         return system_record.get_record()
     
     
+    def run_dw(self, steps: int) -> SystemRecord:
+        # Instantiate objects
+        system_record = SystemRecord(self.T)
+        
+        builder = DWBuilder(self.system_input)
+    
+        # Initially, we can define the initial conditions
+        init_conds = create_init_condition(self.system_input.thermal_units, self.T)
+        
+        return None
     
     
     

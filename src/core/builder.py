@@ -432,10 +432,6 @@ class ModelBuilder():
 
 
     def _c_flow_balance(self):
-        # TODO: FIX IMPLEMENTATION
-        # this allows flow_ab + flow_ba = 0 with non-zero flows
-        # In reality, if the demand is zero, then there should be no flow
-        # Must link flow to generation...
         for t in self.timesteps:
             for node in self.inputs.nodes:
                 # If n is a thermal unit, then it can generate energy
@@ -641,5 +637,14 @@ class ModelBuilder():
         self._c_ramp_up()
         self._c_ramp_down()
         
+        return self.model
+    
+    
+    def update(self, k:int, init_conds: dict[str, dict]) -> None:
+        ''' Update the model instead of creating a new one 
+        so we can perform warm start
+        '''
+        # TODO: implement warm start
+        self.model = self.build(k, init_conds)
         return self.model
         
