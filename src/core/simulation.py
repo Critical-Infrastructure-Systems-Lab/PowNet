@@ -1,7 +1,7 @@
 from math import floor
 
 from core.builder import ModelBuilder
-from core.dw_builder import DWBuilder
+# from core.dw_builder import DWBuilder
 from core.input import SystemInput
 from core.record import SystemRecord
 from processing.functions import create_init_condition
@@ -60,16 +60,16 @@ class Simulator:
         return system_record.get_record()
     
     
-    def run_dw(self, steps: int) -> SystemRecord:
-        # Instantiate objects
-        system_record = SystemRecord(self.T)
+    # def run_dw(self, steps: int) -> SystemRecord:
+    #     # Instantiate objects
+    #     system_record = SystemRecord(self.T)
         
-        builder = DWBuilder(self.system_input)
+    #     builder = DWBuilder(self.system_input)
     
-        # Initially, we can define the initial conditions
-        init_conds = create_init_condition(self.system_input.thermal_units, self.T)
+    #     # Initially, we can define the initial conditions
+    #     init_conds = create_init_condition(self.system_input.thermal_units, self.T)
         
-        return None
+    #     return None
     
     
     
