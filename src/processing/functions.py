@@ -99,3 +99,36 @@ def get_fuel_prices(df: pd.DataFrame) -> pd.DataFrame:
         for t in range(1, 25) for fuel_type in fuel_types
         }
     return fuel_prices
+
+
+def get_nodehour(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # Extract the node and hour information
+    pat_node_time = r'(\w+)\[(.+),(\d+)\]'
+    out_df = df['varname'].str.extract(pat_node_time, expand=True)
+    out_df.columns = ['vartype', 'node', 'hour']
+    out_df['hour'] = out_df['hour'].astype('int')
+    out_df = pd.concat([out_df, df['value']], axis=1)
+    return out_df
+
+
+def get_nodehour_flow(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # Flow is in the (node_a, node_b, t) format
+    pat_node_time = r'flow\[(.+),(.+),(\d+)\]'
+    out_df = df['varname'].str.extract(pat_node_time, expand=True)
+    out_df.columns = ['node_a', 'node_b', 'hour']
+    out_df['hour'] = out_df['hour'].astype('int')
+    out_df = pd.concat([out_df, df['value']], axis=1)
+    return out_df
+
+
+def get_nodehour_sys(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # Extract the node and hour information
+    pat_node_time = r'(.+)\[(\d+)\]'
+    out_df = df['varname'].str.extract(pat_node_time, expand=True)
+    out_df.columns = ['vartype', 'hour']
+    out_df['hour'] = out_df['hour'].astype('int')
+    out_df = pd.concat([out_df, df['value']], axis=1)
+    return out_df
