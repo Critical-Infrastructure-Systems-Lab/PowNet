@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 
 from core.input import SystemInput
+from processing.functions import get_nodehour, get_nodehour_flow, get_nodehour_sys
 
 
 def increment_hour(df: pd.DataFrame, T: int, k: int):
@@ -10,39 +11,6 @@ def increment_hour(df: pd.DataFrame, T: int, k: int):
     # Increment the hour column according to the simulation period
     df['hour'] = df['hour'] + T*k
     return df
-
-
-def get_nodehour(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    # Extract the node and hour information
-    pat_node_time = r'(\w+)\[(.+),(\d+)\]'
-    out_df = df['varname'].str.extract(pat_node_time, expand=True)
-    out_df.columns = ['vartype', 'node', 'hour']
-    out_df['hour'] = out_df['hour'].astype('int')
-    out_df = pd.concat([out_df, df['value']], axis=1)
-    return out_df
-
-
-def get_nodehour_flow(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    # Flow is in the (node_a, node_b, t) format
-    pat_node_time = r'flow\[(.+),(.+),(\d+)\]'
-    out_df = df['varname'].str.extract(pat_node_time, expand=True)
-    out_df.columns = ['node_a', 'node_b', 'hour']
-    out_df['hour'] = out_df['hour'].astype('int')
-    out_df = pd.concat([out_df, df['value']], axis=1)
-    return out_df
-
-
-def get_nodehour_sys(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    # Extract the node and hour information
-    pat_node_time = r'(.+)\[(\d+)\]'
-    out_df = df['varname'].str.extract(pat_node_time, expand=True)
-    out_df.columns = ['vartype', 'hour']
-    out_df['hour'] = out_df['hour'].astype('int')
-    out_df = pd.concat([out_df, df['value']], axis=1)
-    return out_df
     
 
 def get_init_min_on(
