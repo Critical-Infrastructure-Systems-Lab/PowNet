@@ -130,7 +130,7 @@ class ModelBuilder():
             (
                 self.u[unit_g, t] - self.u[unit_g, t-1] 
                 <= self.v[unit_g, t] 
-                for t in range(2, self.T+1) for unit_g in self.inputs.thermal_units
+                for unit_g in self.inputs.thermal_units for t in range(2, self.T+1)
                 ),
             name = 'link_uv'
             )
@@ -160,7 +160,7 @@ class ModelBuilder():
             TU_g = self.inputs.TU[unit_g]
             for t in range(TU_g, self.T+1):
                 LHS =  gp.quicksum([self.v[unit_g, i] for i in range(t-TU_g+1, t+1)])
-                self.model.addConstr(LHS <= self.u[unit_g, t], name='minUp' + f'_{unit_g}_{t}')
+                self.model.addConstr(LHS <= self.u[unit_g, t], name='minUp' + f'[{unit_g},{t}]')
     
     
     def _c_min_down(self) -> None:
@@ -179,14 +179,14 @@ class ModelBuilder():
                 LHS =  gp.quicksum([self.w[unit_g, i] for i in range(t-TD_g+1, t+1)])
                 self.model.addConstr(
                     LHS <= 1 - self.u[unit_g, t], 
-                    name = 'minDown' + f'_{unit_g}_{t}')
+                    name = 'minDown' + f'[{unit_g},{t}]')
     
     
     def _c_p_bound(self) -> None:
         self.model.addConstrs(
             (
                 self.p[unit_g, t] <= self.pbar[unit_g, t]
-                for t in self.timesteps for unit_g in self.inputs.thermal_units
+                for unit_g in self.inputs.thermal_units for t in self.timesteps
                 ),
             name = 'upper_p'
             )
@@ -201,7 +201,7 @@ class ModelBuilder():
                 <= (self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
                     - (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) * self.v[unit_g, t]
                     - max(0, (self.inputs.SU[unit_g] - self.inputs.SD[unit_g])) * self.w[unit_g, t+1]
-                for t in range(1, self.T) for unit_g in self.inputs.thermal_units if self.inputs.TU[unit_g] == 1
+                for unit_g in self.inputs.thermal_units if self.inputs.TU[unit_g] == 1 for t in range(1, self.T)
              ),
             name = 'peakUpBnd'
             )
@@ -215,7 +215,7 @@ class ModelBuilder():
                 <= (self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
                     - (self.inputs.max_cap[unit_g] - self.inputs.SD[unit_g]) * self.w[unit_g, t+1]
                     - max(0, (self.inputs.SD[unit_g] - self.inputs.SU[unit_g])) * self.v[unit_g, t]
-                for t in range(1, self.T) for unit_g in self.inputs.thermal_units if self.inputs.TU[unit_g] == 1
+                for unit_g in self.inputs.thermal_units if self.inputs.TU[unit_g] == 1 for t in range(1, self.T) 
              ),
             name = 'peakDownBnd'
             )
@@ -258,7 +258,7 @@ class ModelBuilder():
                                 - (self.inputs.max_cap[unit_g] - self.inputs.SD[unit_g]) * self.w[unit_g, t+1]
                                 - sum_term
                                 ),
-                        name = 'trajecUpBnd' + f'_{unit_g}_{t}'
+                        name = 'trajecUpBnd' + f'[{unit_g},{t}]'
                         )
         
 
@@ -293,7 +293,7 @@ class ModelBuilder():
                         <= self.inputs.max_cap[unit_g] * self.u[unit_g, t]
                             - sum_term
                             ),
-                    name = 'trajecUpBnd2' + f'_{unit_g}_{t}'
+                    name = 'trajecUpBnd2' + f'[{unit_g},{t}]'
                     )
     
 
@@ -342,7 +342,7 @@ class ModelBuilder():
                             self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
                             - sum_1 - sum_2
                         ),
-                    name = 'trajecDownBnd'
+                    name = 'trajecDownBnd' + f'[{unit_g},{t}]'
                     )
 
 
@@ -364,7 +364,7 @@ class ModelBuilder():
                 self.pbar[unit_g, t] - self.p[unit_g, t-1] 
                 <= (self.inputs.SU[unit_g] - self.inputs.min_cap[unit_g] - self.inputs.RU[unit_g]) * self.v[unit_g, t]
                     + self.inputs.RU[unit_g] * self.u[unit_g, t]
-                for t in range(2, self.T+1) for unit_g in self.inputs.thermal_units
+                for unit_g in self.inputs.thermal_units for t in range(2, self.T+1)
                 ),
             name = 'rampUp'
             )
@@ -389,7 +389,7 @@ class ModelBuilder():
                 self.p[unit_g, t-1] - self.p[unit_g, t]
                 <= (self.inputs.SD[unit_g] - self.inputs.min_cap[unit_g] - self.inputs.RD[unit_g]) * self.w[unit_g, t]
                     + self.inputs.RD[unit_g] * self.u[unit_g, t-1]
-                for t in range(2, self.T+1) for unit_g in self.inputs.thermal_units
+                for unit_g in self.inputs.thermal_units for t in range(2, self.T+1)
                 ),
             name = 'rampDown'
             )
@@ -470,8 +470,10 @@ class ModelBuilder():
                 
                 # Given the above terms, we can specify the energy balance
                 self.model.addConstr(
-                    thermal_gen + re_gen + imp_gen + arc_flow + shortfall
-                    == demand_n_t
+                    (
+                        thermal_gen + re_gen + imp_gen + arc_flow + shortfall
+                        == demand_n_t),
+                    name = 'flow_bal' + f'[{node},{t}]'
                     )
 
 
@@ -494,18 +496,19 @@ class ModelBuilder():
         self.model.addConstrs(
             (
                 self.prnw[unit_w, t] <= self.inputs.rnw_cap.loc[t + self.T*self.k, unit_w]
-                for t in self.timesteps for unit_w in self.inputs.rnw_units
+                for unit_w in self.inputs.rnw_units for t in self.timesteps
                 ),
-            name = 'renewLimit'
+            name = 'renewBnd'
             )
+        
         
     def _c_import_bound(self):
         self.model.addConstrs(
             (
                 self.pimp[import_node, t] <= self.inputs.p_import.loc[t + self.T*self.k, import_node]
-                for t in self.timesteps for import_node in self.inputs.nodes_import
+                for import_node in self.inputs.nodes_import for t in self.timesteps
                 ),
-            name = 'importLimit'
+            name = 'importBnd'
             )
     
 
@@ -636,6 +639,8 @@ class ModelBuilder():
         
         self._c_ramp_up()
         self._c_ramp_down()
+        
+        self._c_import_bound()
         
         return self.model
     
