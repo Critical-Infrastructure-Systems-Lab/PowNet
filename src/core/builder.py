@@ -173,7 +173,7 @@ class ModelBuilder():
             LHS =  gp.quicksum([self.w[unit_g, i] for i in range(t-TD_g+1, t+1)])
             self.model.addConstr(
                 LHS <= 1 - self.initial_u[unit_g, self.T], 
-                name = 'minDown' + f'_{unit_g}_{t}')
+                name = 'minDown' + f'[{unit_g},{t}]')
             
             for t in range(TD_g+1, self.T+1):
                 LHS =  gp.quicksum([self.w[unit_g, i] for i in range(t-TD_g+1, t+1)])
