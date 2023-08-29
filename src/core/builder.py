@@ -142,7 +142,7 @@ class ModelBuilder():
             min_UT = min(self.initial_min_on[unit_g], self.T)
             self.model.addConstr(
                 self.u.sum(unit_g, range(1, min_UT+1)) == min_UT,
-                name = 'minUpInit'
+                name = f'minUpInit[{unit_g}]'
                 )
             
             
@@ -152,7 +152,7 @@ class ModelBuilder():
             min_DT = min(self.initial_min_off[unit_g], self.T)
             self.model.addConstr(
                 self.u.sum(unit_g, range(1, min_DT+1)) == 0,
-                name = 'minDownInit'
+                name = f'minDownInit[{unit_g}]'
                 )
     
     def _c_min_up(self) -> None:
