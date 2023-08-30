@@ -11,4 +11,4 @@ outputs/*
 
 # Ignore user inputs
 user_inputs/*
-decom_files/*
+src/analysis/decom_files/*
