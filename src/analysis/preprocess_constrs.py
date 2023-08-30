@@ -53,7 +53,9 @@ print('\nNumber of constraint types:', len(constr_types_set))
 
 
 ##--------------- Writes a dec file
-thermal_units = ['pGas', 'pOil', 'pBiomass']
+thermal_units = pd.read_csv(
+    os.path.join('..\\user_inputs', 'unit_param.csv'), 
+    header = 0, index_col='name', usecols = ['name']).index.tolist()
 
 # Numbering in .dec file starts at 1
 subp_map = {x: (idx+1) for idx, x in enumerate(thermal_units)}
@@ -98,14 +100,14 @@ constr_df['block_id'] = constr_df.apply(map_block, axis=1)
 # Replace unlabelled constraints with zero which represents the master problem
 nan_mask = constr_df['block_id'].isna()
 constr_df[nan_mask] = 0
-print('\nNumber of unlabelled constraints', sum(nan_mask))
+print('Number of unlabelled constraints', sum(nan_mask))
 
 master_constrs = constr_df.loc[constr_df['block_id']==0, 'name'].tolist()
 
 
 # This section writes the text file
 filename = 'power_system'
-with open(f'..\\decom_files\\{filename}.dec', 'w') as f:
+with open(f'.\\analysis\\decom_files\\{filename}.dec', 'w') as f:
     # Unspecified constraints are put into the master problem
     f.write('CONSDEFAULTMASTER')
     f.write('\n')
@@ -116,6 +118,12 @@ with open(f'..\\decom_files\\{filename}.dec', 'w') as f:
     f.write('PRESOLVED')
     f.write('\n')
     f.write('0')
+    f.write('\n')
+    
+    # The number of blocks is the number of thermal units plus an empty subproblem
+    f.write('NBLOCKS')
+    f.write('\n')
+    f.write(str(num_blocks+1))
     f.write('\n')
     
     # The indexing of .dec starts at one
@@ -138,4 +146,4 @@ with open(f'..\\decom_files\\{filename}.dec', 'w') as f:
     
 
 # Write the lp file
-simulator.model.write(f'..\\decom_files\\{filename}.lp')
+simulator.model.write(f'.\\analysis\\decom_files\\{filename}.mps')
