@@ -3,7 +3,7 @@ import os
 import gurobipy as gp
 import pandas as pd
 
-from processing.functions import get_arcs, get_linecap, get_suscept
+from pownet.processing.functions import get_arcs, get_linecap, get_suscept
 
 
 

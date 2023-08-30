@@ -1,10 +1,10 @@
 from math import floor
 
-from core.builder import ModelBuilder
+from pownet.core.builder import ModelBuilder
 # from core.dw_builder import DWBuilder
-from core.input import SystemInput
-from core.record import SystemRecord
-from processing.functions import create_init_condition
+from pownet.core.input import SystemInput
+from pownet.core.record import SystemRecord
+from pownet.processing.functions import create_init_condition
 
 
 

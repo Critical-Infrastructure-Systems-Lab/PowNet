@@ -2,8 +2,8 @@ import gurobipy as gp
 import pandas as pd
 import numpy as np
 
-from core.input import SystemInput
-from processing.functions import get_nodehour, get_nodehour_flow, get_nodehour_sys
+from pownet.core.input import SystemInput
+from pownet.processing.functions import get_nodehour, get_nodehour_flow, get_nodehour_sys
 
 
 def increment_hour(df: pd.DataFrame, T: int, k: int):

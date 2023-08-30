@@ -3,32 +3,28 @@ import re
 
 import pandas as pd
 
-from core.input import SystemInput
-from core.simulation import Simulator
+from pownet.core.input import SystemInput
+from pownet.core.simulation import Simulator
 # from core.visualize import Visualizer
 
-from processing.functions import get_nodehour, get_nodehour_flow, get_nodehour_sys
+
+
+cdir = os.path.dirname(os.getcwd())
+
+MODEL_NAME = 'malaysia'
+MODEL_FOLDER = os.path.join(cdir, 'model_library', MODEL_NAME)
 
 
 
 ##--------------- Create the model
-# The default simulation horizon T is 24 hours
+# We are only optimizing one step which is 24 hours. This optimization
+# is just to initiate a model so we can extract the model from Gurobi
 T = 24
-
-# One year has 8760 hours. If T = 24, then we have 365 steps.
-# steps = floor(8760/self.T)
 steps = 1
-
-model_folder = 'user_inputs'
-
-# We need a folder to store the figures
-if not os.path.exists('..//outputs'):
-    os.makedirs('..//outputs')
-
-system_input = SystemInput(T=T, model_folder=model_folder)
-
+system_input = SystemInput(T=T, model_folder=MODEL_FOLDER)
 simulator = Simulator(T=T, system_input=system_input)
 
+# Run the model to instantiate the model
 var_node_t, var_flow, var_syswide = simulator.run(steps=steps)
 
 
@@ -40,7 +36,9 @@ constr_list = model.getConstrs()
 constr_df = [constr.constrName for constr in constr_list]
 constr_df = pd.DataFrame(constr_df, columns=['name'])
 
+
 ##--------------- Extract the constraint types
+# The name of every constraint ends with left bracket
 pat_constr_type = r'(.+)\['
 constr_types_set = set(
     constr_df['name'].str.extract(pat_constr_type, expand=True)[0].tolist()
@@ -53,14 +51,29 @@ print('\nNumber of constraint types:', len(constr_types_set))
 
 
 ##--------------- Writes a dec file
-thermal_units = pd.read_csv(
-    os.path.join('..\\user_inputs', 'unit_param.csv'), 
-    header = 0, index_col='name', usecols = ['name']).index.tolist()
+thermal_units = system_input.thermal_units
+rnw_units = system_input.rnw_units
+nodes_import = system_input.nodes_import
 
 # Numbering in .dec file starts at 1
-subp_map = {x: (idx+1) for idx, x in enumerate(thermal_units)}
+subp_thermal_map = {
+    x: (idx+1) for idx, x in enumerate(
+        thermal_units)
+    }
 
-num_blocks = len(thermal_units)
+subp_rnw_map = {
+    x: (idx+1+len(subp_thermal_map)) for idx, x in enumerate(
+        rnw_units)
+    }
+
+subp_import_map = {
+    x: (idx+1+len(subp_thermal_map)+len(subp_rnw_map)) for idx, x in enumerate(
+        nodes_import)
+    }
+
+
+# The extra block +1 is the transmission block
+num_blocks = len(thermal_units) #+ len(rnw_units) + len(nodes_import) + 1
 
 unit_constraints = [
     'link_p',
@@ -82,6 +95,11 @@ unit_constraints = [
     'upper_p'
     ]
 
+# rnw_cnstrs = ['renewBnd']
+# import_node_cnstrs = ['importBnd']
+# transmission_cnstrs = ['minFlow', 'maxFlow', 'angleDiff', 'refNode']
+
+
 # Specify the corresponding block of each constraint
 def map_block(row):
     constr_name = row['name']
@@ -91,7 +109,7 @@ def map_block(row):
     constr_node = re_match[0]
     # The block number of the master problem is zero
     if row['type'] in unit_constraints:
-        return subp_map[constr_node]
+        return subp_thermal_map[constr_node]
     else:
         return 0
 
@@ -106,8 +124,8 @@ master_constrs = constr_df.loc[constr_df['block_id']==0, 'name'].tolist()
 
 
 # This section writes the text file
-filename = 'power_system'
-with open(f'.\\analysis\\decom_files\\{filename}.dec', 'w') as f:
+filename = f'{MODEL_NAME}_by_units'
+with open(f'..\\temp\\decom_files\\{filename}.dec', 'w') as f:
     # Unspecified constraints are put into the master problem
     f.write('CONSDEFAULTMASTER')
     f.write('\n')
@@ -120,10 +138,10 @@ with open(f'.\\analysis\\decom_files\\{filename}.dec', 'w') as f:
     f.write('0')
     f.write('\n')
     
-    # The number of blocks is the number of thermal units plus an empty subproblem
+    # The number of blocks is the number of thermal units
     f.write('NBLOCKS')
     f.write('\n')
-    f.write(str(num_blocks+1))
+    f.write(str(num_blocks))
     f.write('\n')
     
     # The indexing of .dec starts at one
@@ -146,4 +164,5 @@ with open(f'.\\analysis\\decom_files\\{filename}.dec', 'w') as f:
     
 
 # Write the lp file
-simulator.model.write(f'.\\analysis\\decom_files\\{filename}.mps')
+dir_mps = os.path.join(cdir, 'temp', 'decom_files', f'{MODEL_NAME}.mps')
+simulator.model.write(dir_mps)
