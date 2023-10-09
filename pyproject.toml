@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cisl-pownet"
+version = "1.0.0"
+description = "A simple production cost model of framework for power systems"
+readme = "README.md"
+authors = [{ name = "Phumthep Bunnak", email = "pb585@cornell.edu" }]
+keywords = ["power_system", "optimization"]
+dependencies = [
+    "matplotlib >= 3.7.1",
+    "numpy >= 1.24.3",
+    "pandas >= 1.5.3",
+    "mplcursors >= 0.5.1",
+    "pyomo >= 6.5.0",
+]
+requires-python = ">=3.10"

@@ -6,6 +6,10 @@ from core.visualize import Visualizer
 
 
 
+MODEL_NAME = 'laos'
+
+
+
 def main():
     #------- User defined inputs
     # The default simulation horizon T is 24 hours
@@ -15,13 +19,16 @@ def main():
     # steps = floor(8760/self.T)
     steps = 1
     
-    model_folder = 'user_inputs'
+    wdir = os.path.dirname((os.path.dirname(os.getcwd())))
     
     # We need a folder to store the figures
-    if not os.path.exists('..//outputs'):
-        os.makedirs('..//outputs')
+    if not os.path.exists(os.path.join(wdir, 'outputs')):
+        os.makedirs(os.path.join(wdir, 'outputs'))
     
-    system_input = SystemInput(T=T, model_folder=model_folder)
+    
+    system_input = SystemInput(
+        T=T, model_folder=os.path.join(wdir, 'model_library', MODEL_NAME)
+        )
     
     simulator = Simulator(T=T, system_input=system_input)
     var_node_t, var_flow, var_syswide = simulator.run(steps=steps)
