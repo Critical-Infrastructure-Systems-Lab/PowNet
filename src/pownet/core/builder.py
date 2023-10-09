@@ -3,7 +3,7 @@ from math import floor
 from gurobipy import GRB
 import gurobipy as gp
 
-from core.input import SystemInput
+from pownet.core.input import SystemInput
 
 
 
@@ -14,8 +14,8 @@ class ModelBuilder():
         self.model = None
         
         # Variables
-        self.p = None
-        self.pbar = None
+        self.p = None # Power above the minimum
+        self.pbar = None # Available power above the minimum
         
         self.prnw = None # renewables
         self.pimp = None # import
@@ -114,6 +114,17 @@ class ModelBuilder():
             name = 'link_p'
             )
     
+
+    def _c_p_bound(self) -> None:
+        # We might not need this constraint because it is redundant
+        self.model.addConstrs(
+            (
+                self.p[unit_g, t] <= self.pbar[unit_g, t]
+                for unit_g in self.inputs.thermal_units for t in self.timesteps
+                ),
+            name = 'upper_p'
+            )
+
     
     def _c_link_unit_status(self) -> None:
         # At t=1, the variables are linked to the initial_v
@@ -135,7 +146,17 @@ class ModelBuilder():
             name = 'link_uv'
             )
         
-        
+
+    def _c_min_down_init(self) -> None:
+        for unit_g in self.inputs.thermal_units:
+            # Find the min between the required downtime and the simulation horizon
+            min_DT = min(self.initial_min_off[unit_g], self.T)
+            self.model.addConstr(
+                self.u.sum(unit_g, range(1, min_DT+1)) == 0,
+                name = f'minDownInit[{unit_g}]'
+                )
+
+
     def _c_min_up_init(self) -> None:
         for unit_g in self.inputs.thermal_units:
             # Find the min between the required uptime and the simulation horizon
@@ -145,24 +166,7 @@ class ModelBuilder():
                 name = f'minUpInit[{unit_g}]'
                 )
             
-            
-    def _c_min_down_init(self) -> None:
-        for unit_g in self.inputs.thermal_units:
-            # Find the min between the required downtime and the simulation horizon
-            min_DT = min(self.initial_min_off[unit_g], self.T)
-            self.model.addConstr(
-                self.u.sum(unit_g, range(1, min_DT+1)) == 0,
-                name = f'minDownInit[{unit_g}]'
-                )
-    
-    def _c_min_up(self) -> None:
-        for unit_g in self.inputs.thermal_units:
-            TU_g = self.inputs.TU[unit_g]
-            for t in range(TU_g, self.T+1):
-                LHS =  gp.quicksum([self.v[unit_g, i] for i in range(t-TU_g+1, t+1)])
-                self.model.addConstr(LHS <= self.u[unit_g, t], name='minUp' + f'[{unit_g},{t}]')
-    
-    
+        
     def _c_min_down(self) -> None:
         for unit_g in self.inputs.thermal_units:
             TD_g = self.inputs.TD[unit_g]
@@ -180,31 +184,14 @@ class ModelBuilder():
                 self.model.addConstr(
                     LHS <= 1 - self.u[unit_g, t], 
                     name = 'minDown' + f'[{unit_g},{t}]')
-    
-    
-    def _c_p_bound(self) -> None:
-        self.model.addConstrs(
-            (
-                self.p[unit_g, t] <= self.pbar[unit_g, t]
-                for unit_g in self.inputs.thermal_units for t in self.timesteps
-                ),
-            name = 'upper_p'
-            )
-    
-    
-    def _c_peak_up_bound(self) -> None:
-        # Equation 23a applies when TU == 1
-        # Enforced for t in [1, 23] because the constraints involved w at t+1
-        self.model.addConstrs(
-            (
-                self.p[unit_g, t] + self.spin[unit_g, t]
-                <= (self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
-                    - (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) * self.v[unit_g, t]
-                    - max(0, (self.inputs.SU[unit_g] - self.inputs.SD[unit_g])) * self.w[unit_g, t+1]
-                for unit_g in self.inputs.thermal_units if self.inputs.TU[unit_g] == 1 for t in range(1, self.T)
-             ),
-            name = 'peakUpBnd'
-            )
+
+
+    def _c_min_up(self) -> None:
+        for unit_g in self.inputs.thermal_units:
+            TU_g = self.inputs.TU[unit_g]
+            for t in range(TU_g, self.T+1):
+                LHS =  gp.quicksum([self.v[unit_g, i] for i in range(t-TU_g+1, t+1)])
+                self.model.addConstr(LHS <= self.u[unit_g, t], name='minUp' + f'[{unit_g},{t}]')
     
     
     def _c_peak_down_bound(self) -> None:
@@ -219,15 +206,81 @@ class ModelBuilder():
              ),
             name = 'peakDownBnd'
             )
+
     
-    
+    def _c_peak_up_bound(self) -> None:
+        # Equation 23a applies when TU == 1
+        # Enforced for t in [1, 23] because the constraints involved w at t+1
+        self.model.addConstrs(
+            (
+                self.p[unit_g, t] + self.spin[unit_g, t]
+                <= (self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
+                    - (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) * self.v[unit_g, t]
+                    - max(0, (self.inputs.SU[unit_g] - self.inputs.SD[unit_g])) * self.w[unit_g, t+1]
+                for unit_g in self.inputs.thermal_units if self.inputs.TU[unit_g] == 1 for t in range(1, self.T)
+             ),
+            name = 'peakUpBnd'
+            )
+        
+
+    def _c_trajec_down_bound(self):
+        # Equation 41
+        for unit_g in self.inputs.thermal_units:
+            
+            time_RD = floor(
+                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RD[unit_g])
+            
+            time_RU = floor(
+                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RU[unit_g])
+            
+            for t in self.timesteps:
+                KSD_t = min(
+                    time_RD, self.inputs.TU[unit_g]-1, self.T-t-1)
+                
+                # Omit adding inequalities if KSD < 0 because
+                # c_trajec_up_bound dominates.
+                if KSD_t <= 0:
+                    continue
+                
+                # KSD_t must be positive, but we have already checked above
+                KSU_t = min( time_RU, self.inputs.TU[unit_g] - 2 - KSD_t, t-1 )
+                
+                # First summation term
+                sum_1 = 0
+                for i in range(KSD_t+1):    
+                    sum_1 += (
+                        (
+                            self.inputs.max_cap[unit_g] - self.inputs.SD[unit_g]
+                            - i*self.inputs.RD[unit_g]
+                            ) * self.w[unit_g, t+1+i]
+                        )
+                
+                # Second summation term
+                sum_2 = 0
+                for i in range(KSU_t+1):
+                    sum_2 += (
+                        (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g])*self.v[unit_g, t-i]
+                        )
+                
+                self.model.addConstr(
+                    (
+                        self.p[unit_g, t]
+                        <= (
+                            self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
+                            - sum_1 - sum_2
+                        ),
+                    name = 'trajecDownBnd' + f'[{unit_g},{t}]'
+                    )
+
+
     def _c_trajec_up_bound(self):
-        # Equation 38
+        # Equation 38 or 40 depending on a condition
         for unit_g in self.inputs.thermal_units:
             # Calculate the time to full ramp-up
             time_RU = floor(
                 (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g])/self.inputs.RU[unit_g])
             
+            # Equation 38 - substitute in pbar
             if self.inputs.TU[unit_g]-2 >= time_RU:
                 # The min of (TU - 2, TRU) is the number of periods in the previous
                 # simulation that must be traced back to address the changing
@@ -260,8 +313,8 @@ class ModelBuilder():
                                 ),
                         name = 'trajecUpBnd' + f'[{unit_g},{t}]'
                         )
-        
 
+            # Equation 40 - substitute in pbar
             # When UT-2 < time_RU, the above inequalities do not cover
             # the entire start-up and ramping trajectory. Hence, we can
             # cover an additional time period with additional inequalities
@@ -297,79 +350,6 @@ class ModelBuilder():
                     )
     
 
-    def _c_trajec_down_bound(self):
-        for unit_g in self.inputs.thermal_units:
-            
-            time_RU = floor(
-                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RU[unit_g])
-            
-            time_RD = floor(
-                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RD[unit_g])
-            
-            for t in self.timesteps:
-                KSD_t = min(
-                    time_RD, self.inputs.TU[unit_g]-1, self.T-t-1)
-                
-                # Omit adding inequalities if KSD < 0 because
-                # c_trajec_up_bound dominates.
-                if KSD_t <= 0:
-                    continue
-                
-                # KSD_t must be positive, but we have already checked above
-                KSU_t = min( time_RU, self.inputs.TU[unit_g] - 2 - KSD_t, t-1 )
-                
-                # First summation term
-                sum_1 = 0
-                for i in range(KSD_t+1):    
-                    sum_1 += (
-                        (
-                            self.inputs.max_cap[unit_g] - self.inputs.SD[unit_g]
-                            - i*self.inputs.RD[unit_g]
-                            ) * self.w[unit_g, t+1+i]
-                        )
-                
-                # Second summation term
-                sum_2 = 0
-                for i in range(KSU_t+1):
-                    sum_2 += (
-                        (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g])*self.v[unit_g, t-i]
-                        )
-                
-                self.model.addConstr(
-                    (
-                        self.p[unit_g, t] + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
-                        <= (
-                            self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
-                            - sum_1 - sum_2
-                        ),
-                    name = 'trajecDownBnd' + f'[{unit_g},{t}]'
-                    )
-
-
-    def _c_ramp_up(self):
-        # Ramp up when t=1 is dependent on the initial condition at t=0
-        t = 1
-        self.model.addConstrs(
-            (
-                self.pbar[unit_g, t] - self.initial_p[unit_g, self.T] 
-                <= (self.inputs.SU[unit_g] - self.inputs.min_cap[unit_g] - self.inputs.RU[unit_g]) * self.v[unit_g, t]
-                    + self.inputs.RU[unit_g] * self.u[unit_g, t]
-                for unit_g in self.inputs.thermal_units
-                ),
-            name = 'rampUpInit'
-            )
-        
-        self.model.addConstrs(
-            (
-                self.pbar[unit_g, t] - self.p[unit_g, t-1] 
-                <= (self.inputs.SU[unit_g] - self.inputs.min_cap[unit_g] - self.inputs.RU[unit_g]) * self.v[unit_g, t]
-                    + self.inputs.RU[unit_g] * self.u[unit_g, t]
-                for unit_g in self.inputs.thermal_units for t in range(2, self.T+1)
-                ),
-            name = 'rampUp'
-            )
-
-
     def _c_ramp_down(self):
         # Ramping when t=1 is dependent on the initial condition at t=0
         t = 1
@@ -395,6 +375,57 @@ class ModelBuilder():
             )
 
 
+    def _c_ramp_up(self):
+        # Ramp up when t=1 is dependent on the initial condition at t=0
+        t = 1
+        self.model.addConstrs(
+            (
+                self.pbar[unit_g, t] - self.initial_p[unit_g, self.T] 
+                <= (self.inputs.SU[unit_g] - self.inputs.min_cap[unit_g] - self.inputs.RU[unit_g]) * self.v[unit_g, t]
+                    + self.inputs.RU[unit_g] * self.u[unit_g, t]
+                for unit_g in self.inputs.thermal_units
+                ),
+            name = 'rampUpInit'
+            )
+        
+        self.model.addConstrs(
+            (
+                self.pbar[unit_g, t] - self.p[unit_g, t-1] 
+                <= (self.inputs.SU[unit_g] - self.inputs.min_cap[unit_g] - self.inputs.RU[unit_g]) * self.v[unit_g, t]
+                    + self.inputs.RU[unit_g] * self.u[unit_g, t]
+                for unit_g in self.inputs.thermal_units for t in range(2, self.T+1)
+                ),
+            name = 'rampUp'
+            )
+    
+    
+    def _c_renewables_bound(self):
+        self.model.addConstrs(
+            (
+                self.prnw[unit_w, t] <= self.inputs.rnw_cap.loc[t + self.T*self.k, unit_w]
+                for unit_w in self.inputs.rnw_units for t in self.timesteps
+                ),
+            name = 'renewBnd'
+            )
+        
+        
+    def _c_import_bound(self):
+        self.model.addConstrs(
+            (
+                self.pimp[import_node, t] <= self.inputs.p_import.loc[t + self.T*self.k, import_node]
+                for import_node in self.inputs.nodes_import for t in self.timesteps
+                ),
+            name = 'importBnd'
+            )
+
+
+    def _c_ref_node(self):
+        self.model.addConstrs(
+            (self.theta[self.inputs.max_node, t] == 0 for t in self.timesteps), 
+            name='refNode'
+            )
+        
+
     def _c_flow_bound(self):
         self.model.addConstrs(
             (
@@ -412,7 +443,7 @@ class ModelBuilder():
             )
 
 
-    def _c_angle_dff(self):
+    def _c_angle_diff(self):
         # Note the indexing of the susceptance dataframe is incremented
         # along with the simulation step k
         self.model.addConstrs(
@@ -421,13 +452,7 @@ class ModelBuilder():
                     * (self.theta[a, t] - self.theta[b, t])
                 for (a, b) in self.inputs.arcs for t in self.timesteps
             ),
-            name = 'angleDiffForward'
-            )
-
-    def _c_ref_node(self):
-        self.model.addConstrs(
-            (self.theta[self.inputs.max_node, t] == 0 for t in self.timesteps), 
-            name='refNode'
+            name = 'angleDiff'
             )
 
 
@@ -473,7 +498,7 @@ class ModelBuilder():
                     (
                         thermal_gen + re_gen + imp_gen + arc_flow + shortfall
                         == demand_n_t),
-                    name = 'flow_bal' + f'[{node},{t}]'
+                    name = 'flowBal' + f'[{node},{t}]'
                     )
 
 
@@ -489,26 +514,6 @@ class ModelBuilder():
                 for t in self.timesteps
                 ),
             name = 'reserveReq'
-            )
-    
-    
-    def _c_renewables_bound(self):
-        self.model.addConstrs(
-            (
-                self.prnw[unit_w, t] <= self.inputs.rnw_cap.loc[t + self.T*self.k, unit_w]
-                for unit_w in self.inputs.rnw_units for t in self.timesteps
-                ),
-            name = 'renewBnd'
-            )
-        
-        
-    def _c_import_bound(self):
-        self.model.addConstrs(
-            (
-                self.pimp[import_node, t] <= self.inputs.p_import.loc[t + self.T*self.k, import_node]
-                for import_node in self.inputs.nodes_import for t in self.timesteps
-                ),
-            name = 'importBnd'
             )
     
 
@@ -561,16 +566,16 @@ class ModelBuilder():
         
         # Positive/Negative load mismatch. Unit: MW
         self.s_pos = self.model.addVars(
-            self.inputs.nodes, self.timesteps, 
+            self.inputs.nodes_w_demand, self.timesteps, 
             vtype = GRB.CONTINUOUS, lb = 0, name = 's_pos')
         
         self.s_neg = self.model.addVars(
-            self.inputs.nodes, self.timesteps, 
+            self.inputs.nodes_w_demand, self.timesteps, 
             vtype = GRB.CONTINUOUS, lb = 0, name = 's_neg')
         
-        # System-wide shortfall. Unit: MW. (Might not need this variable)
+        # # System-wide shortfall. Unit: MW. (Might not need this variable)
         # self.sys_shortfall = self.model.addVars(
-        # timesteps, vtype = GRB.CONTINUOUS, lb = 0, name = 'load_under')
+        # self.timesteps, vtype = GRB.CONTINUOUS, lb = 0, name = 'load_under')
         
         # Unit status
         self.u = self.model.addVars(
@@ -614,33 +619,34 @@ class ModelBuilder():
         
         #---------------- Section: Constraints
         self._c_link_p()
+        # self._c_p_bound() # This is not needed
         self._c_link_unit_status()
-        
-        self._c_p_bound()
-        
-        self._c_reserve_req()
+
+        self._c_min_down_init()
+        self._c_min_up_init()
+
+        self._c_min_down()
+        self._c_min_up()
+
+        self._c_peak_down_bound()
+        self._c_peak_up_bound()
+
+        self._c_trajec_down_bound()
+        self._c_trajec_up_bound()
+
+        self._c_ramp_down()
+        self._c_ramp_up()
+
         self._c_renewables_bound()
-        
+        self._c_import_bound()
+
+
         self._c_flow_bound()
         self._c_ref_node()
-        self._c_angle_dff()
+        self._c_angle_diff()
         self._c_flow_balance()
-        
-        self._c_min_up_init()
-        self._c_min_down_init()
-        self._c_min_up()
-        self._c_min_down()
-        
-        self._c_peak_up_bound()
-        self._c_peak_down_bound()
-        
-        self._c_trajec_up_bound()
-        self._c_trajec_down_bound()
-        
-        self._c_ramp_up()
-        self._c_ramp_down()
-        
-        self._c_import_bound()
+
+        self._c_reserve_req()
         
         return self.model
     

@@ -1,9 +1,10 @@
 from datetime import datetime
+import os
 
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from core.input import SystemInput
+from pownet.core.input import SystemInput
 
 
 
@@ -89,7 +90,7 @@ class Visualizer():
             
         # Plotting section
         fig, ax = plt.subplots(figsize=(8, 5))
-        total_dispatch.plot.area(
+        total_dispatch.plot.bar(
             stacked = True,
             ax = ax,
             linewidth = 0
@@ -101,7 +102,11 @@ class Visualizer():
         
         if to_save:
             c_time = datetime.now().strftime("%Y%m%d_%H%M")
-            plt.savefig(f'..//outputs//{c_time}_fuelmix.png')
+            out_dir = os.path.dirname(
+                os.path.dirname(
+                    os.path.dirname(os.getcwd())))
+            plt.savefig(os.path.join(
+                out_dir, 'outputs', f'{c_time}_fuelmix.png'))
         plt.show()
                 
 
@@ -140,5 +145,10 @@ class Visualizer():
             
             if to_save:
                 c_time = datetime.now().strftime("%Y%m%d_%H%M")
-                plt.savefig(f'..//outputs//{c_time}_{unit_g}.png')
+                out_dir = os.path.dirname(
+                    os.path.dirname(
+                        os.path.dirname(os.getcwd())))
+                plt.savefig(os.path.join(
+                    out_dir, 'outputs', 
+                    f'{c_time}_{unit_g}.png'))
             plt.show()

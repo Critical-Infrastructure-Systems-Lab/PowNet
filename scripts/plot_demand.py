@@ -1,4 +1,8 @@
+import os
+
 import matplotlib.pyplot as plt
+
+from pownet.core.input import SystemInput
 
 T = 24*2
 

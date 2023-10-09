@@ -1,0 +1,181 @@
+import os
+import re
+
+import pandas as pd
+
+from pownet.core.input import SystemInput
+from pownet.core.simulation import Simulator
+# from core.visualize import Visualizer
+
+
+
+cdir = os.path.dirname(os.getcwd())
+
+MODEL_NAME = 'cambodia'
+MODEL_FOLDER = os.path.join(cdir, 'model_library', MODEL_NAME)
+
+
+
+##--------------- Create the model
+# We are only optimizing one step which is 24 hours. This optimization
+# is just to initiate a model so we can extract the model from Gurobi
+T = 24
+steps = 1
+system_input = SystemInput(T=T, model_folder=MODEL_FOLDER)
+simulator = Simulator(T=T, system_input=system_input)
+
+# Run the model to instantiate the model
+var_node_t, var_flow, var_syswide = simulator.run(steps=steps)
+
+
+##--------------- Extract the info
+model = simulator.model
+
+constr_list = model.getConstrs()
+
+constr_df = [constr.constrName for constr in constr_list]
+constr_df = pd.DataFrame(constr_df, columns=['name'])
+
+
+##--------------- Extract the constraint types
+# The name of every constraint ends with left bracket
+pat_constr_type = r'(.+)\['
+constr_types_set = set(
+    constr_df['name'].str.extract(pat_constr_type, expand=True)[0].tolist()
+    )
+
+constr_df['type'] = constr_df['name'].str.extract(pat_constr_type, expand=True)
+
+print('\n\n===========')
+print('\nNumber of constraint types:', len(constr_types_set))
+
+
+##--------------- Writes a dec file
+thermal_units = system_input.thermal_units
+rnw_units = system_input.rnw_units
+nodes_import = system_input.nodes_import
+
+# Numbering in .dec file starts at 1
+subp_thermal_map = {
+    x: (idx+1) for idx, x in enumerate(
+        thermal_units)
+    }
+
+subp_rnw_map = {
+    x: (idx+1+len(subp_thermal_map)) for idx, x in enumerate(
+        rnw_units)
+    }
+
+subp_import_map = {
+    x: (idx+1+len(subp_thermal_map)+len(subp_rnw_map)) for idx, x in enumerate(
+        nodes_import)
+    }
+
+
+# The extra block +1 is the transmission block
+num_blocks = len(thermal_units) + len(rnw_units) + len(nodes_import) + 1
+
+thermal_unit_cnstrs = [
+    'link_p',
+    'link_uv',
+    'link_uv_init',
+    'minDown',
+    'minUp',
+    'minUpInit',
+    'minDownInit',
+    'peakDownBnd',
+    'peakUpBnd',
+    'rampDown',
+    'rampDownInit',
+    'rampUp',
+    'rampUpInit',
+    'trajecDownBnd',
+    'trajecUpBnd',
+    'trajecUpBnd2',
+    'upper_p'
+    ]
+
+rnw_cnstrs = ['renewBnd']
+
+import_node_cnstrs = ['importBnd']
+
+transmission_cnstrs = ['minFlow', 'maxFlow', 'angleDiff', 'refNode']
+
+
+# Specify the corresponding block of each constraint
+def map_block(row):
+    constr_name = row['name']
+    # Extract node
+    pat_node = r'\[(\w+)'
+    re_match = re.findall(pat_node, constr_name)
+    constr_node = re_match[0]
+    # The block number of the master problem is zero
+    if row['type'] in thermal_unit_cnstrs:
+        return subp_thermal_map[constr_node]
+    
+    elif row['type'] in rnw_cnstrs:
+        return subp_rnw_map[constr_node]
+    
+    elif row['type'] in import_node_cnstrs:
+        return subp_import_map[constr_node]
+    
+    # The ID of the transmission block is the number of blocks
+    # because it is assigned to the last block
+    elif row['type'] in transmission_cnstrs:
+        return num_blocks
+    else:
+        return 0
+
+constr_df['block_id'] = constr_df.apply(map_block, axis=1)
+
+# Replace unlabelled constraints with zero which represents the master problem
+nan_mask = constr_df['block_id'].isna()
+constr_df[nan_mask] = 0
+print('Number of unlabelled constraints', sum(nan_mask))
+
+master_constrs = constr_df.loc[constr_df['block_id']==0, 'name'].tolist()
+
+
+# This section writes the dec file
+dir_dec = os.path.join(cdir, 'temp', 'decom_files', f'{MODEL_NAME}.dec')
+with open(dir_dec, 'w') as f:
+    # Unspecified constraints are put into the master problem
+    f.write('CONSDEFAULTMASTER')
+    f.write('\n')
+    f.write('1')
+    f.write('\n')
+    
+    # The decomposition was not from a presolved problem
+    f.write('PRESOLVED')
+    f.write('\n')
+    f.write('0')
+    f.write('\n')
+    
+    # Need to add one empty block for master-only variables as the final block
+    f.write('NBLOCKS')
+    f.write('\n')
+    f.write(str(num_blocks))
+    f.write('\n')
+    
+    # The indexing of .dec starts at one
+    for subp_id in range(1, num_blocks+1):
+        # Write the block header
+        f.write(f'BLOCK {subp_id}')
+        f.write('\n')
+        # Dump the constraints in each block
+        block_constrs = constr_df.loc[constr_df['block_id']==subp_id, 'name'].tolist()
+        for block_constr in block_constrs:
+            f.write(block_constr)
+            f.write('\n')
+    
+    f.write('MASTERCONSS')
+    f.write('\n')
+    
+    for master_constr in master_constrs:
+        f.write(master_constr)
+        f.write('\n')
+    
+
+# Write the lp file
+dir_mps = os.path.join(cdir, 'temp', 'decom_files', f'{MODEL_NAME}.mps')
+simulator.model.write(dir_mps)
