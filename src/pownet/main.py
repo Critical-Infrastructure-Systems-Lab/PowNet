@@ -6,7 +6,7 @@ from core.visualize import Visualizer
 
 
 
-MODEL_NAME = 'laos'
+MODEL_NAME = 'thailand'
 
 
 
@@ -16,7 +16,7 @@ def main():
     T = 24
     
     # One year has 8760 hours. If T = 24, then we have 365 steps.
-    # steps = floor(8760/self.T)
+    # steps = floor(8760/T)
     steps = 1
     
     wdir = os.path.dirname((os.path.dirname(os.getcwd())))
@@ -37,7 +37,7 @@ def main():
     visualizer.load(df=var_node_t, system_input=system_input)
     
     visualizer.plot_fuelmix(to_save=True)
-    visualizer.plot_thermal_units(to_save=True)
+    # visualizer.plot_thermal_units(to_save=False)
 
 
 
