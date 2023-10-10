@@ -1,0 +1,14 @@
+﻿fuel_type,price
+biomass_st,3.02
+wsth_st,3.02
+coal_st,5
+oil_st,8
+gas_gt,5.85
+gas_ic,5.85
+oil_ic,8
+gas_cc,5.85
+gas_st,5.85
+oil_gt,8
+coal_imp,5.25
+hydro_import,40
+slack,1000
