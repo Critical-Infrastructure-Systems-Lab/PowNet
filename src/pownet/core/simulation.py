@@ -1,7 +1,6 @@
-from math import floor
+import os
 
 from pownet.core.builder import ModelBuilder
-# from core.dw_builder import DWBuilder
 from pownet.core.input import SystemInput
 from pownet.core.record import SystemRecord
 from pownet.processing.functions import create_init_condition
@@ -9,10 +8,18 @@ from pownet.processing.functions import create_init_condition
 
 
 class Simulator:
-    def __init__(self, T: int, system_input: SystemInput) -> None:
+    def __init__(
+            self, 
+            T: int, 
+            system_input: SystemInput,
+            model_name: str = None,
+            write_model: bool = False,
+            ) -> None:
+        self.model = None
         self.T = T
         self.system_input = system_input
-        self.model = None
+        self.model_name = model_name
+        self.write_model = write_model
         
         
     def run(self, steps: int) -> SystemRecord:
@@ -37,11 +44,9 @@ class Simulator:
                     init_conds = init_conds)
             else:
                 # TODO: Implement warm start
-                # Optimization is quicker with a warm start
                 self.model = builder.update(
                     k = k,
                     init_conds = init_conds)
-            
             self.model.optimize()
             
             # Check model status
@@ -54,22 +59,21 @@ class Simulator:
             # Need k to increment the hours field
             system_record.keep(self.model, k, self.system_input)
             init_conds = system_record.get_init_conds(k)
+            
+            # Save the model
+            dirname = f'{self.model_name}_instances'
+            if self.write_model:
+                if not os.path.exists(dirname):
+                    os.makedirs(dirname)
+                self.model.write(
+                    os.path.join(
+                        dirname, f'{self.model_name}_{k}.mps'
+                        )
+                    )
         
         # # Export the final results somewhere
         # system_record.to_csv()
         return system_record.get_record()
-    
-    
-    # def run_dw(self, steps: int) -> SystemRecord:
-    #     # Instantiate objects
-    #     system_record = SystemRecord(self.T)
-        
-    #     builder = DWBuilder(self.system_input)
-    
-    #     # Initially, we can define the initial conditions
-    #     init_conds = create_init_condition(self.system_input.thermal_units, self.T)
-        
-    #     return None
     
     
     
