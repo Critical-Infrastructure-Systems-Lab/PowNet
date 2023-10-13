@@ -656,6 +656,12 @@ class ModelBuilder():
         so we can perform warm start
         '''
         # TODO: implement warm start
+        # Update cost coeffs, constraints, RHS
+        # Constraints that must be updated
+        # constrs2update = []
+        
+        # OR using solution from the previous solve
+        
         self.model = self.build(k, init_conds)
         return self.model
         

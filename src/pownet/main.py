@@ -1,3 +1,4 @@
+import math
 import os
 
 from core.input import SystemInput
@@ -16,8 +17,8 @@ def main():
     T = 24
     
     # One year has 8760 hours. If T = 24, then we have 365 steps.
-    # steps = floor(8760/T)
-    steps = 1
+    steps = math.floor(8760/T)
+    # steps = 1
     
     wdir = os.path.dirname((os.path.dirname(os.getcwd())))
     
