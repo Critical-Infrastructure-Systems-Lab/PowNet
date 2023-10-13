@@ -57,7 +57,7 @@ class ModelBuilder():
         
         # Use indexing of [0] to access the value of a dataframe
         opex_coeffs = {
-            (unit_g, t): (self.inputs.fuelprice.loc[t + self.k*self.T, unit_g] * self.inputs.heat_rate.loc[unit_g])[0]
+            (unit_g, t): (self.inputs.fuelprice.loc[t + self.k*self.T, unit_g] * self.inputs.heat_rate.loc[unit_g]).iloc[0]
                 + self.inputs.unit_econ.loc[unit_g, 'operation_cost']
             for t in self.timesteps for unit_g in self.inputs.thermal_units
             }
@@ -429,14 +429,14 @@ class ModelBuilder():
     def _c_flow_bound(self):
         self.model.addConstrs(
             (
-                self.flow[a, b, t] <= self.inputs.linecap[(a, b)]
+                self.flow[a, b, t] <= self.inputs.linecap.loc['linecap', (a, b)]
                 for (a, b) in self.inputs.arcs for t in self.timesteps
                 ),
             name = 'maxFlow'
             )
         self.model.addConstrs(
             (
-                self.flow[a, b, t] >= -1 * self.inputs.linecap[(a, b)]
+                self.flow[a, b, t] >= -1 * self.inputs.linecap.loc['linecap', (a, b)]
                 for (a, b) in self.inputs.arcs for t in self.timesteps
                 ),
             name = 'minFlow'
