@@ -17,8 +17,12 @@ Luangprabang2,Luangprabang1,0.125,310
 NamKhan3,Luangprabang2,0.108,250
 NamKhan2,Luangprabang2,0.061,800
 Viengkeo,Luangprabang2,0.038,1000
-HongsaLignite,Viengkeo,0.354,1000
-HongsaLignite,EGATMaeMoh,0.016,3400
+HongsaLigniteU1,Viengkeo,0.354,1000
+HongsaLigniteU2,Viengkeo,0.354,1000
+HongsaLigniteU3,Viengkeo,0.354,1000
+HongsaLigniteU1,EGATMaeMoh,0.016,3400
+HongsaLigniteU2,EGATMaeMoh,0.016,3400
+HongsaLigniteU3,EGATMaeMoh,0.016,3400
 Luangprabang2,XiengNgum,0.453,310
 XiengNgum,Kasi,0.053,310
 XiengNgum,Xayabury,0.041,250
