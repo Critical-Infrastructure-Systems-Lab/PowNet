@@ -2,6 +2,7 @@
 from datetime import datetime
 import os
 
+import gurobipy as gp
 import pandas as pd
 
 from pypolp.dw.dw import DantzigWolfe, Record
@@ -33,10 +34,11 @@ master_itercounts = []
 subp_times = []
 subp_itercounts = []
 
+gurobi_times = []
+
 # The number of MPS files is the total number of instances.
 # Note that we have one DEC file, so we need to subtract 1
 num_instances = len(os.listdir(instance_folder)) - 1
-num_instances = 3
 for k in range(num_instances):
     print(f'\n\n=== Solving Day {k} ===')
     path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_{k}.mps')
@@ -57,13 +59,22 @@ for k in range(num_instances):
     
     master_itercounts.append(master_itercount)
     subp_itercounts.append(subp_itercount)
+    
+    # Solve with Gurobi as the benchmark
+    print('\n')
+    gp_model = gp.read(path_mps)
+    gp_model.setParam('outputflag', 0)
+    gp_model.optimize()
+    gurobi_times.append(gp_model.runtime)
+    
 
 # Create a dataframe and 
 dw_stats = pd.DataFrame({
     'master_time': master_times,
     'master_iter': master_itercounts,
     'subp_time': subp_times,
-    'subp_iter': subp_itercounts
+    'subp_iter': subp_itercounts,
+    'gurobi_time': gurobi_times
     })
 
 dw_stats.to_csv(
