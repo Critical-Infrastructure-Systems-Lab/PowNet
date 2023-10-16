@@ -6,7 +6,7 @@ import pandas as pd
 
 PDIR = os.path.dirname(os.getcwd())
 TEMPDIR = os.path.join(PDIR, 'temp')
-FILENAME = '20231013_1602_laos_dw_stats'
+FILENAME = '20231016_1059_laos_dw_stats'
 
 
 
@@ -24,21 +24,23 @@ dw_itercounts = pd.read_csv(
 
 # Plot the time
 fig, ax = plt.subplots()
-dw_times.plot.bar(stacked=True, ax=ax)
+# dw_times.plot.bar(stacked=True, ax=ax)
+dw_times.plot.area(stacked=True, linewidth=0, ax=ax)
 ax.set(xlabel='Day', ylabel='Time (s)')
-plt.savefig(
-    os.path.join(TEMPDIR, f'{FILENAME}_time.png'),
-    dpi = 350)
+# plt.savefig(
+#     os.path.join(TEMPDIR, f'{FILENAME}_time.png'),
+#     dpi = 350)
 plt.show()
 
 
 # Plt the itercount
 fig, ax = plt.subplots()
-dw_itercounts.plot.bar(stacked=True, ax=ax)
+# dw_itercounts.plot.bar(stacked=True, ax=ax)
+dw_itercounts.plot.area(stacked=True, linewidth=0, ax=ax)
 ax.set(xlabel='Day', ylabel='Itercount')
-plt.savefig(
-    os.path.join(TEMPDIR, f'{FILENAME}_itercount.png'),
-    dpi = 350)
+# plt.savefig(
+#     os.path.join(TEMPDIR, f'{FILENAME}_itercount.png'),
+#     dpi = 350)
 plt.show()
 
 
