@@ -5,17 +5,27 @@ import os
 import pandas as pd
 
 from pypolp.dw.dw import DantzigWolfe, Record
-from pypolp.tools.parser import parse_mps_dec
+from pypolp.tools.parser import parse_mps_with_orders, parse_mps, get_dataframe_orders
+
 
 
 MODEL_NAME = 'laos'
 
-# Get out of decomposition and src
+
 CTIME = c_time = datetime.now().strftime("%Y%m%d_%H%M")
 PDIR = os.path.dirname(os.getcwd())
-INSTANCE_FOLDER = os.path.join(PDIR, 'temp', f'{MODEL_NAME}_instances')
-path_dec = os.path.join(INSTANCE_FOLDER, f'{MODEL_NAME}.dec')
+instance_folder = os.path.join(PDIR, 'temp', f'{MODEL_NAME}_instances')
+path_dec = os.path.join(instance_folder, f'{MODEL_NAME}.dec')
 
+
+path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_0.mps')
+(
+    _, A_df, _, _, col_df
+    ) = parse_mps(path_mps)
+
+row_order, col_order = get_dataframe_orders(path_dec, A_df, col_df)
+del A_df
+del col_df
 
 master_times = []
 master_itercounts = []
@@ -25,12 +35,13 @@ subp_itercounts = []
 
 # The number of MPS files is the total number of instances.
 # Note that we have one DEC file, so we need to subtract 1
-num_instances = len(os.listdir(INSTANCE_FOLDER)) - 1
+num_instances = len(os.listdir(instance_folder)) - 1
+num_instances = 3
 for k in range(num_instances):
     print(f'\n\n=== Solving Day {k} ===')
-    path_mps = os.path.join(INSTANCE_FOLDER, f'{MODEL_NAME}_{k}.mps')
+    path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_{k}.mps')
 
-    dw_problem = parse_mps_dec(path_mps, path_dec)
+    dw_problem = parse_mps_with_orders(path_mps, row_order, col_order)
     record = Record()
     record.fit(dw_problem)
         
