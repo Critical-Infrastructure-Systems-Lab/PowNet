@@ -7,7 +7,7 @@ from core.visualize import Visualizer
 
 
 
-MODEL_NAME = 'thailand'
+MODEL_NAME = 'laos'
 
 
 
@@ -18,7 +18,7 @@ def main():
     
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     steps = math.floor(8760/T)
-    # steps = 1
+    # steps = 2
     
     wdir = os.path.dirname((os.path.dirname(os.getcwd())))
     
@@ -32,7 +32,8 @@ def main():
         )
     
     simulator = Simulator(T=T, system_input=system_input)
-    var_node_t, var_flow, var_syswide = simulator.run(steps=steps)
+    var_node_t, _, _ = simulator.run(steps=steps)
+    # var_node_t.to_csv(os.path.join(wdir, 'outputs', f'{MODEL_NAME}_results.csv'))
     
     visualizer = Visualizer()
     visualizer.load(df=var_node_t, system_input=system_input)
