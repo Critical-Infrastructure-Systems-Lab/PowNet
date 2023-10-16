@@ -90,11 +90,22 @@ class Visualizer():
             
         # Plotting section
         fig, ax = plt.subplots(figsize=(8, 5))
-        total_dispatch.plot.bar(
-            stacked = True,
-            ax = ax,
-            linewidth = 0
-            )
+        # If we are plotting longer than 2 days, then the area plot
+        # is better at visualizing the fuel mix.
+        timesteps = total_dispatch.shape[0]
+        if timesteps > 48:
+            total_dispatch.plot.area(
+                stacked = True,
+                ax = ax,
+                linewidth = 0
+                )
+        else:
+            total_dispatch.plot.bar(
+                stacked = True,
+                ax = ax,
+                linewidth = 0
+                )
+            
         ax.legend(bbox_to_anchor=(1, 1))
         ax.set_ylabel('Power (MW)')
         ax.set_xlabel('Hour')
