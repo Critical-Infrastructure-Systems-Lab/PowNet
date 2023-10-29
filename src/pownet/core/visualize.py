@@ -5,6 +5,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from pownet.core.input import SystemInput
+from pownet.folder_sys import get_output_dir
+
 
 
 
@@ -18,6 +20,7 @@ class Visualizer():
         self.thermal_dispatch: pd.DataFrame = None
         self.rnw_dispatch: pd.DataFrame = None
         self.shortfall: pd.DataFrame = None
+
 
     
     def load(self, df: pd.DataFrame, system_input: SystemInput) -> None:
@@ -113,11 +116,8 @@ class Visualizer():
         
         if to_save:
             c_time = datetime.now().strftime("%Y%m%d_%H%M")
-            out_dir = os.path.dirname(
-                os.path.dirname(
-                    os.path.dirname(os.getcwd())))
             plt.savefig(os.path.join(
-                out_dir, 'outputs', f'{c_time}_fuelmix.png'))
+                get_output_dir(), f'{c_time}_fuelmix.png'))
         plt.show()
                 
 
@@ -156,10 +156,8 @@ class Visualizer():
             
             if to_save:
                 c_time = datetime.now().strftime("%Y%m%d_%H%M")
-                out_dir = os.path.dirname(
-                    os.path.dirname(
-                        os.path.dirname(os.getcwd())))
-                plt.savefig(os.path.join(
-                    out_dir, 'outputs', 
+                plt.savefig(
+                    os.path.join(
+                        get_output_dir(), 
                     f'{c_time}_{unit_g}.png'))
             plt.show()

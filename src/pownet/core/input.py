@@ -4,6 +4,7 @@ import gurobipy as gp
 import pandas as pd
 
 from pownet.processing.functions import get_arcs, get_linecap, get_suscept
+from pownet.folder_sys import get_model_dir
 
 
 
@@ -16,7 +17,7 @@ class SystemInput:
     def __init__(
             self, 
             T: int, 
-            model_folder: str,
+            model_name: str,
             F_SPIN: float = 0.15,
             price: str = 'fuel'
             ) -> None:
@@ -30,7 +31,7 @@ class SystemInput:
         '''
         self.T = T
 
-        self.model_dir: str = os.path.join(os.pardir, model_folder)
+        self.model_dir: str = os.path.join(get_model_dir(), model_name)
         
         # User inputs
         self.demand: pd.DataFrame = pd.read_csv(
