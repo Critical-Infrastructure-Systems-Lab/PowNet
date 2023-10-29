@@ -4,6 +4,7 @@ from pownet.core.builder import ModelBuilder
 from pownet.core.input import SystemInput
 from pownet.core.record import SystemRecord
 from pownet.processing.functions import create_init_condition
+from pownet.folder_sys import get_output_dir
 
 
 
@@ -61,7 +62,10 @@ class Simulator:
             init_conds = system_record.get_init_conds(k)
             
             # Save the model
+            output_dir = get_output_dir()
             dirname = f'{self.model_name}_instances'
+            dirname = os.path.join(output_dir, dirname)
+            
             if self.write_model:
                 if not os.path.exists(dirname):
                     os.makedirs(dirname)
