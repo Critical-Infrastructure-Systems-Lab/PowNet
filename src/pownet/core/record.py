@@ -116,6 +116,10 @@ class SystemRecord():
             
         self.current_v = cur_var_node_t[cur_var_node_t['vartype'] == 'on']\
             .drop('vartype', axis=1).set_index(['node', 'hour']).to_dict()['value']
+            
+        # Prevent numerical instability by converting to binary values
+        self.current_u = {k: int(v) for k, v in self.current_u.items()}
+        self.current_v = {k: int(v) for k, v in self.current_v.items()}
         
         
         # Record the results after incrementing the hour by the simulation period
