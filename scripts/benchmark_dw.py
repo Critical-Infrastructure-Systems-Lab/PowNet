@@ -14,9 +14,9 @@ from pypolp.optim import GurobipyOptimizer
 from pypolp.tools.parser import parse_mps_dec
 
 
-MODEL_NAME = 'dummy_3blocks'
+MODEL_NAME = 'cambodia_by_units'#'dummy_3blocks'
 PARSE_INSTANCE = True # Save the instance after 
-BOXPLOTS = True
+BOXPLOTS = False
 
 
 # Get out of decomposition and src
@@ -66,8 +66,9 @@ dw_objval, dw_solution = dw_instance.get_solution(record)
 t_end_dw = time.time()
 
 
-#%% Solve the LP
 
+#%% Solve the LP
+print('\n=== Benchmark: Solve as LP ===\n')
 t_start_lp = time.time()
 
 base_opt = GurobipyOptimizer.create(opt_problem_lp, to_log=True)
@@ -83,6 +84,8 @@ t_end_lp = time.time()
 
 
 #%% Solving as MIP
+print('\n=== Benchmark: Solve as MIP ===\n')
+
 t_start_mip = time.time()
 
 base_opt_mip = GurobipyOptimizer.create(opt_problem, to_log=True)
@@ -113,22 +116,25 @@ solutions.to_csv(
 
 
 #%% Visualize DW results
-xmax = len(dw_instance.primal_objvals)
+xmax = len(record.primal_objvals)
 
 fig, ax = plt.subplots() #figsize=(10,10))
-ax.plot(dw_instance.primal_objvals, linewidth=2)
+ax.plot(record.primal_objvals, linewidth=2, label='Dantzig-Wolfe')
+ax.plot(record.dual_bounds, linewidth=2, label='DW Bound')
 ax.hlines(
     y = lp_objval, 
     color='r', 
     xmin=0, xmax=xmax, 
     linewidth = 2,
-    linestyle = (0, (1, 1)))
+    linestyle = (0, (1, 1)),
+    label = 'Gurobi')
 
 # Formating section
 ax.set(xlabel='Iteration', ylabel='Objective value')
 ax.set_xticks(ticks=range(xmax), minor=True)
 ax.grid()
-plt.legend(['Dantzig-Wolfe', 'Normal Opt'])
+plt.legend()
+# plt.legend(['Dantzig-Wolfe', 'Normal Opt'])
 plt.savefig(
     os.path.join(
         PDIR, 'temp', 'decom_results',

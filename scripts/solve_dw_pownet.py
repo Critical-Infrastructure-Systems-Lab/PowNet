@@ -10,7 +10,7 @@ from pypolp.tools.parser import parse_mps_with_orders, parse_mps, get_dataframe_
 
 
 
-MODEL_NAME = 'laos'
+MODEL_NAME = 'cambodia'
 
 
 CTIME = c_time = datetime.now().strftime("%Y%m%d_%H%M")
