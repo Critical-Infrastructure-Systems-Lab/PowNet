@@ -16,6 +16,8 @@ from pypolp.tools.parser import parse_mps_dec
 
 MODEL_NAME = 'cambodia_by_units'#'dummy_3blocks'
 PARSE_INSTANCE = True # Save the instance after 
+SAVE_RESULT = False
+DWPLOT = False
 BOXPLOTS = False
 
 
@@ -101,45 +103,46 @@ t_end_mip = time.time()
 #%%
 
 # Compare the solution of DW to that of Gurobi
-dw_solution.columns = ['DW']
-lp_solution.columns = ['LP']
-mip_solution.columns = ['MIP']
-
-solutions = dw_solution.join(lp_solution, how='left')
-solutions = solutions.join(mip_solution, how='left')
- 
-c_time = datetime.now().strftime("%Y%m%d_%H%M")
-solutions.to_csv(
-    os.path.join(
-        PDIR, 'temp', 'decom_results', 
-        f'{c_time}_{MODEL_NAME}_solutions.csv'))
+if SAVE_RESULT:
+    dw_solution.columns = ['DW']
+    lp_solution.columns = ['LP']
+    mip_solution.columns = ['MIP']
+    
+    solutions = dw_solution.join(lp_solution, how='left')
+    solutions = solutions.join(mip_solution, how='left')
+     
+    c_time = datetime.now().strftime("%Y%m%d_%H%M")
+    solutions.to_csv(
+        os.path.join(
+            PDIR, 'temp', 'decom_results', 
+            f'{c_time}_{MODEL_NAME}_solutions.csv'))
 
 
 #%% Visualize DW results
-xmax = len(record.primal_objvals)
-
-fig, ax = plt.subplots() #figsize=(10,10))
-ax.plot(record.primal_objvals, linewidth=2, label='Dantzig-Wolfe')
-ax.plot(record.dual_bounds, linewidth=2, label='DW Bound')
-ax.hlines(
-    y = lp_objval, 
-    color='r', 
-    xmin=0, xmax=xmax, 
-    linewidth = 2,
-    linestyle = (0, (1, 1)),
-    label = 'Gurobi')
-
-# Formating section
-ax.set(xlabel='Iteration', ylabel='Objective value')
-ax.set_xticks(ticks=range(xmax), minor=True)
-ax.grid()
-plt.legend()
-# plt.legend(['Dantzig-Wolfe', 'Normal Opt'])
-plt.savefig(
-    os.path.join(
-        PDIR, 'temp', 'decom_results',
-        f'{c_time}_{MODEL_NAME}_dw.png'),
-    dpi=350)
+if DWPLOT:
+    xmax = len(record.primal_objvals)
+    fig, ax = plt.subplots() #figsize=(10,10))
+    ax.plot(record.primal_objvals, linewidth=2, label='Dantzig-Wolfe')
+    ax.plot(record.dual_bounds, linewidth=2, label='DW Bound')
+    ax.hlines(
+        y = lp_objval, 
+        color='r', 
+        xmin=0, xmax=xmax, 
+        linewidth = 2,
+        linestyle = (0, (1, 1)),
+        label = 'Gurobi')
+    
+    # Formating section
+    ax.set(xlabel='Iteration', ylabel='Objective value')
+    ax.set_xticks(ticks=range(xmax), minor=True)
+    ax.grid()
+    plt.legend()
+    # plt.legend(['Dantzig-Wolfe', 'Normal Opt'])
+    plt.savefig(
+        os.path.join(
+            PDIR, 'temp', 'decom_results',
+            f'{c_time}_{MODEL_NAME}_dw.png'),
+        dpi=350)
 
 
 
