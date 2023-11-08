@@ -34,7 +34,14 @@ master_itercounts = []
 subp_times = []
 subp_itercounts = []
 
-gurobi_times = []
+lp_gurobi_times = []
+mip_gurobi_times = []
+
+dw_objvals = []
+lp_objvals = []
+mip_objvals = []
+
+lp_is_int_solution = []
 
 # The number of MPS files is the total number of instances.
 # Note that we have one DEC file, so we need to subtract 1
@@ -60,21 +67,51 @@ for k in range(num_instances):
     master_itercounts.append(master_itercount)
     subp_itercounts.append(subp_itercount)
     
-    # Solve with Gurobi as the benchmark
+    dw_objval, dw_solution = dw_instance.get_solution(record)
+    dw_objvals.append(dw_objval)
+    
+    
+    # Solve with Gurobi as MIP
     print('\n')
     gp_model = gp.read(path_mps)
     gp_model.setParam('outputflag', 0)
     gp_model.optimize()
-    gurobi_times.append(gp_model.runtime)
+    
+    mip_gurobi_times.append(gp_model.runtime)
+    
+    mip_objval = gp_model.objval
+    mip_objvals.append(mip_objval)
+    
+    
+    # Solve with Gurobi as LP
+    gp_model = gp_model.relax()
+    gp_model.setParam('LPWarmStart', 0)
+    gp_model.optimize()
+    
+    lp_gurobi_times.append(gp_model.runtime)
+    
+    lp_objval = gp_model.objval
+    lp_objvals.append(lp_objval)
+    
+    # Check if the LP is integer solution
+    obj_diff = (mip_objval - lp_objval)
+    lp_is_int_solution.append(obj_diff < 1e-5)
     
 
 # Create a dataframe and 
+dw_times = [x+y for x,y in zip(master_times, subp_times)]
 dw_stats = pd.DataFrame({
-    'master_time': master_times,
-    'master_iter': master_itercounts,
-    'subp_time': subp_times,
-    'subp_iter': subp_itercounts,
-    'gurobi_time': gurobi_times
+    'master_times': master_times,
+    'master_iters': master_itercounts,
+    'subp_times': subp_times,
+    'subp_iters': subp_itercounts,
+    'dw_times': dw_times,
+    'lp_gurobi_times': lp_gurobi_times,
+    'mip_gurobi_times': mip_gurobi_times,
+    'dw_objvals': dw_objvals,
+    'lp_objvals': lp_objvals,
+    'mip_objvals': mip_objvals,
+    'int_solution': lp_is_int_solution
     })
 
 dw_stats.to_csv(
