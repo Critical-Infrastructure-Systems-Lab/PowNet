@@ -6,14 +6,14 @@ import pandas as pd
 from pownet.core.input import SystemInput
 from pownet.core.simulation import Simulator
 
+from pownet.folder_sys import get_output_dir, get_model_dir
 
 
-CDIR = os.path.dirname(os.getcwd())
 
-MODEL_NAME = 'laos'
-MODEL_FOLDER = os.path.join(CDIR, 'model_library', MODEL_NAME)
+MODEL_NAME = 'dummy_trade'
+MODEL_FOLDER = os.path.join(get_model_dir(), MODEL_NAME)
 
-WRITE_DEC = False
+WRITE_DEC = True
 
 
 # We are only optimizing one step which is 24 hours. This optimization
@@ -24,7 +24,7 @@ steps = 1
 
 
 ##--------------- This section writes MPS file(s)
-system_input = SystemInput(T=T, model_folder=MODEL_FOLDER)
+system_input = SystemInput(T=T, model_name=MODEL_NAME)
 simulator = Simulator(
     T = T, 
     system_input = system_input,
@@ -33,11 +33,6 @@ simulator = Simulator(
 
 # Run the model to instantiate the model
 var_node_t, var_flow, var_syswide = simulator.run(steps=steps)
-
-# Write a MPS file(s)
-dir_mps = os.path.join(CDIR, 'temp', 'decom_files', f'{MODEL_NAME}_{steps}.mps')
-simulator.model.write(dir_mps)
-
 
 
 
@@ -91,15 +86,15 @@ if WRITE_DEC:
         'minUp',
         'minUpInit',
         'minDownInit',
-        'peakDownBnd',
-        'peakUpBnd',
+        # 'peakDownBnd',
+        # 'peakUpBnd',
         'rampDown',
         'rampDownInit',
         'rampUp',
         'rampUpInit',
-        'trajecDownBnd',
-        'trajecUpBnd',
-        'trajecUpBnd2',
+        # 'trajecDownBnd',
+        # 'trajecUpBnd',
+        # 'trajecUpBnd2',
         'upper_p'
         ]
     
@@ -132,8 +127,9 @@ if WRITE_DEC:
     
     
     # This section writes the text file
-    filename = f'{MODEL_NAME}_by_units'
-    with open(f'..\\temp\\decom_files\\{filename}.dec', 'w') as f:
+    dec_filename = os.path.join(
+        get_output_dir(), f'{MODEL_NAME}_instances',f'{MODEL_NAME}.dec')
+    with open(dec_filename, 'w') as f:
         # Unspecified constraints are put into the master problem
         f.write('CONSDEFAULTMASTER')
         f.write('\n')

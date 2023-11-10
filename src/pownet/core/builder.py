@@ -628,11 +628,11 @@ class ModelBuilder():
         self._c_min_down()
         self._c_min_up()
 
-        self._c_peak_down_bound()
-        self._c_peak_up_bound()
+        # self._c_peak_down_bound()
+        # self._c_peak_up_bound()
 
-        self._c_trajec_down_bound()
-        self._c_trajec_up_bound()
+        # self._c_trajec_down_bound()
+        # self._c_trajec_up_bound()
 
         self._c_ramp_down()
         self._c_ramp_up()
