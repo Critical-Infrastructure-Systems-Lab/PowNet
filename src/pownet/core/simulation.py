@@ -4,7 +4,7 @@ from pownet.core.builder import ModelBuilder
 from pownet.core.input import SystemInput
 from pownet.core.record import SystemRecord
 from pownet.processing.functions import create_init_condition
-from pownet.folder_sys import get_output_dir
+from pownet.folder_sys import get_output_dir, get_temp_dir
 
 
 
@@ -54,7 +54,17 @@ class Simulator:
             if self.model.status == 3:
                 print(f'Iteration: {k} is infeasible.')
                 self.model.computeIIS()
-                self.model.write('infeasible.ilp')
+                ilp_file = os.path.join(
+                    get_temp_dir(),
+                    f'infeasible_{self.model_name}_{k}.ilp'
+                    )
+                self.model.write(ilp_file)
+                
+                mps_file = os.path.join(
+                    get_temp_dir(),
+                    f'infeasible_{self.model_name}_{k}.mps'
+                    )
+                self.model.write(mps_file)
                 break
             
             # Need k to increment the hours field

@@ -5,7 +5,7 @@ from pownet.core.simulation import Simulator
 from pownet.folder_sys import get_model_dir
 
 
-MODEL_NAME = 'cambodia'
+MODEL_NAME = 'thailand'
 MODEL_FOLDER = os.path.join(get_model_dir(), MODEL_NAME)
 
 WRITE_DEC = False

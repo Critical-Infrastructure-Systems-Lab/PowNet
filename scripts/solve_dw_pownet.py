@@ -15,7 +15,7 @@ MODEL_NAME = 'cambodia'
 
 CTIME = c_time = datetime.now().strftime("%Y%m%d_%H%M")
 PDIR = os.path.dirname(os.getcwd())
-instance_folder = os.path.join(PDIR, 'temp', f'{MODEL_NAME}_instances')
+instance_folder = os.path.join(PDIR, 'outputs', f'{MODEL_NAME}_instances')
 path_dec = os.path.join(instance_folder, f'{MODEL_NAME}.dec')
 
 
