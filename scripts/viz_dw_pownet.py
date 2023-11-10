@@ -9,7 +9,7 @@ import seaborn as sns
 
 PDIR = os.path.dirname(os.getcwd())
 TEMPDIR = os.path.join(PDIR, 'temp')
-FILENAME = '20231108_1357_cambodia_dw_stats'
+FILENAME = '20231108_2143_cambodia_dw_stats'
 
 
 
@@ -18,24 +18,24 @@ FILENAME = '20231108_1357_cambodia_dw_stats'
 dw_times = pd.read_csv(
     os.path.join(TEMPDIR, f'{FILENAME}.csv'), 
     header = 0, 
-    usecols = ['master_time', 'subp_time'])
+    usecols = ['master_times', 'subp_times'])
 dw_times.columns = ['Master time', 'Subproblem time']
 
 dw_itercounts = pd.read_csv(
     f'..//temp//{FILENAME}.csv', 
     header = 0, 
-    usecols = ['master_iter', 'subp_iter'])
+    usecols = ['master_iters', 'subp_iters'])
 dw_itercounts.columns = ['Master itercount', 'Subproblem itercount']
 
 gp_times_lp = pd.read_csv(
     f'..//temp//{FILENAME}.csv', 
     header = 0, 
-    usecols = ['gurobi_time_lp'])
+    usecols = ['lp_gurobi_times'])
 
 gp_times_mip = pd.read_csv(
     f'..//temp//{FILENAME}.csv', 
     header = 0, 
-    usecols = ['gurobi_time_mip'])
+    usecols = ['mip_gurobi_times'])
 
 instances_as_lp = pd.read_csv(
     f'..//temp//{FILENAME}.csv', 
@@ -93,8 +93,22 @@ ax.get_xaxis().set_visible(False)
 colorbar = ax.collections[0].colorbar
 colorbar.set_ticks([0.25, 0.75])
 colorbar.set_ticklabels(['False', 'True'])
+plt.show()
 
 
-# Fraction of days solved as LP
-print('\nFraction as LP:', round(sum(instances_as_lp)/ 365, 0))
+# Analysis
+print(f'\n\nStats for {FILENAME}')
+print('\nFraction as LP:', round(instances_as_lp.sum()*100/365, 0)[0], ' %')
+print(f'Total DW time: {dw_times.sum().round(3)[0]} s')
+print(f'Total LP Gurobi time: {gp_times_lp.sum().round(3)[0]} s')
+print(f'Total MIP Gurobi time: {gp_times_mip.sum().round(3)[0]} s')
 
+# Can DW be quicker than MIP?
+dw_times_total = dw_times.sum(axis=1)
+dw_quicker_mip = [(dw_time < mip_time)[0] for dw_time, mip_time in zip(dw_times_total.values, gp_times_mip.values)]
+print(f'# instances DW is quicker than MIP Gurobi: {sum(dw_quicker_mip)}')
+
+
+# What about LP gurobi vs MIP Gurobi?
+lp_quicker_mip = [(lp_time < mip_time)[0] for lp_time, mip_time in zip(gp_times_lp.values, gp_times_mip.values)]
+print(f'# instances LP Gurobi is quicker than MIP Gurobi: {sum(lp_quicker_mip)}')
