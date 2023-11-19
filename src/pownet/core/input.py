@@ -19,7 +19,8 @@ class SystemInput:
             T: int, 
             model_name: str,
             F_SPIN: float = 0.15,
-            price: str = 'fuel'
+            price: str = 'fuel',
+            reverse_flow: bool = False
             ) -> None:
         '''
         Read the user inputs that define the power system over one year.
@@ -98,10 +99,19 @@ class SystemInput:
                                 .union(set(self.nodes_w_demand))\
         
         # Transmission lines
-        self.arcs: gp.tuplelist = get_arcs(self.transmission)
-        self.linecap: pd.DataFrame = get_linecap(self.transmission)
+        self.arcs: gp.tuplelist = get_arcs(
+            self.transmission,
+            reverse_flow=reverse_flow
+            )
+        self.linecap: pd.DataFrame = get_linecap(
+            self.transmission,
+            reverse_flow=reverse_flow
+            )
         
-        self.suscept: pd.DataFrame = get_suscept(self.transmission)
+        self.suscept: pd.DataFrame = get_suscept(
+            self.transmission,
+            reverse_flow=reverse_flow
+            )
         self.suscept.index += 1
         
         # Thermal unit params

@@ -69,7 +69,7 @@ class Simulator:
             
             # Need k to increment the hours field
             system_record.keep(self.model, k, self.system_input)
-            init_conds = system_record.get_init_conds(k)
+            init_conds = system_record.get_init_conds()
             
             # Save the model
             output_dir = get_output_dir()

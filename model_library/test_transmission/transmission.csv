@@ -1,0 +1,6 @@
+source,sink,type,n_circuits,source_kv,sink_kv,distance,pownet_stability_limit,pownet_thermal_limit,pownet_line_capacity,pownet_reactance_pu,pownet_susceptance
+pGas,Node3,acsr,2,230,230,250,939,845,845,91.2,580
+Node3,Node1,acsr,2,275,275,250,1341,1010,1010,91.25,828
+Node1,Node2,acsr,2,345,345,250,2750,3299,2750,70.025,1699
+pHydro,Node2,acsr,1,500,500,250,3478,3481,3478,58.15,4299
+pOil,Node3,acsr,1,765,765,250,7444,6360,6360,63.6,9201
