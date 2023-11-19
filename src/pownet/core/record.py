@@ -14,13 +14,15 @@ def increment_hour(df: pd.DataFrame, T: int, k: int):
     
 
 def get_init_min_on(
-        df: pd.DataFrame, T: int, system_input: SystemInput
+        df: pd.DataFrame, 
+        T: int, 
+        system_input: SystemInput
         ) -> dict[str, int]:
     
     init_min_on = {}
     
     for unit_g in system_input.thermal_units:
-        df_unit = df[(df['node'] == unit_g) & (df['vartype'] == 'on')]\
+        df_unit = df[(df['node'] == unit_g) & (df['vartype'] == 'start')]\
             .set_index('hour').drop(['vartype', 'node'], axis=1)
             
         # Check if there are non-zero elements.
@@ -79,6 +81,7 @@ class SystemRecord():
         self.current_p = None
         self.current_u = None
         self.current_v = None
+        self.current_w = None
         self.current_min_on = None
         self.current_min_off = None
     
@@ -94,7 +97,8 @@ class SystemRecord():
         pat_vartype = r'(\w+)\['
         results[['vartype']] = results['varname'].str.extract(pat_vartype, expand=True)
         
-        # Some variables are not in the (node, t) format
+        # Some variables are not in the (node, t) format. 
+        # These are system-level variables
         col2exclude = ['flow', 'rsys']
         
         # Format the dataframe into vartype, node, hour, value columns
@@ -114,13 +118,16 @@ class SystemRecord():
         self.current_u = cur_var_node_t[cur_var_node_t['vartype'] == 'status']\
             .drop('vartype', axis=1).set_index(['node', 'hour']).to_dict()['value']
             
-        self.current_v = cur_var_node_t[cur_var_node_t['vartype'] == 'on']\
+        self.current_v = cur_var_node_t[cur_var_node_t['vartype'] == 'start']\
+            .drop('vartype', axis=1).set_index(['node', 'hour']).to_dict()['value']
+        
+        self.current_w = cur_var_node_t[cur_var_node_t['vartype'] == 'shut']\
             .drop('vartype', axis=1).set_index(['node', 'hour']).to_dict()['value']
             
         # Prevent numerical instability by converting to binary values
         self.current_u = {k: int(v) for k, v in self.current_u.items()}
         self.current_v = {k: int(v) for k, v in self.current_v.items()}
-        
+        self.current_w = {k: int(v) for k, v in self.current_w.items()}
         
         # Record the results after incrementing the hour by the simulation period
         cur_var_node_t = increment_hour(cur_var_node_t, T=self.T, k=k)
@@ -145,11 +152,12 @@ class SystemRecord():
         self.current_min_off = get_init_min_off(cur_var_node_t, self.T, system_input)
     
     
-    def get_init_conds(self, T: int) -> dict[str, dict]:
+    def get_init_conds(self) -> dict[str, dict]:
         return {
             'initial_p': self.current_p, 
             'initial_u': self.current_u, 
-            'initial_v': self.current_v, 
+            'initial_v': self.current_v,
+            'initial_w': self.current_w,
             'initial_min_on': self.current_min_on, 
             'initial_min_off': self.current_min_off
             }
@@ -160,6 +168,6 @@ class SystemRecord():
     
     
     def to_csv(self) -> None:
-        pass
+        raise NotImplementedError('Record.to_csv() has not been implemented.')
     
     

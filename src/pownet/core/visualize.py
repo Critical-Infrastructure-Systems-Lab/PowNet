@@ -8,6 +8,16 @@ from pownet.core.input import SystemInput
 from pownet.folder_sys import get_output_dir
 
 
+def format_variable_fueltype(
+        df: pd.DataFrame,
+        vartype: str,
+        fuel_type: str
+        ) -> None:
+        output_df = df[df['vartype'] == vartype]
+        # output_df = output_df.rename(columns={'value':'dispatch'})
+        output_df = output_df.reset_index(drop=True)
+        output_df['fuel_type'] = fuel_type
+        return output_df
 
 
 class Visualizer():
@@ -31,65 +41,50 @@ class Visualizer():
             .set_index('name').to_dict()['fuel_type']
         self.max_cap = system_input.max_cap
         
-
-        # Create a map of {unit_g: {hour: status}} to calculate the thermal dispatch
-        status_map = self.status[['node', 'hour', 'value']]\
-            .set_index(['node', 'hour']).to_dict()['value']
-        
-        # Calculate thermal dispatch from the variable p
-        self.thermal_dispatch = df[df['vartype'] == 'p']
-        self.thermal_dispatch = self.thermal_dispatch[
-            self.thermal_dispatch['node'].isin(self.thermal_units)]
-
-        self.thermal_dispatch['dispatch'] = self.thermal_dispatch.apply(
-            lambda x: x['value'] + system_input.min_cap[x['node']]*status_map[x['node'], x['hour']], 
-            axis=1)
-        
-        self.thermal_dispatch = self.thermal_dispatch.drop('value', axis=1)
+        # Generation from thermal units
+        self.thermal_dispatch = df[df['vartype'] == 'dispatch']
+        self.thermal_dispatch = self.thermal_dispatch
         self.thermal_dispatch = self.thermal_dispatch.reset_index(drop=True)
-        
         self.thermal_dispatch['fuel_type'] = self.thermal_dispatch.apply(
             lambda x: self.fuelmap[x['node']], axis=1)
-        
-        # Calculate the renewable dispatch from the variable prnw
+
+        # Generation from renewables
         self.rnw_dispatch = df[df['vartype'] == 'prnw']
-        self.rnw_dispatch = self.rnw_dispatch.rename(columns={'value':'dispatch'})
+        # self.rnw_dispatch = self.rnw_dispatch.rename(columns={'value':'dispatch'})
         self.rnw_dispatch = self.rnw_dispatch.reset_index(drop=True)
-        
         self.rnw_dispatch['fuel_type'] = self.rnw_dispatch.apply(
             lambda x: self.fuelmap[x['node']], axis=1)
         
+        # Generation from import nodes
+        self.p_import = format_variable_fueltype(df=df, vartype='pimp', fuel_type='import')
+
+        # There are positive and negative shortfalls
+        self.shortfall_pos = format_variable_fueltype(
+            df=df, vartype='s_pos', fuel_type='shortfall_positive')
+
+        self.shortfall_neg = format_variable_fueltype(
+            df=df, vartype='s_neg', fuel_type='shortfall_negative')
         
-        # Calculate the import from the variable pimp
-        self.p_import = df[df['vartype'] == 'pimp']
-        self.p_import = self.p_import.rename(columns={'value':'dispatch'})
-        self.p_import = self.p_import.reset_index(drop=True)
-        self.p_import['fuel_type'] = 'import'
-        
-        
-        # Calculate the shortfall from the variable s_pos
-        self.shortfall = df[df['vartype'] == 's_pos']
-        self.shortfall = self.shortfall.rename(columns={'value':'dispatch'})
-        self.shortfall = self.shortfall.reset_index(drop=True)
-        self.shortfall['fuel_type'] = 'shortfall'
-        
-        # Fix numerical issue
-        self.shortfall.loc[self.shortfall['dispatch'] <= 0, 'dispatch'] = 0
+        # # Fix numerical issue
+        # self.shortfall_pos.loc[self.shortfall_pos['value'] <= 0, 'value'] = 0
+        # self.shortfall_neg.loc[self.shortfall_neg['value'] <= 0, 'value'] = 0
+
         
     
     def plot_fuelmix(self, to_save: bool) -> None:
         total_dispatch = pd.concat(
-            [self.thermal_dispatch, self.rnw_dispatch, self.p_import, self.shortfall], 
+            [self.thermal_dispatch, self.rnw_dispatch, self.p_import, self.shortfall_pos, self.shortfall_neg], 
             axis = 0)
         
         total_dispatch = total_dispatch.reset_index(drop=True)
-        total_dispatch = total_dispatch[['fuel_type', 'dispatch', 'hour']]\
+        total_dispatch = total_dispatch[['fuel_type', 'value', 'hour']]\
             .groupby(['fuel_type', 'hour']).sum()
             
         total_dispatch = total_dispatch.reset_index()
         total_dispatch = total_dispatch.pivot(
             columns=['hour'], index=['fuel_type']).T\
             .reset_index(drop=True)
+        total_dispatch.index += 1
             
         # Plotting section
         fig, ax = plt.subplots(figsize=(8, 5))
@@ -135,7 +130,7 @@ class Visualizer():
             ax2 = ax1.twinx()
             
             ax1.step(
-                df1['hour'], df1['dispatch'], 
+                df1['hour'], df1['value'], 
                 where = 'mid', 
                 color = 'b', 
                 label = 'Power')

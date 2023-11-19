@@ -33,4 +33,11 @@ def get_home_dir() -> str:
     return os.path.expanduser('~')
 
 
+def get_database_dir() -> str:
+    return os.path.join(get_pownet_dir(), 'database')
+
+
+def get_test_dir() -> str:
+    return os.path.join(get_pownet_dir(), 'src', 'test_pownet')
+
 
