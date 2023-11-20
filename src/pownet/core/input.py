@@ -20,6 +20,7 @@ class SystemInput:
             model_name: str,
             F_SPIN: float = 0.15,
             price: str = 'fuel',
+            aggregated_generator: bool = False,
             reverse_flow: bool = False
             ) -> None:
         '''
@@ -48,6 +49,12 @@ class SystemInput:
         self.fuelmap: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, 'fuel_map.csv'),
             header=0)
+        
+        if aggregated_generator:
+            self.node_generator_map: pd.DataFrame = pd.read_csv(
+                os.path.join(self.model_dir, 'fuel_map.csv'),
+                header=0)
+        
         
         self.fuelprice: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, 'fuel_price.csv'),

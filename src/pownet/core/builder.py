@@ -509,7 +509,7 @@ class ModelBuilder():
             for node in self.inputs.nodes:
                 # If n is a thermal unit, then it can generate energy
                 if node in self.inputs.thermal_units:
-                    thermal_gen = self.p[node, t] + self.inputs.min_cap[node] * self.u[node, t]
+                    thermal_gen = self.dispatch[node, t]
                 else: 
                     thermal_gen = 0
                 
