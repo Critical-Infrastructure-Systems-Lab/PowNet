@@ -84,6 +84,8 @@ class InputProcessor:
                 ),
             axis=1
             )
+        # The transmission limit is the minimum of the thermal limit and
+        # the steady-state steability limit. Normally, distance is the deciding factor.
         self.transmission_data['pownet_line_capacity'] =\
             self.transmission_data[['pownet_thermal_limit', 'pownet_stability_limit']]\
             .min(axis=1)

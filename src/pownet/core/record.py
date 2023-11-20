@@ -131,6 +131,9 @@ class SystemRecord():
         
         # Record the results after incrementing the hour by the simulation period
         cur_var_node_t = increment_hour(cur_var_node_t, T=self.T, k=k)
+        # The solver produces very small numbers
+        cur_var_node_t.loc[np.isclose(cur_var_node_t['value'], 0), 'value'] = 0
+        
         self.var_node_t = pd.concat(
             [self.var_node_t, cur_var_node_t],
             axis = 0)
@@ -145,7 +148,6 @@ class SystemRecord():
         self.var_syswide = pd.concat(
             [self.var_syswide, cur_var_syswide],
             axis = 0)
-        
         
         # Need to calculate the minimum time on/off
         self.current_min_on = get_init_min_on(cur_var_node_t, self.T, system_input)
