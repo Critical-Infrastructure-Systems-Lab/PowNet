@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 
 from pownet.core.input import SystemInput
@@ -22,6 +23,8 @@ def format_variable_fueltype(
 
 class Visualizer():
     def __init__(self) -> None:
+        self.model_name = None
+        
         self.status: pd.DataFrame = None
         self.fuelmap: dict[str, str] = None
         self.thermal_units: list[str] = None
@@ -33,7 +36,8 @@ class Visualizer():
 
 
     
-    def load(self, df: pd.DataFrame, system_input: SystemInput) -> None:
+    def load(self, df: pd.DataFrame, system_input: SystemInput, model_name) -> None:
+        self.model_name = model_name
         
         self.status = df[df['vartype'] == 'status']
         self.thermal_units = system_input.thermal_units
@@ -69,8 +73,6 @@ class Visualizer():
         # self.shortfall_pos.loc[self.shortfall_pos['value'] <= 0, 'value'] = 0
         # self.shortfall_neg.loc[self.shortfall_neg['value'] <= 0, 'value'] = 0
 
-        
-    
     def plot_fuelmix(self, to_save: bool) -> None:
         total_dispatch = pd.concat(
             [self.thermal_dispatch, self.rnw_dispatch, self.p_import, self.shortfall_pos, self.shortfall_neg], 
@@ -85,6 +87,10 @@ class Visualizer():
             columns=['hour'], index=['fuel_type']).T\
             .reset_index(drop=True)
         total_dispatch.index += 1
+        
+        # Ensure all close to zero values are zero
+        for col in total_dispatch.columns:
+            total_dispatch.loc[np.isclose(total_dispatch[col], 0), col] = 0
             
         # Plotting section
         fig, ax = plt.subplots(figsize=(8, 5))
@@ -112,7 +118,7 @@ class Visualizer():
         if to_save:
             c_time = datetime.now().strftime("%Y%m%d_%H%M")
             plt.savefig(os.path.join(
-                get_output_dir(), f'{c_time}_fuelmix.png'))
+                get_output_dir(), f'{c_time}_{self.model_name}_fuelmix.png'))
         plt.show()
                 
 
@@ -154,5 +160,5 @@ class Visualizer():
                 plt.savefig(
                     os.path.join(
                         get_output_dir(), 
-                    f'{c_time}_{unit_g}.png'))
+                    f'{c_time}_{self.model_name}_{unit_g}.png'))
             plt.show()
