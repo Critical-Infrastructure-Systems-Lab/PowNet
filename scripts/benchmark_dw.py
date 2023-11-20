@@ -14,7 +14,7 @@ from pypolp.optim import GurobipyOptimizer
 from pypolp.tools.parser import parse_mps_dec
 
 
-MODEL_NAME = 'cambodia_by_units'#'dummy_3blocks'
+MODEL_NAME = 'thailand'
 PARSE_INSTANCE = True # Save the instance after 
 SAVE_RESULT = False
 DWPLOT = False

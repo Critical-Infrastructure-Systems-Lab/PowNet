@@ -8,7 +8,7 @@ from pypolp.tools.parser import parse_mps_dec
 
 
 
-MODEL_NAME = 'laos_by_units'
+MODEL_NAME = 'thailand'
 
 # Get the A matrix as a dataframe
 
