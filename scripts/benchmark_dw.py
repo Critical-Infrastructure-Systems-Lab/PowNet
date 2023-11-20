@@ -164,7 +164,8 @@ print('Parse Time (s) ', round(t_end_parse - t_start_parse, 2))
 print(f'\nOpt time - Master Problem:   {round(master_time, 5)} s')
 print(f'Opt time - Subproblem:       {round(subproblem_time, 5)} s')
 print(f'Opt time - DW Total:         {round(master_time+subproblem_time, 5)} s')
-print(f'Opt time - Base Gurobi:      {round(base_opt.runtime, 5)} s')
+print(f'Opt time - LP Gurobi:      {round(base_opt.runtime, 5)} s')
+print(f'Opt time - MIP Gurobi:      {round(base_opt_mip.runtime, 5)} s')
 
 
 #%% Visualize the stats
