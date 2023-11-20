@@ -10,7 +10,7 @@ from pownet.folder_sys import get_output_dir, get_model_dir
 
 
 
-MODEL_NAME = 'dummy_trade'
+MODEL_NAME = 'thailand'
 MODEL_FOLDER = os.path.join(get_model_dir(), MODEL_NAME)
 
 WRITE_DEC = True
@@ -79,23 +79,24 @@ if WRITE_DEC:
         }
     
     unit_constraints = [
+        'link_uvw_init',
+        'link_uvw',
+        'link_dispatch',
         'link_p',
-        'link_uv',
-        'link_uv_init',
+        'p_lower_bound',
+        'p_upper_bound',
+        'minDownInit',
+        'minUpInit',
         'minDown',
         'minUp',
-        'minUpInit',
-        'minDownInit',
-        # 'peakDownBnd',
-        # 'peakUpBnd',
         'rampDown',
         'rampDownInit',
         'rampUp',
         'rampUpInit',
+        # 'peakDownBnd',
+        # 'peakUpBnd',
         # 'trajecDownBnd',
         # 'trajecUpBnd',
-        # 'trajecUpBnd2',
-        'upper_p'
         ]
     
     ## Future imlementations might consider separating these blocks

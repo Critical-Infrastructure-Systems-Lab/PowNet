@@ -94,7 +94,7 @@ for k in range(num_instances):
     lp_objvals.append(lp_objval)
     
     # Check if the LP is integer solution
-    obj_diff = (mip_objval - lp_objval)
+    obj_diff = (mip_objval - lp_objval)/lp_objval
     lp_is_int_solution.append(obj_diff < 1e-5)
     
 
