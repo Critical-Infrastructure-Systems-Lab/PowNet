@@ -114,6 +114,7 @@ class SystemInput:
             self.transmission,
             reverse_flow=reverse_flow
             )
+        self.linecap.index += 1
         
         self.suscept: pd.DataFrame = get_suscept(
             self.transmission,
