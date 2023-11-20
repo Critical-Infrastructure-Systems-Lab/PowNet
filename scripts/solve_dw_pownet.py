@@ -3,6 +3,7 @@ from datetime import datetime
 import os
 
 import gurobipy as gp
+import numpy as np
 import pandas as pd
 
 from pypolp.dw.dw import DantzigWolfe, Record
@@ -94,8 +95,8 @@ for k in range(num_instances):
     lp_objvals.append(lp_objval)
     
     # Check if the LP is integer solution
-    obj_diff = (mip_objval - lp_objval)/lp_objval
-    lp_is_int_solution.append(obj_diff < 1e-5)
+    obj_diff = np.isclose(mip_objval - lp_objval, 0)
+    lp_is_int_solution.append(obj_diff == 0)
     
 
 # Create a dataframe and 
