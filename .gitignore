@@ -15,3 +15,4 @@ user_inputs/*
 # Ignore subfolders in the analysis folder
 src/analysis/decom_files/*
 src/analysis/results/*
+scripts/scratch.py

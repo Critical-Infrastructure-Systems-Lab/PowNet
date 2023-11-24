@@ -707,7 +707,6 @@ class ModelBuilder():
 
     def _add_constraints(self) -> None:
         #---------------- Section: Constraints
-        #TODO: Modify this section
         self._c_link_uvw()
         self._c_link_dispatch()
         self._c_link_p()

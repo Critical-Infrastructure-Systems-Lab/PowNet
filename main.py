@@ -15,7 +15,7 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 2
+    STEPS = 365
     
     #############################
     output_dir = get_output_dir()
@@ -45,7 +45,8 @@ def main():
     
     visualizer.plot_fuelmix(to_save=False)
     # The dispatch plot does not work well when simulating more than 2 days.
-    if STEPS <= 48 and False: # Will implement better logic control later
+    # TODO: Implement a better logic control
+    if STEPS <= 48 and True:
         visualizer.plot_thermal_units(to_save=False)
 
 
