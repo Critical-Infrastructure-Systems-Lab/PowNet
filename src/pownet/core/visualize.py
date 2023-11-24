@@ -90,7 +90,7 @@ class Visualizer():
         
         # Ensure all close to zero values are zero
         for col in total_dispatch.columns:
-            total_dispatch.loc[np.isclose(total_dispatch[col], 0), col] = 0
+            total_dispatch.loc[total_dispatch[col] < 0 , col] = 0
             
         # Plotting section
         fig, ax = plt.subplots(figsize=(8, 5))
