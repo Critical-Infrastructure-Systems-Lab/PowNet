@@ -1,0 +1,1 @@
+{"cycle_1": ["Node1", "Supplier", "Node3"], "cycle_2": ["Node2", "Node1", "Node3", "Buyer", "pHydro"]}

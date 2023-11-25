@@ -1,3 +1,4 @@
+import json
 import os
 
 import gurobipy as gp
@@ -55,7 +56,6 @@ class SystemInput:
                 os.path.join(self.model_dir, 'fuel_map.csv'),
                 header=0)
         
-        
         self.fuelprice: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, 'fuel_price.csv'),
             header=0).drop(DATE_COLS, axis=1)
@@ -108,8 +108,11 @@ class SystemInput:
         # Transmission lines
         self.arcs: gp.tuplelist = get_arcs(
             self.transmission,
-            reverse_flow=reverse_flow
+            reverse_flow = reverse_flow
             )
+        with open(os.path.join(self.model_dir, 'pownet_cycle_map.json')) as f:
+            self.cycle_map: dict = json.load(f)
+        
         self.linecap: pd.DataFrame = get_linecap(
             self.transmission,
             reverse_flow=reverse_flow

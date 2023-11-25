@@ -1,7 +1,10 @@
+import json
 import math
 
 from gurobipy import GRB
 import gurobipy as gp
+import networkx as nx
+import pandas as pd
 
 from pownet.core.input import SystemInput
 
@@ -14,11 +17,15 @@ class ModelBuilder():
     def __init__(
             self,
             inputs: SystemInput,
+            formulation: str = 'voltage_angle',
             reverse_flow: bool = False
             ) -> None:
 
         self.model = None
+        self.formulation = formulation
         self.reverse_flow = reverse_flow
+        if reverse_flow:
+            raise NotImplementedError('Reverse flow is not implemented.')
         
         # Variables. See
         self.dispatch = None
@@ -498,7 +505,54 @@ class ModelBuilder():
 
 
     def _c_kirchhoff_voltage(self):
-        pass
+        cycle_incidence = pd.DataFrame(
+            0,
+            index = pd.MultiIndex.from_tuples(self.inputs.arcs, names=["source", "sink"]),
+            columns = self.inputs.cycle_map.keys()
+            )
+        
+        # The flow is positive with respect to the edges specified by the user
+        for cycle_id, cycle in self.inputs.cycle_map.items():
+            # Kirchhoff formulation requires summing along the loop direction.
+            # If an arc is in cycle_graph and the input file, then 1. Otherwise, -1.
+            cycle_graph = nx.path_graph(cycle)
+            cycle_arcs = list(cycle_graph.edges)
+            # Append the last arc connecting the last node to the first node
+            cycle_arcs.append(
+                (cycle_arcs[-1][-1], cycle_arcs[0][0]))
+            
+            # We also need the reactance (susceptance) to calculate the factors in the cycle-incidence
+            cycle_susceptance = pd.DataFrame() 
+            for flow in cycle_arcs:
+                if flow in self.inputs.arcs:
+                    cycle_incidence.loc[flow, cycle_id] = 1
+                    cycle_susceptance = pd.concat(
+                        [cycle_susceptance, self.inputs.suscept[flow]],
+                        axis = 1
+                        )
+                else:
+                    cycle_incidence.loc[(flow[1], flow[0]), cycle_id] = -1
+                    cycle_susceptance = pd.concat(
+                        [cycle_susceptance, self.inputs.suscept[(flow[1], flow[0])]],
+                        axis = 1
+                        )
+
+            # Try constructing the constraint
+            # Equation 23b in Horsch et al (2018)
+            self.model.addConstrs(
+                (
+                 gp.quicksum(
+                     (cycle_incidence.loc[(a, b), cycle_id]
+                         * 1/cycle_susceptance.loc[t + self.T*self.k, [(a, b)]]
+                         * self.flow[a, b, t])[0]
+                         for (a, b) in cycle_susceptance.columns
+                         ) 
+                     == 0
+                    for t in self.timesteps
+                ),
+                name = f'kirchhoff_{cycle_id}'
+                )
+        
         
 
     def _c_flow_balance(self):
@@ -726,9 +780,15 @@ class ModelBuilder():
 
         self._c_ramp_down()
         self._c_ramp_up()
-
-        self._c_ref_node()
-        self._c_angle_diff()
+        
+        if self.formulation == 'voltage_angle':
+            self._c_ref_node()
+            self._c_angle_diff()
+        elif self.formulation == 'kirchhoff':
+            self._c_kirchhoff_voltage()
+        else:
+            raise ValueError(f'Unrecognized formulation: {self.formulation}')
+        
         self._c_flow_balance()
 
         self._c_reserve_req()

@@ -1,5 +1,7 @@
+import json
 import os
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 
@@ -20,8 +22,9 @@ class InputProcessor:
         self.wavelength = wavelengths[frequency]
         
         # Note that we will modify the original file
-        model_folder = os.path.join(get_model_dir(), model_name)
-        self.transmission_file = os.path.join(model_folder, 'transmission.csv')
+        self.model_folder = os.path.join(get_model_dir(), model_name)
+        
+        self.transmission_file = os.path.join(self.model_folder, 'transmission.csv')
         self.transmission_data = pd.read_csv(self.transmission_file, header=0)
         
         # We use these parameters for calculations
@@ -114,11 +117,30 @@ class InputProcessor:
             axis = 1)
     
 
-    def transform(self, to_write: bool = True) -> None:
+    def transform_transmission_inputs(self, to_write: bool = True) -> None:
         self.get_transmission_capacity()
         self.get_transmission_susceptance()
         # Write the new columns
         if to_write:
             self.transmission_data.to_csv(self.transmission_file, index=False)
+            
+            
+    def get_cycle_map(self, to_write: bool = True) -> None:
+        # Find all the basic cycles in the transmission system
+        graph = nx.from_pandas_edgelist(
+            self.transmission_data,
+            source='source',
+            target='sink',
+            )
+        cycles = nx.cycle_basis(graph)
+        
+        # We save this map to use by the ModelBuilder
+        cycle_map = {f'cycle_{idx+1}': cycle for idx, cycle in enumerate(cycles)}
+        
+        # Save in the model_library/model_name folder so we only need to find
+        # the cycles once
+        with open(os.path.join(self.model_folder, 'pownet_cycle_map.json'), 'w') as f:
+            json.dump(cycle_map, f)
+        
         
         
