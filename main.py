@@ -10,12 +10,12 @@ from pownet.folder_sys import get_output_dir
 
 def main():
     #------- User defined inputs
-    MODEL_NAME = 'laos'
+    MODEL_NAME = 'thailand'
     # The default simulation horizon T is 24 hours
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 365
+    STEPS = 1
     
     #############################
     output_dir = get_output_dir()
@@ -33,12 +33,12 @@ def main():
     simulator = Simulator(T=T, system_input=system_input)
     var_node_t, _, _ = simulator.run(steps=STEPS)
     
-    var_node_t.to_csv(
-    os.path.join(
-        get_output_dir(),
-        f'{datetime.now().strftime("%Y%m%d_%H%M")}_{MODEL_NAME}_outputs.csv'
-        )
-    )
+    # var_node_t.to_csv(
+    # os.path.join(
+    #     get_output_dir(),
+    #     f'{datetime.now().strftime("%Y%m%d_%H%M")}_{MODEL_NAME}_outputs.csv'
+    #     )
+    # )
     
     visualizer = Visualizer()
     visualizer.load(df=var_node_t, system_input=system_input, model_name=MODEL_NAME)
@@ -46,7 +46,7 @@ def main():
     visualizer.plot_fuelmix(to_save=False)
     # The dispatch plot does not work well when simulating more than 2 days.
     # TODO: Implement a better logic control
-    if STEPS <= 48 and True:
+    if STEPS <= 48 and len(system_input.thermal_units) <= 10:
         visualizer.plot_thermal_units(to_save=False)
 
 

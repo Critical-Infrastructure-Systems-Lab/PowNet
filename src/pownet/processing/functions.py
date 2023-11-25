@@ -1,6 +1,7 @@
 '''This script contains functions for processing user inputs'''
 
 import gurobipy as gp
+import networkx as nx
 import numpy as np
 import pandas as pd
 
@@ -22,6 +23,13 @@ def get_arcs(transmission: pd.DataFrame, reverse_flow: bool = False) -> gp.tuple
         arcs.extend(
             transmission.set_index(['sink', 'source']).index.tolist()
             )
+
+
+def get_cycles(transmission: pd.DataFrame, reverse_flow: bool =  False) -> gp.tuplelist:
+    if not reverse_flow:
+        pass
+    else:
+        raise NotImplementedError('Not yet implement cycles for reverse flow formulation.')
 
 
 def get_suscept(transmission: pd.DataFrame, reverse_flow: bool = False) -> pd.DataFrame:
