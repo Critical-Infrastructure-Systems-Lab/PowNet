@@ -1,4 +1,3 @@
-import json
 import math
 
 from gurobipy import GRB
@@ -17,17 +16,25 @@ class ModelBuilder():
     def __init__(
             self,
             inputs: SystemInput,
-            formulation: str = 'voltage_angle',
             reverse_flow: bool = False
             ) -> None:
 
         self.model = None
-        self.formulation = formulation
+        self.model_name = inputs.model_name
+        
+        # We allow two formulations at the moment
+        if inputs.formulation not in ['voltage_angle', 'kirchhoff']:
+            raise ValueError(
+                f'Formulation is either "voltage_angle" or "kirchhoff", but given {inputs.formulation}.')
+        else:
+            self.formulation = inputs.formulation
+        
+        # reverse_flow is not implemented yet
         self.reverse_flow = reverse_flow
         if reverse_flow:
             raise NotImplementedError('Reverse flow is not implemented.')
         
-        # Variables. See
+        # Variables. See _add_variables for the descriptions.
         self.dispatch = None
         self.p = None
         self.pbar = None
@@ -50,7 +57,6 @@ class ModelBuilder():
         self.theta = None
         
         # Parameters
-        # SystemInput contains the model parameters
         self.inputs = inputs
         self.T = self.inputs.T
         
@@ -61,7 +67,9 @@ class ModelBuilder():
         self.initial_min_on = None
         self.initial_min_off = None
         
-        # Timesteps t are in [1, 24]. The intial condition is defined at t=0
+        # The indexing of timesteps begin at 1. If timestep is zero, then it is
+        # last timestep of the previous simulation. This is important for
+        # defining initial conditions.
         self.timesteps = range(1, self.inputs.T+1)
         self.k = None
     
@@ -505,6 +513,10 @@ class ModelBuilder():
 
 
     def _c_kirchhoff_voltage(self):
+        ''' Equation 23b in Horsch et al (2018). Although the paper states
+        that it is mathematically equivalent to the voltage-angle formulation,
+        both formulations will likely not produce the same solution.
+        '''
         cycle_incidence = pd.DataFrame(
             0,
             index = pd.MultiIndex.from_tuples(self.inputs.arcs, names=["source", "sink"]),
@@ -537,8 +549,6 @@ class ModelBuilder():
                         axis = 1
                         )
 
-            # Try constructing the constraint
-            # Equation 23b in Horsch et al (2018)
             self.model.addConstrs(
                 (
                  gp.quicksum(
@@ -554,7 +564,6 @@ class ModelBuilder():
                 )
         
         
-
     def _c_flow_balance(self):
         '''Equation 65 of Kneuven et al (2019).
         We do not aggregate thermal units to a node. A thermal unit is its own node.
@@ -747,14 +756,15 @@ class ModelBuilder():
                 )
 
         # Volt angle. Unit: radians
-        # self.theta = self.model.addVars(
-        # nodes, timesteps, vtype=GRB.CONTINUOUS, lb=-pi, ub=pi, name='volt_angle')
-        self.theta = self.model.addVars(
-            self.inputs.nodes, self.timesteps,
-            lb = 0,
-            ub = 2*math.pi,
-            vtype = GRB.CONTINUOUS,
-            name = 'volt_angle')
+        # Not sure if we should do between -pi and pi or between 0 and 2*pi
+        if self.formulation == 'voltage_angle':
+            self.theta = self.model.addVars(
+                self.inputs.nodes, 
+                self.timesteps,
+                lb = 0,
+                ub = 2*math.pi,
+                vtype = GRB.CONTINUOUS,
+                name = 'volt_angle')
         
         self.model.update()
 
@@ -786,8 +796,6 @@ class ModelBuilder():
             self._c_angle_diff()
         elif self.formulation == 'kirchhoff':
             self._c_kirchhoff_voltage()
-        else:
-            raise ValueError(f'Unrecognized formulation: {self.formulation}')
         
         self._c_flow_balance()
 
@@ -813,7 +821,7 @@ class ModelBuilder():
         self.initial_min_on = init_conds['initial_min_on']
         self.initial_min_off = init_conds['initial_min_off']
         
-        self.model = gp.Model('UCED_Simulation')
+        self.model = gp.Model(f'{self.model_name}_{k+1}')
         self._add_variables()
         self._set_objective()
         self._add_constraints()

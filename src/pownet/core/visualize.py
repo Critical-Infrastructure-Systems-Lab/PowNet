@@ -2,7 +2,6 @@ from datetime import datetime
 import os
 
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 
 from pownet.core.input import SystemInput
