@@ -16,12 +16,13 @@ def increment_hour(df: pd.DataFrame, T: int, k: int):
 def get_init_min_on(
         df: pd.DataFrame, 
         T: int, 
-        system_input: SystemInput
+        thermal_units: list[str, ...],
+        TU: dict[str, int]
         ) -> dict[str, int]:
     
     init_min_on = {}
     
-    for unit_g in system_input.thermal_units:
+    for unit_g in thermal_units:
         df_unit = df[(df['node'] == unit_g) & (df['vartype'] == 'start')]\
             .set_index('hour').drop(['vartype', 'node'], axis=1)
             
@@ -36,18 +37,21 @@ def get_init_min_on(
             
         # The calculated remaining shutdown duration can be negative, 
         # which should be converted to
-        init_min_on[unit_g] = max(0, system_input.TU[unit_g] - (T - time_last_off))
+        init_min_on[unit_g] = max(0, TU[unit_g] - (T - time_last_off))
 
     return init_min_on
 
 
 def get_init_min_off(
-        df: pd.DataFrame, T: int, system_input: SystemInput
+        df: pd.DataFrame,
+        T: int,
+        thermal_units: list[str, ...],
+        TD: dict[str, int]
         ) -> dict[str, int]:
     
     init_min_off = {}
     
-    for unit_g in system_input.thermal_units:
+    for unit_g in thermal_units:
         df_unit = df[(df['node'] == unit_g) & (df['vartype'] == 'shut')]\
             .set_index('hour').drop(['vartype', 'node'], axis=1)
             
@@ -62,15 +66,20 @@ def get_init_min_off(
             
         # The calculated remaining shutdown duration can be negative, 
         # which should be converted to
-        init_min_off[unit_g] = max(0, system_input.TD[unit_g] - (T - time_last_on))
+        init_min_off[unit_g] = max(0, TD[unit_g] - (T - time_last_on))
 
     return init_min_off
 
 
 
 class SystemRecord():
-    def __init__(self, T: int) -> None:
-        self.T: int = T
+    def __init__(self, system_input: SystemInput) -> None:
+        self.T: int =system_input.T
+        
+        self.thermal_units: list = system_input.thermal_units
+        self.TD: dict[str, int] = system_input.TD
+        self.TU: dict[str, int] = system_input.TU
+        
         # The model results are separated into three types based on
         # the formating of their index: var(node, t), var(node, node, t), var(t)
         self.var_node_t: pd.DataFrame = None
@@ -86,7 +95,7 @@ class SystemRecord():
         self.current_min_off = None
     
     
-    def keep(self, model: gp.Model, k: int, system_input: SystemInput) -> None:
+    def keep(self, model: gp.Model, k: int) -> None:
         # Extract the variables from the model to process them
         all_vars = model.getVars()
         values = model.getAttr("X", all_vars)
@@ -150,8 +159,18 @@ class SystemRecord():
             axis = 0)
         
         # Need to calculate the minimum time on/off
-        self.current_min_on = get_init_min_on(cur_var_node_t, self.T, system_input)
-        self.current_min_off = get_init_min_off(cur_var_node_t, self.T, system_input)
+        self.current_min_on = get_init_min_on(
+            cur_var_node_t, 
+            T = self.T, 
+            thermal_units = self.thermal_units,
+            TU = self.TU
+            )
+        self.current_min_off = get_init_min_off(
+            cur_var_node_t,
+            T = self.T,
+            thermal_units = self.thermal_units,
+            TD = self.TD
+            )
     
     
     def get_init_conds(self) -> dict[str, dict]:

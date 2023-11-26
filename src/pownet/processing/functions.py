@@ -1,7 +1,7 @@
 '''This script contains functions for processing user inputs'''
+import datetime
 
 import gurobipy as gp
-import networkx as nx
 import numpy as np
 import pandas as pd
 
@@ -157,3 +157,7 @@ def get_nodehour_sys(df: pd.DataFrame) -> pd.DataFrame:
     out_df['hour'] = out_df['hour'].astype('int')
     out_df = pd.concat([out_df, df['value']], axis=1)
     return out_df
+
+
+def get_current_time() -> str:
+    return datetime.now().strftime("%Y%m%d_%H%M")

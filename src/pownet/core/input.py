@@ -13,11 +13,11 @@ from pownet.folder_sys import get_model_dir
 DATE_COLS = ['year', 'month', 'day', 'hour']
 
 
-
 class SystemInput:
     def __init__(
             self, 
-            T: int, 
+            T: int,
+            formulation: str,
             model_name: str,
             F_SPIN: float = 0.15,
             price: str = 'fuel',
@@ -33,6 +33,8 @@ class SystemInput:
 
         '''
         self.T = T
+        self.formulation = formulation
+        self.model_name = model_name
 
         self.model_dir: str = os.path.join(get_model_dir(), model_name)
         
@@ -87,7 +89,7 @@ class SystemInput:
             )
         
         # Import nodes are treated similary to a renewable but with higher cost
-        fn_import =   os.path.join(self.model_dir, 'import.csv')
+        fn_import = os.path.join(self.model_dir, 'import.csv')
         if os.path.exists(fn_import):
             self.p_import: pd.DataFrame = pd.read_csv(
                 fn_import,
@@ -110,8 +112,6 @@ class SystemInput:
             self.transmission,
             reverse_flow = reverse_flow
             )
-        with open(os.path.join(self.model_dir, 'pownet_cycle_map.json')) as f:
-            self.cycle_map: dict = json.load(f)
         
         self.linecap: pd.DataFrame = get_linecap(
             self.transmission,
@@ -125,6 +125,11 @@ class SystemInput:
             )
         self.suscept.index += 1
         
+        # User should use the PowNet processing function to identify the basic cycles
+        if formulation == 'kirchhoff':
+            with open(os.path.join(self.model_dir, 'pownet_cycle_map.json')) as f:
+                self.cycle_map: dict = json.load(f)
+
         # Thermal unit params
         self.max_cap: dict = pd.read_csv(
             os.path.join(self.model_dir, 'unit_param.csv'),

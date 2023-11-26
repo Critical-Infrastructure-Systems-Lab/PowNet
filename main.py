@@ -1,4 +1,3 @@
-from datetime import datetime
 import os
 
 from pownet.core.input import SystemInput
@@ -10,7 +9,7 @@ from pownet.folder_sys import get_output_dir
 
 def main():
     #------- User defined inputs
-    MODEL_NAME = 'thailand'
+    MODEL_NAME = 'dummy_trade'
     # The default simulation horizon T is 24 hours
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
@@ -27,10 +26,11 @@ def main():
     # The user should create their own model in the model_library folder
     system_input = SystemInput(
         T = T,
+        formulation = 'voltage_angle',
         model_name = MODEL_NAME
         )
     
-    simulator = Simulator(T=T, system_input=system_input)
+    simulator = Simulator(system_input=system_input)
     var_node_t, _, _ = simulator.run(steps=STEPS)
     
     # var_node_t.to_csv(
@@ -44,8 +44,8 @@ def main():
     visualizer.load(df=var_node_t, system_input=system_input, model_name=MODEL_NAME)
     
     visualizer.plot_fuelmix(to_save=False)
-    # The dispatch plot does not work well when simulating more than 2 days.
-    # TODO: Implement a better logic control
+    # The dispatch plot does not work well when simulating more than 2 day or
+    # there are more than 10 thermal units.
     if STEPS <= 48 and len(system_input.thermal_units) <= 10:
         visualizer.plot_thermal_units(to_save=False)
 

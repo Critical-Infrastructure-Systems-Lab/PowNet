@@ -17,8 +17,8 @@ from pypolp.tools.parser import parse_mps_dec
 MODEL_NAME = 'thailand'
 PARSE_INSTANCE = True # Save the instance after 
 SAVE_RESULT = False
-DWPLOT = False
-BOXPLOTS = False
+DW_FUELPLOT = False
+DW_BOXPLOTS = False
 
 
 # Get out of decomposition and src
@@ -119,7 +119,7 @@ if SAVE_RESULT:
 
 
 #%% Visualize DW results
-if DWPLOT:
+if DW_FUELPLOT:
     xmax = len(record.primal_objvals)
     fig, ax = plt.subplots() #figsize=(10,10))
     ax.plot(record.primal_objvals, linewidth=2, label='Dantzig-Wolfe')
@@ -213,7 +213,7 @@ def get_boxplots(stat_dict, value_name, fig_title):
     plt.show()
             
     
-if BOXPLOTS:
+if DW_BOXPLOTS:
     get_boxplots(
         stat_dict = dw_runtimes, 
         value_name = 'Time (s)',
