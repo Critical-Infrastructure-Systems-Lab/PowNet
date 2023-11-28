@@ -4,7 +4,8 @@ from pownet.core.builder import ModelBuilder
 from pownet.core.input import SystemInput
 from pownet.core.record import SystemRecord
 from pownet.processing.functions import create_init_condition, get_current_time
-from pownet.folder_sys import get_output_dir, get_temp_dir
+from pownet.config import is_warmstart
+from pownet.folder_sys import get_output_dir
 
 
 
@@ -47,7 +48,6 @@ class Simulator:
                     k = k,
                     init_conds = init_conds)
             else:
-                # TODO: Implement warm start
                 self.model = builder.update(
                     k = k,
                     init_conds = init_conds)
@@ -60,28 +60,35 @@ class Simulator:
                 self.model.computeIIS()
                 c_time = get_current_time()
                 ilp_file = os.path.join(
-                    get_temp_dir(),
+                    get_output_dir(),
                     f'infeasible_{self.model_name}_{k}_{c_time}.ilp'
                     )
                 self.model.write(ilp_file)
                 
                 mps_file = os.path.join(
-                    get_temp_dir(),
+                    get_output_dir(),
                     f'infeasible_{self.model_name}_{k}_{c_time}.mps'
                     )
                 self.model.write(mps_file)
                 break
             
+            # Save the solution file to warmstart the next instance
+            if is_warmstart():
+                self.model.write(
+                    os.path.join(
+                        get_output_dir(), f'{self.model_name}_{k}.sol'
+                        )
+                    )
+            
             # Need k to increment the hours field
             system_record.keep(self.model, k)
             init_conds = system_record.get_init_conds()
             
-            # Save the model
-            output_dir = get_output_dir()
-            dirname = f'{self.model_name}_instances'
-            dirname = os.path.join(output_dir, dirname)
-            
             if self.write_model:
+                # Save the model
+                dirname = os.path.join(
+                    get_output_dir(), f'{self.model_name}_instances'
+                    )
                 if not os.path.exists(dirname):
                     os.makedirs(dirname)
                 self.model.write(
@@ -90,8 +97,6 @@ class Simulator:
                         )
                     )
         
-        # # Export the final results somewhere
-        # system_record.to_csv()
         return system_record.get_record()
     
     

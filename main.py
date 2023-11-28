@@ -1,9 +1,10 @@
 import os
 
+from pownet.config import is_warmstart
 from pownet.core.input import SystemInput
 from pownet.core.simulation import Simulator
 from pownet.core.visualize import Visualizer
-from pownet.folder_sys import get_output_dir
+from pownet.folder_sys import get_output_dir, delete_all_gurobi_solutions
 
 
 
@@ -14,7 +15,7 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 1
+    STEPS = 2
     
     #############################
     output_dir = get_output_dir()
@@ -48,8 +49,10 @@ def main():
     # there are more than 10 thermal units.
     if STEPS <= 48 and len(system_input.thermal_units) <= 10:
         visualizer.plot_thermal_units(to_save=False)
-
-
+        
+    # Delete the last solution file when warmstarting
+    if is_warmstart():
+        delete_all_gurobi_solutions()
 
 if __name__ == '__main__':
     main()
