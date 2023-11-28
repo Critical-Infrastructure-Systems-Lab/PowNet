@@ -304,13 +304,13 @@ class ModelBuilder():
         which only addresses peaking units.
         '''
         for unit_g in self.inputs.thermal_units:
-            time_RD = math.floor(
-                (self.inputs.full_max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RD[unit_g])
-            
-            time_RU = math.floor(
-                (self.inputs.full_max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RU[unit_g])
-            
             for t in self.timesteps:
+                time_RD = math.floor(
+                    (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g]) / self.inputs.RD[unit_g])
+                
+                time_RU = math.floor(
+                    (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g]) / self.inputs.RU[unit_g])
+                
                 KSD_t = min(
                     time_RD, self.inputs.TU[unit_g]-1, self.T-t-1)
                 
@@ -358,21 +358,19 @@ class ModelBuilder():
         during start-up for a peaking unit.
         
         '''
-        # Equation 38
-        for unit_g in self.inputs.thermal_units:
-            # Calculate the time to full ramp-up
-            time_RU = math.floor(
-                (self.inputs.full_max_cap[unit_g] - self.inputs.SU[unit_g])/self.inputs.RU[unit_g])
-            
-            # Equation 38 - substitute in pbar
-            if self.inputs.TU[unit_g]-2 >= time_RU:
-                # The min of (TU - 2, TRU) is the number of periods in the previous
-                # simulation that must be traced back to address the changing
-                # upper bound due to ramping.
-                min_val = min(self.inputs.TU[unit_g]-2, time_RU)
+        # Since the ineqalities involve t+1 index, we only iterate thru T-1
+        for t in range(1, self.T):
+            for unit_g in self.inputs.thermal_units:
+                # Calculate the time to full ramp-up
+                time_RU = math.floor(
+                    (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g])/self.inputs.RU[unit_g])
                 
-                # Since the ineqalities involve t+1 index, we only iterate thru T-1
-                for t in range(1, self.T):
+                # Equation 38 - substitute in pbar
+                if self.inputs.TU[unit_g]-2 >= time_RU:
+                    # The min of (TU - 2, TRU) is the number of periods in the previous
+                    # simulation that must be traced back to address the changing
+                    # upper bound due to ramping.
+                    min_val = min(self.inputs.TU[unit_g]-2, time_RU)
                     # Define the summation term
                     sum_term = 0
                     for i in range(0, min_val+1):
@@ -396,40 +394,118 @@ class ModelBuilder():
                                 ),
                         name = 'trajecUpBnd' + f'[{unit_g},{t}]'
                         )
+                # Equation 40 - substitute in pbar
+                # When TU - 2 < time_RU, the above inequalities do not cover
+                # the entire start-up and ramping trajectory. Hence, we can
+                # cover an additional time period with additional inequalities
+                # up to the last hour of T.
+                # In other words, when self.inputs.TU[unit_g]-2 < time_RU.
+                else:
+                    # Note TU_g - 1, which is different from the above
+                    min_val = min(self.inputs.TU[unit_g]-1, time_RU)
+                    
+                    for tt in self.timesteps:
+                        # Define the summation term
+                        sum_term = 0
+                        for i in range(0, min_val+1):
+                            # Decide if we need to refer back to the previous iteration
+                            if tt-i > 0:
+                                sum_term += (
+                                    (self.inputs.max_cap[unit_g][tt] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+                                        * self.v[unit_g, tt-i]
+                                    )
+                            else:
+                                sum_term += (
+                                    (self.inputs.max_cap[unit_g][tt] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+                                        * self.initial_v[unit_g, self.T + tt - i]
+                                    )
+                    self.model.addConstr(
+                        (
+                            self.pbar[unit_g, tt] + self.inputs.min_cap[unit_g] * self.u[unit_g, tt]
+                            <= self.inputs.max_cap[unit_g][tt] * self.u[unit_g, tt]
+                                - sum_term
+                                ),
+                        name = 'trajecUpBnd' + f'[{unit_g},{tt}]'
+                        )
 
-            # Equation 40 - substitute in pbar
-            # When TU - 2 < time_RU, the above inequalities do not cover
-            # the entire start-up and ramping trajectory. Hence, we can
-            # cover an additional time period with additional inequalities
-            # up to the last hour of T.
-            if self.inputs.TU[unit_g]-2 < time_RU:
+
+    # def _c_trajec_up_bound_original(self):
+    #     '''Equation 38 or 40 of Kneuven et al (2019). This is the generation unit
+    #     during unit start-up. This complements Equation 23a, which is the generation limit
+    #     during start-up for a peaking unit.
+        
+    #     '''
+    #     for unit_g in self.inputs.thermal_units:
+    #         # Calculate the time to full ramp-up
+    #         time_RU = math.floor(
+    #             (self.inputs.full_max_cap[unit_g] - self.inputs.SU[unit_g])/self.inputs.RU[unit_g])
+            
+    #         # Equation 38 - substitute in pbar
+    #         if self.inputs.TU[unit_g]-2 >= time_RU:
+    #             # The min of (TU - 2, TRU) is the number of periods in the previous
+    #             # simulation that must be traced back to address the changing
+    #             # upper bound due to ramping.
+    #             min_val = min(self.inputs.TU[unit_g]-2, time_RU)
                 
-                # Note TU_g - 1, which is different from the above
-                min_val = min(self.inputs.TU[unit_g]-1, time_RU)
+    #             # Since the ineqalities involve t+1 index, we only iterate thru T-1
+    #             for t in range(1, self.T):
+    #                 # Define the summation term
+    #                 sum_term = 0
+    #                 for i in range(0, min_val+1):
+    #                     # Decide if we need to refer back to the previous iteration
+    #                     if t-i > 0:
+    #                         sum_term += (
+    #                             (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+    #                                 * self.v[unit_g, t-i]
+    #                             )
+    #                     else:
+    #                         sum_term += (
+    #                             (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+    #                                 * self.initial_v[unit_g, self.T + t - i]
+    #                             )
+    #                 self.model.addConstr(
+    #                     (
+    #                         self.pbar[unit_g, t] + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
+    #                         <= self.inputs.max_cap[unit_g][t] * self.u[unit_g, t]
+    #                             - (self.inputs.max_cap[unit_g][t] - self.inputs.SD[unit_g]) * self.w[unit_g, t+1]
+    #                             - sum_term
+    #                             ),
+    #                     name = 'trajecUpBnd' + f'[{unit_g},{t}]'
+    #                     )
+
+    #         # Equation 40 - substitute in pbar
+    #         # When TU - 2 < time_RU, the above inequalities do not cover
+    #         # the entire start-up and ramping trajectory. Hence, we can
+    #         # cover an additional time period with additional inequalities
+    #         # up to the last hour of T.
+    #         if self.inputs.TU[unit_g]-2 < time_RU:
                 
-                for t in self.timesteps:
-                    # Define the summation term
-                    sum_term = 0
-                    for i in range(0, min_val+1):
-                        # Decide if we need to refer back to the previous iteration
-                        if t-i > 0:
-                            sum_term += (
-                                (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
-                                    * self.v[unit_g, t-i]
-                                )
-                        else:
-                            sum_term += (
-                                (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
-                                    * self.initial_v[unit_g, self.T + t - i]
-                                )
-                self.model.addConstr(
-                    (
-                        self.pbar[unit_g, t] + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
-                        <= self.inputs.max_cap[unit_g][t] * self.u[unit_g, t]
-                            - sum_term
-                            ),
-                    name = 'trajecUpBnd' + f'[{unit_g},{t}]'
-                    )
+    #             # Note TU_g - 1, which is different from the above
+    #             min_val = min(self.inputs.TU[unit_g]-1, time_RU)
+                
+    #             for t in self.timesteps:
+    #                 # Define the summation term
+    #                 sum_term = 0
+    #                 for i in range(0, min_val+1):
+    #                     # Decide if we need to refer back to the previous iteration
+    #                     if t-i > 0:
+    #                         sum_term += (
+    #                             (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+    #                                 * self.v[unit_g, t-i]
+    #                             )
+    #                     else:
+    #                         sum_term += (
+    #                             (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+    #                                 * self.initial_v[unit_g, self.T + t - i]
+    #                             )
+    #             self.model.addConstr(
+    #                 (
+    #                     self.pbar[unit_g, t] + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
+    #                     <= self.inputs.max_cap[unit_g][t] * self.u[unit_g, t]
+    #                         - sum_term
+    #                         ),
+    #                 name = 'trajecUpBnd' + f'[{unit_g},{t}]'
+    #                 )
     
 
     def _c_ramp_down(self):
