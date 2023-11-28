@@ -1,4 +1,5 @@
 import math
+import os
 
 from gurobipy import GRB
 import gurobipy as gp
@@ -6,10 +7,11 @@ import networkx as nx
 import pandas as pd
 
 from pownet.core.input import SystemInput
+from pownet.config import is_warmstart
+from pownet.folder_sys import get_output_dir
 
 
 
-#---- Section: 
 class ModelBuilder():
     ''' Build the model by adding unit commitment constraints.
     '''
@@ -107,7 +109,7 @@ class ModelBuilder():
             }
         
         # Define costs
-        operation_expr = self.p.prod(opex_coeffs)
+        operation_expr = self.dispatch.prod(opex_coeffs)
         fixed_expr = self.u.prod(fixed_coeffs)
         startup_expr = self.v.prod(startup_coeffs)
         rnw_expr = self.prnw.prod(rnw_coeffs)
@@ -132,7 +134,7 @@ class ModelBuilder():
         '''Equation 2 of Kneuven et al (2019).
         Define the relationship among unit status, start-up, and shutdown
         '''
-        # At t=1, the variables are linked to the initial_v and initial_w
+        # At t=1, the variables are linked to the initial_u
         self.model.addConstrs(
             (
                 self.u[unit_g, 1] - self.initial_u[unit_g, self.T] # Last hour of the previous iteration
@@ -833,13 +835,18 @@ class ModelBuilder():
         ''' Update the model instead of creating a new one 
         so we can perform warm start
         '''
-        # TODO: implement warm start
+        # TODO: Consider updating the model instead of creating a new one
         # Update cost coeffs, constraints, RHS
-        # Constraints that must be updated
-        # constrs2update = []
-        
-        # OR using solution from the previous solve
-        
         self.model = self.build(k, init_conds)
+        
+        # Use the solution from the previous solve
+        if is_warmstart():
+            previous_solution_file = os.path.join(
+                get_output_dir(), f'{self.model_name}_{k-1}.sol'
+                )
+            self.model.read(previous_solution_file)
+            # Delete the since we have loaded the solution
+            os.remove(previous_solution_file)
+        
         return self.model
         
