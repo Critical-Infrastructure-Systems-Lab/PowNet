@@ -10,7 +10,8 @@ from pownet.folder_sys import get_model_dir
 
 
 # Current code does not need these columns
-DATE_COLS = ['year', 'month', 'day', 'hour']
+DATE_COLS = ['year', 'month', 'day', 'hour', 'date']
+
 
 
 class SystemInput:
@@ -41,12 +42,12 @@ class SystemInput:
         # User inputs
         self.demand: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, 'demand_export.csv'),
-            header=0).drop(DATE_COLS, axis=1)
+            header=0).drop(DATE_COLS, axis=1, errors='ignore')
         self.demand.index += 1
         
         self.derating: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, 'derate_factor.csv'),
-            header=0).drop(DATE_COLS, axis=1)
+            os.path.join(self.model_dir, 'pownet_derate_factor.csv'),
+            header=0).drop(DATE_COLS, axis=1, errors='ignore')
         self.derating.index += 1
         
         self.fuelmap: pd.DataFrame = pd.read_csv(
@@ -60,12 +61,12 @@ class SystemInput:
         
         self.fuelprice: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, 'fuel_price.csv'),
-            header=0).drop(DATE_COLS, axis=1)
+            header=0).drop(DATE_COLS, axis=1, errors='ignore')
         self.fuelprice.index += 1
         
         self.rnw_cap: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, 'renewable.csv'),
-            header=0).drop(DATE_COLS, axis=1)
+            header=0).drop(DATE_COLS, axis=1, errors='ignore')
         self.rnw_cap.index += 1
         
         self.thermal_units: list = pd.read_csv(
@@ -93,7 +94,7 @@ class SystemInput:
         if os.path.exists(fn_import):
             self.p_import: pd.DataFrame = pd.read_csv(
                 fn_import,
-                header=0).drop(DATE_COLS, axis=1)
+                header=0).drop(DATE_COLS, axis=1, errors='ignore')
             self.p_import.index += 1
         
         
@@ -131,10 +132,16 @@ class SystemInput:
                 self.cycle_map: dict = json.load(f)
 
         # Thermal unit params
-        self.max_cap: dict = pd.read_csv(
+        self.full_max_cap: dict = pd.read_csv(
             os.path.join(self.model_dir, 'unit_param.csv'),
             header=0, index_col='name', usecols=['name', 'max_capacity']
             ).to_dict()['max_capacity']
+        
+        # The maximum capacity is reduced by the derating factor
+        self.max_cap: dict = pd.read_csv(
+            os.path.join(self.model_dir, 'pownet_derated_capacity.csv'),
+            header = 0
+            ).drop(DATE_COLS, axis=1, errors='ignore').to_dict()
         
         self.min_cap: dict = pd.read_csv(
             os.path.join(self.model_dir, 'unit_param.csv'),

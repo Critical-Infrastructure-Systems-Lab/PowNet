@@ -7,9 +7,21 @@ import pandas as pd
 
 
 
-DATE_COLS = ['year', 'month', 'day', 'hour']
-DATE_START = '2016-01-01'
-DATE_END = '2016-12-31'
+def get_dates(year):
+    # Create dates to concatenate with the new dataframes
+    dates = pd.DataFrame(
+        {'date': pd.date_range(start=str(year), periods=366, freq='D')}
+        )
+    # Remove 29th Feb because we do not deal with them
+    dates = dates.loc[dates.date.dt.strftime('%m-%d') != '02-29']
+    # Remove 1st Jan of the next year in case it is included when it is not a leap year
+    dates = dates.loc[dates.date.dt.strftime('%Y-%m-%d') != f'{year+1}-01-01']
+    
+    # In case we need three columns
+    dates = dates.loc[dates.index.repeat(24)]
+    dates['hour'] = np.tile(range(1, 25), 365)
+    dates = dates.reset_index(drop=True)
+    return dates
 
 
 def get_arcs(transmission: pd.DataFrame, reverse_flow: bool = False) -> gp.tuplelist:
@@ -32,21 +44,13 @@ def get_cycles(transmission: pd.DataFrame, reverse_flow: bool =  False) -> gp.tu
         raise NotImplementedError('Not yet implement cycles for reverse flow formulation.')
 
 
-def get_suscept(transmission: pd.DataFrame, reverse_flow: bool = False) -> pd.DataFrame:
+def get_suscept(
+        transmission: pd.DataFrame,
+        reverse_flow: bool = False
+        ) -> pd.DataFrame:
     '''Return the hourly susceptance values as a dataframe'''
     # Arcs form an undirected graph
     arcs = get_arcs(transmission, reverse_flow=reverse_flow)
-    
-    # Create dates to concatenate with the new dataframes
-    dates = pd.DataFrame({'date':pd.date_range(start=DATE_START, end=DATE_END)})
-    # Remove 29th Feb because we do not deal with them
-    dates = dates.loc[dates.date.dt.strftime('%m-%d') != '02-29']
-    
-    # In case we need three columns
-    # dates = pd.DataFrame({'year': dates.year, 'month':dates.month, 'day':dates.day})
-    dates = dates.loc[dates.index.repeat(24)]
-    dates['hour'] = np.tile(range(1, 25), 365)
-    dates = dates.reset_index(drop=True)
     
     # Create the susceptance file
     suscept = pd.DataFrame(
