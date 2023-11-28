@@ -1,3 +1,4 @@
+from collections import defaultdict
 import json
 import os
 
@@ -6,15 +7,18 @@ import numpy as np
 import pandas as pd
 
 from pownet.folder_sys import get_model_dir, get_database_dir
+from pownet.processing.functions import get_dates
 
 
 class InputProcessor:
     def __init__(
             self,
+            year: int,
             model_name: str,
             frequency: int
             ) -> None:
         
+        self.year = year
         self.model_name = model_name
         self.frequency = frequency
         
@@ -143,4 +147,65 @@ class InputProcessor:
             json.dump(cycle_map, f)
         
         
+    def get_derate_factors(
+            self, 
+            derate_factor: float = 1.00, 
+            to_write: bool = True
+            ) -> None:
+        ''' Create a csv file called "pownet_derate_factor.csv" in
+        moddel_library/{model_name} folder
+        '''
+        derate_df = get_dates(self.year)
+        # Get the thermal units
+        model_dir = os.path.join(get_model_dir(), self.model_name)
+        thermal_units = pd.read_csv(os.path.join(model_dir, 'unit_param.csv'))['name'].values
+        derate_df[thermal_units] = derate_factor
+        
+        if to_write:
+            derate_df.to_csv(
+                os.path.join(self.model_folder, 'pownet_derate_factor.csv'),
+                index = False
+                )
+            
+            
+    def get_derated_max_capacities(
+            self,
+            to_write: bool = True
+            ) -> None:
+        ''' Create a dict of derated generation capacity of thermal units.
+        The structure of this is
+        {
+            'unit_a': {
+                1: maxcap*derated_factor_1,
+                2: maxcap*derated_factor_2,
+                ...
+                T: maxcap*derated_factor_T
+                }
+            }
+        '''
+        derate_path = os.path.join(self.model_folder, 'pownet_derate_factor.csv')
+        derate_df = pd.read_csv(derate_path, header=0)
+        
+        max_cap = pd.read_csv(
+            os.path.join(self.model_folder, 'unit_param.csv'),
+            header=0, index_col='name', usecols=['name', 'max_capacity']
+            ).to_dict()['max_capacity']
+        
+        derated_max_cap = pd.DataFrame()
+        for thermal_unit in max_cap.keys():
+            derated_max_cap[thermal_unit] = derate_df[thermal_unit]*max_cap[thermal_unit]
+        
+        derated_max_cap = pd.concat(
+            [get_dates(year=self.year), derated_max_cap],
+            axis =1
+            )
+        # Pownet indexing starts at 1 and usually ends at 8760.
+        derated_max_cap.index += 1
+        
+        derated_max_cap.to_csv(
+            os.path.join(self.model_folder, 'pownet_derated_capacity.csv'),
+            index = False
+            )
+        
+
         

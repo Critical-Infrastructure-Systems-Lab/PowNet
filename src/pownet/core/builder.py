@@ -89,12 +89,12 @@ class ModelBuilder():
             }
         
         fixed_coeffs = {
-            (unit_g, t): self.inputs.max_cap[unit_g] * self.inputs.unit_econ.loc[unit_g, 'fixed_cost']
+            (unit_g, t): self.inputs.max_cap[unit_g][t] * self.inputs.unit_econ.loc[unit_g, 'fixed_cost']
             for t in self.timesteps for unit_g in self.inputs.thermal_units
             }
         
         startup_coeffs = {
-            (unit_g, t): self.inputs.max_cap[unit_g] * self.inputs.unit_econ.loc[unit_g, 'startup_cost']
+            (unit_g, t): self.inputs.max_cap[unit_g][t] * self.inputs.unit_econ.loc[unit_g, 'startup_cost']
             for t in self.timesteps for unit_g in self.inputs.thermal_units
             }
         
@@ -196,7 +196,7 @@ class ModelBuilder():
             )
         self.model.addConstrs(
             (
-                self.pbar[unit_g, t] <= self.inputs.max_cap[unit_g]*self.u[unit_g, t]
+                self.pbar[unit_g, t] <= self.inputs.max_cap[unit_g][t]*self.u[unit_g, t]
                 for unit_g in self.inputs.thermal_units
                 for t in self.timesteps
                 ),
@@ -268,8 +268,8 @@ class ModelBuilder():
         self.model.addConstrs(
             (
                 self.p[unit_g, t] + self.spin[unit_g, t]
-                <= (self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
-                    - (self.inputs.max_cap[unit_g] - self.inputs.SD[unit_g]) * self.w[unit_g, t+1]
+                <= (self.inputs.max_cap[unit_g][t] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
+                    - (self.inputs.max_cap[unit_g][t] - self.inputs.SD[unit_g]) * self.w[unit_g, t+1]
                     - max(0, (self.inputs.SD[unit_g] - self.inputs.SU[unit_g])) * self.v[unit_g, t]
                 for unit_g in self.inputs.thermal_units if self.inputs.TU[unit_g] == 1
                 for t in range(1, self.T)
@@ -288,8 +288,8 @@ class ModelBuilder():
         self.model.addConstrs(
             (
                 self.p[unit_g, t] + self.spin[unit_g, t]
-                <= (self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
-                    - (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) * self.v[unit_g, t]
+                <= (self.inputs.max_cap[unit_g][t] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
+                    - (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g]) * self.v[unit_g, t]
                     - max(0, (self.inputs.SU[unit_g] - self.inputs.SD[unit_g])) * self.w[unit_g, t+1]
                 for unit_g in self.inputs.thermal_units if self.inputs.TU[unit_g] == 1
                 for t in range(1, self.T)
@@ -305,10 +305,10 @@ class ModelBuilder():
         '''
         for unit_g in self.inputs.thermal_units:
             time_RD = math.floor(
-                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RD[unit_g])
+                (self.inputs.full_max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RD[unit_g])
             
             time_RU = math.floor(
-                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RU[unit_g])
+                (self.inputs.full_max_cap[unit_g] - self.inputs.SU[unit_g]) / self.inputs.RU[unit_g])
             
             for t in self.timesteps:
                 KSD_t = min(
@@ -329,7 +329,7 @@ class ModelBuilder():
                 for i in range(KSD_t+1):    
                     sum_1 += (
                         (
-                            self.inputs.max_cap[unit_g] - self.inputs.SD[unit_g]
+                            self.inputs.max_cap[unit_g][t] - self.inputs.SD[unit_g]
                             - i*self.inputs.RD[unit_g]
                             ) * self.w[unit_g, t+1+i]
                         )
@@ -338,14 +338,14 @@ class ModelBuilder():
                 sum_2 = 0
                 for i in range(KSU_t+1):
                     sum_2 += (
-                        (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g])*self.v[unit_g, t-i]
+                        (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g])*self.v[unit_g, t-i]
                         )
                 
                 self.model.addConstr(
                     (
                         self.p[unit_g, t]
                         <= (
-                            self.inputs.max_cap[unit_g] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
+                            self.inputs.max_cap[unit_g][t] - self.inputs.min_cap[unit_g]) * self.u[unit_g, t]
                             - sum_1 - sum_2
                         ),
                     name = 'trajecDownBnd' + f'[{unit_g},{t}]'
@@ -362,7 +362,7 @@ class ModelBuilder():
         for unit_g in self.inputs.thermal_units:
             # Calculate the time to full ramp-up
             time_RU = math.floor(
-                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g])/self.inputs.RU[unit_g])
+                (self.inputs.full_max_cap[unit_g] - self.inputs.SU[unit_g])/self.inputs.RU[unit_g])
             
             # Equation 38 - substitute in pbar
             if self.inputs.TU[unit_g]-2 >= time_RU:
@@ -379,19 +379,19 @@ class ModelBuilder():
                         # Decide if we need to refer back to the previous iteration
                         if t-i > 0:
                             sum_term += (
-                                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+                                (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
                                     * self.v[unit_g, t-i]
                                 )
                         else:
                             sum_term += (
-                                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+                                (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
                                     * self.initial_v[unit_g, self.T + t - i]
                                 )
                     self.model.addConstr(
                         (
                             self.pbar[unit_g, t] + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
-                            <= self.inputs.max_cap[unit_g] * self.u[unit_g, t]
-                                - (self.inputs.max_cap[unit_g] - self.inputs.SD[unit_g]) * self.w[unit_g, t+1]
+                            <= self.inputs.max_cap[unit_g][t] * self.u[unit_g, t]
+                                - (self.inputs.max_cap[unit_g][t] - self.inputs.SD[unit_g]) * self.w[unit_g, t+1]
                                 - sum_term
                                 ),
                         name = 'trajecUpBnd' + f'[{unit_g},{t}]'
@@ -414,18 +414,18 @@ class ModelBuilder():
                         # Decide if we need to refer back to the previous iteration
                         if t-i > 0:
                             sum_term += (
-                                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+                                (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
                                     * self.v[unit_g, t-i]
                                 )
                         else:
                             sum_term += (
-                                (self.inputs.max_cap[unit_g] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
+                                (self.inputs.max_cap[unit_g][t] - self.inputs.SU[unit_g] - i*self.inputs.RU[unit_g]) 
                                     * self.initial_v[unit_g, self.T + t - i]
                                 )
                 self.model.addConstr(
                     (
                         self.pbar[unit_g, t] + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
-                        <= self.inputs.max_cap[unit_g] * self.u[unit_g, t]
+                        <= self.inputs.max_cap[unit_g][t] * self.u[unit_g, t]
                             - sum_term
                             ),
                     name = 'trajecUpBnd' + f'[{unit_g},{t}]'
