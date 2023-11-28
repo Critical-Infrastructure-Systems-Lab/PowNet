@@ -6,8 +6,8 @@ import gurobipy as gp
 import networkx as nx
 import pandas as pd
 
+from pownet.config import is_warmstart, get_line_safety_factor
 from pownet.core.input import SystemInput
-from pownet.config import is_warmstart
 from pownet.folder_sys import get_output_dir
 
 
@@ -729,15 +729,16 @@ class ModelBuilder():
         # line segment (a,b) at hour t in MW/hr). If the flow is positive, 
         # then energy flows from a to b. 
         # We set the bounds based on the transmission limit
+        line_safety_factor = get_line_safety_factor()
         if not self.reverse_flow:
             self.flow = self.model.addVars(
                 self.inputs.arcs, self.timesteps,
                 lb = {
-                    (source, sink, t): -1*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
+                    (source, sink, t): -1*line_safety_factor*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
                     for source, sink in self.inputs.arcs
                     for t in self.timesteps
                     },
-                ub = {(source, sink, t): self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
+                ub = {(source, sink, t): line_safety_factor*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
                       for source, sink in self.inputs.arcs
                       for t in self.timesteps
                     },
@@ -749,7 +750,7 @@ class ModelBuilder():
             self.flow = self.model.addVars(
                 self.inputs.arcs, self.timesteps,
                 lb = 0,
-                ub = {(source, sink, t): self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
+                ub = {(source, sink, t): line_safety_factor*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
                       for source, sink in self.inputs.arcs
                       for t in self.timesteps
                     },

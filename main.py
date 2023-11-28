@@ -27,7 +27,7 @@ def main():
     # The user should create their own model in the model_library folder
     system_input = SystemInput(
         T = T,
-        formulation = 'voltage_angle',
+        formulation = 'kirchhoff',
         model_name = MODEL_NAME
         )
     

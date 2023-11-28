@@ -16,3 +16,11 @@ def is_warmstart() -> bool:
     '''
     config = get_config()
     return config.getboolean('GUROBI', 'WARMSTART')
+
+
+def get_line_safety_factor() -> float:
+    ''' The safety margin to impose on the transmission lines.
+    The default value is 0.75 based on the legacy approach.
+    '''
+    config = get_config()
+    return config.getfloat('POWNET', 'LINE_SAFETY_FACTOR')
