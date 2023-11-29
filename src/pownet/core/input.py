@@ -4,6 +4,7 @@ import os
 import gurobipy as gp
 import pandas as pd
 
+from pownet.config import get_spin_reserve_factor
 from pownet.processing.functions import get_arcs, get_linecap, get_suscept
 from pownet.folder_sys import get_model_dir
 
@@ -20,7 +21,6 @@ class SystemInput:
             T: int,
             formulation: str,
             model_name: str,
-            F_SPIN: float = 0.15,
             price: str = 'fuel',
             aggregated_generator: bool = False,
             reverse_flow: bool = False
@@ -174,6 +174,7 @@ class SystemInput:
         self.max_node: str = self.demand.idxmax().idxmax()
         self.max_linecap: int = self.linecap.max().max()
         # The first index of spin_req is already at 1
-        self.spin_req: pd.DataFrame = self.demand.sum(axis=1) * F_SPIN
+        SPIN_FACTOR = get_spin_reserve_factor()
+        self.spin_req: pd.DataFrame = self.demand.sum(axis=1) * SPIN_FACTOR
         
         
