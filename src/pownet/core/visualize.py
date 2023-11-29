@@ -1,11 +1,13 @@
 from datetime import datetime
+import math
 import os
 
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from pownet.core.input import SystemInput
-from pownet.folder_sys import get_output_dir
+from pownet.folder_sys import get_output_dir, get_database_dir
+from pownet.processing.functions import get_dates
 
 
 def format_variable_fueltype(
@@ -22,9 +24,22 @@ def format_variable_fueltype(
     return output_df
 
 
+def get_fuel_color_map() -> dict:
+    ''' Return a map of fuel type to its color. This is defined in the database folder.
+    '''
+    fuel_color_map = pd.read_csv(
+        os.path.join(get_database_dir(), 'fuels.csv'), 
+        header=0,
+        usecols = ['name', 'color']
+        ).set_index('name').to_dict()['color']
+    return fuel_color_map
+
+
+
 class Visualizer():
     def __init__(self) -> None:
         self.model_name = None
+        self.year = None
         
         self.status: pd.DataFrame = None
         self.fuelmap: dict[str, str] = None
@@ -41,6 +56,7 @@ class Visualizer():
     
     def load(self, df: pd.DataFrame, system_input: SystemInput, model_name) -> None:
         self.model_name = model_name
+        self.year = system_input.year
         
         self.status = df[df['vartype'] == 'status']
         self.thermal_units = system_input.thermal_units
@@ -100,40 +116,100 @@ class Visualizer():
         # Ensure all close to zero values are zero
         for col in total_dispatch.columns:
             total_dispatch.loc[total_dispatch[col] < 0 , col] = 0
-            
-        # Plotting section
-        fig, ax = plt.subplots(figsize=(8, 5), layout='tight')
-        # If we are plotting longer than 2 days, then the area plot
-        # is better at visualizing the fuel mix.
+        
+        # Define the order of fuel mix. Baseload at the bottom, 
+        # renewables in the middle, then peaker plants, and shortfall
+        fuel_mix_order = pd.read_csv(
+            os.path.join(get_database_dir(), 'fuels.csv'),
+            header = 0,
+            )['name']
+        fuel_mix_order = [fuel for fuel in fuel_mix_order if fuel in total_dispatch.columns]
+        total_dispatch = total_dispatch[fuel_mix_order]
+        
+        # We have a pre-defined set of colors for fuel types
+        fuel_color_map = get_fuel_color_map()
+        
         timesteps = total_dispatch.shape[0]
-        if timesteps > 48:
-            total_dispatch.plot.area(
-                stacked = True,
-                ax = ax,
-                linewidth = 0
-                )
-        else:
+        
+        # Plotting section
+        fig, ax = plt.subplots(figsize=(8, 5))
+        if math.ceil(timesteps/24) < 3:
+            # Bar plot
             total_dispatch.plot.bar(
                 stacked = True,
                 ax = ax,
-                linewidth = 0
+                linewidth = 0,
+                color = fuel_color_map,
+                legend = False
                 )
-        
-        ax.plot(
-            range(0, timesteps), 
-            self.demand[:timesteps],
-            color='k',
-            linestyle=':',
-            label = 'demand'
-            )
-        
+            ax.plot(
+                range(0, timesteps), 
+                self.demand[:timesteps],
+                color = 'k',
+                linewidth = 2,
+                linestyle = ':',
+                label = 'demand'
+                )
+            ax.set_xlabel('Hour')
+        elif math.ceil(timesteps/24) < 62:
+            # If we are plotting longer than 2 days, then the area plot
+            # is better at visualizing the fuel mix.
+            total_dispatch.plot.area(
+                stacked = True,
+                ax = ax,
+                linewidth = 0,
+                color = fuel_color_map,
+                legend = False
+                )
+            ax.plot(
+                self.demand[:timesteps],
+                color = 'k',
+                linewidth = 2,
+                linestyle = ':',
+                label = 'demand'
+                )
+            ax.set_xlabel('Hour')
+        else:
+            # Do bar plot by month
+            dates = get_dates(year=self.year)
+            dates.index += 1
+            
+            monthly_dispatch = total_dispatch.iloc[:timesteps+1].copy()
+            monthly_dispatch['month'] = dates['date'].dt.to_period('M')
+            monthly_dispatch = monthly_dispatch.groupby('month').sum()
+            monthly_dispatch.index = monthly_dispatch.index.strftime('%b')
+            
+            monthly_demand = self.demand[:timesteps].to_frame()
+            monthly_demand.columns = ['demand']
+            monthly_demand['month'] = dates['date'].dt.to_period('M')
+            monthly_demand = monthly_demand.groupby('month').sum()
+            monthly_demand.index = monthly_demand.index.strftime('%b')
+            
+            monthly_dispatch.plot.bar(
+                stacked = True,
+                ax = ax,
+                linewidth = 0,
+                color = fuel_color_map,
+                legend = False
+                )
+            ax.plot(
+                monthly_demand,
+                color = 'k',
+                linewidth = 2,
+                linestyle = ':',
+                label = 'demand'
+                )
+            ax.set_xlabel('')
+            
         # Plot formatting
-        ax.legend(
-            title = 'Legend',
-            bbox_to_anchor=(1, 1)
+        fig.legend(
+            loc = 'outside lower center',
+            # title = 'Legend',
+            ncols = 4,
+            fontsize = 'small',
+            bbox_to_anchor=(0.5, -0.1)
             )
         ax.set_ylabel('Power (MW)')
-        ax.set_xlabel('Hour')
         ax.set_ylim(bottom=0)
         
         if to_save:
