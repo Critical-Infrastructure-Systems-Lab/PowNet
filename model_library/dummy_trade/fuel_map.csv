@@ -4,7 +4,7 @@ pOil,oil_st,oil,pOil,6.85
 pBiomass,biomass_st,biomass,pBiomass,7.85
 pHydro,hydro,hydro,pHydro,0
 Supplier,import,import,Supplier,5
-Buyer,shortfall,shortfall,Buyer,1000
-Node1,shortfall,shortfall,Node1,1000
-Node2,shortfall,shortfall,Node2,1000
-Node3,shortfall,shortfall,Node3,1000
+Buyer,shortfall,shortfall,Buyer,
+Node1,shortfall,shortfall,Node1,
+Node2,shortfall,shortfall,Node2,
+Node3,shortfall,shortfall,Node3,

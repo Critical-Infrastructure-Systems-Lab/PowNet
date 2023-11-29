@@ -129,7 +129,7 @@ class InputProcessor:
             self.transmission_data.to_csv(self.transmission_file, index=False)
             
             
-    def get_cycle_map(self, to_write: bool = True) -> None:
+    def create_cycle_map(self, to_write: bool = True) -> None:
         # Find all the basic cycles in the transmission system
         graph = nx.from_pandas_edgelist(
             self.transmission_data,
@@ -168,7 +168,7 @@ class InputProcessor:
                 )
             
             
-    def get_derated_max_capacities(
+    def create_derated_max_capacities(
             self,
             to_write: bool = True
             ) -> None:
@@ -206,6 +206,32 @@ class InputProcessor:
             os.path.join(self.model_folder, 'pownet_derated_capacity.csv'),
             index = False
             )
+        
+        
+    def create_fuelprice(self) -> None:
+        ''' Create a dataframe of hourly fuel price of each generator
+        from fuel_map.csv.
+        '''
+        fuel_map = pd.read_csv(
+            os.path.join(self.model_folder, 'fuel_map.csv')
+            ).dropna()
+        
+        fuelprice = fuel_map[['name', 'fuel_price_optional']].set_index('name').T
+        fuelprice.index = [0]
+        
+        fuelprice = pd.concat(
+            [get_dates(year=self.year), fuelprice],
+            axis = 1
+            )
+        fuelprice = fuelprice.ffill()
+        
+        fuelprice.to_csv(
+            os.path.join(self.model_folder, 'fuel_price.csv'),
+            index = False
+            )
+        
+        
+    
         
 
         
