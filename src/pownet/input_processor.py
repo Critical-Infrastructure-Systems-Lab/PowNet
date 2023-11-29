@@ -147,7 +147,7 @@ class InputProcessor:
             json.dump(cycle_map, f)
         
         
-    def get_derate_factors(
+    def create_derate_factors(
             self, 
             derate_factor: float = 1.00, 
             to_write: bool = True

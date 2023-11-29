@@ -1,7 +1,7 @@
 from pownet.input_processor import InputProcessor
 
 frequency = 50
-model_name = 'dummy_trade'
+model_name = 'thailand'
 
 input_processor = InputProcessor(
     year = 2016,
@@ -12,6 +12,6 @@ input_processor = InputProcessor(
 input_processor.transform_transmission_inputs()
 input_processor.create_cycle_map()
 
-input_processor.get_derate_factors(derate_factor=1)
+input_processor.create_derate_factors(derate_factor=1)
 input_processor.create_derated_max_capacities()
-input_processor.create_fuelprice()
+# input_processor.create_fuelprice()
