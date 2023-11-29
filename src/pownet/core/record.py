@@ -1,9 +1,30 @@
+import datetime
+import os
+
 import gurobipy as gp
 import pandas as pd
 import numpy as np
 
 from pownet.core.input import SystemInput
 from pownet.processing.functions import get_nodehour, get_nodehour_flow, get_nodehour_sys
+from pownet.folder_sys import get_output_dir
+
+
+def write_df(
+        df: pd.DataFrame, 
+        output_name: str, 
+        model_name: str
+        ) -> None:
+    ''' Write a dataframe to the output folder.
+    '''
+    df.to_csv(
+        os.path.join(
+            get_output_dir(),
+            f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_{output_name}.csv'
+            ),
+        index = False
+        )
+
 
 
 def increment_hour(df: pd.DataFrame, T: int, k: int):
@@ -74,7 +95,8 @@ def get_init_min_off(
 
 class SystemRecord():
     def __init__(self, system_input: SystemInput) -> None:
-        self.T: int =system_input.T
+        self.T: int = system_input.T
+        self.model_name: str = system_input.model_name
         
         self.thermal_units: list = system_input.thermal_units
         self.TD: dict[str, int] = system_input.TD
@@ -188,7 +210,27 @@ class SystemRecord():
         return [self.var_node_t, self.var_flow, self.var_syswide]
     
     
+    def get_node_variables(self) -> pd.DataFrame:
+        return self.var_node_t
+    
+    
+    def get_flow_variables(self) -> pd.DataFrame:
+        return self.var_flow
+    
+    
+    def get_system_variables(self) -> pd.DataFrame:
+        return self.var_syswide
+    
+    
     def to_csv(self) -> None:
-        raise NotImplementedError('Record.to_csv() has not been implemented.')
+        write_df(
+            self.var_node_t, output_name='node_variables', model_name=self.model_name
+            )
+        write_df(
+            self.var_flow, output_name='flow_variables', model_name=self.model_name
+            )
+        write_df(
+            self.var_syswide, output_name='system_variables', model_name=self.model_name
+            )
     
     

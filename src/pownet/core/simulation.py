@@ -97,7 +97,7 @@ class Simulator:
                         )
                     )
         
-        return system_record.get_record()
+        return system_record
     
     
     
