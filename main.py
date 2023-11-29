@@ -15,7 +15,7 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 365
+    STEPS = 2
     
     #############################
     output_dir = get_output_dir()
@@ -32,17 +32,14 @@ def main():
         )
     
     simulator = Simulator(system_input=system_input)
-    var_node_t, _, _ = simulator.run(steps=STEPS)
     
-    # var_node_t.to_csv(
-    # os.path.join(
-    #     get_output_dir(),
-    #     f'{datetime.now().strftime("%Y%m%d_%H%M")}_{MODEL_NAME}_outputs.csv'
-    #     )
-    # )
+    record = simulator.run(steps=STEPS)
+    record.to_csv()
+    
+    node_variables = record.get_node_variables()
     
     visualizer = Visualizer()
-    visualizer.load(df=var_node_t, system_input=system_input, model_name=MODEL_NAME)
+    visualizer.load(df=node_variables, system_input=system_input, model_name=MODEL_NAME)
     
     visualizer.plot_fuelmix(to_save=False)
     # The dispatch plot does not work well when simulating more than 2 day or
