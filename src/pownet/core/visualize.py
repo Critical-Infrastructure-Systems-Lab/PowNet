@@ -12,12 +12,14 @@ def format_variable_fueltype(
         df: pd.DataFrame,
         vartype: str,
         fuel_type: str
-        ) -> None:
-        output_df = df[df['vartype'] == vartype]
-        # output_df = output_df.rename(columns={'value':'dispatch'})
-        output_df = output_df.reset_index(drop=True)
-        output_df['fuel_type'] = fuel_type
-        return output_df
+        ) -> pd.DataFrame:
+    ''' Given a dataframe of outputs, filter for a vartype and assign the fuel type.
+    Use this function for import, s_pos, and s_neg.
+    '''
+    output_df = df[df['vartype'] == vartype]
+    output_df = output_df.reset_index(drop=True)
+    output_df['fuel_type'] = fuel_type
+    return output_df
 
 
 class Visualizer():
@@ -32,6 +34,8 @@ class Visualizer():
         self.thermal_dispatch: pd.DataFrame = None
         self.rnw_dispatch: pd.DataFrame = None
         self.shortfall: pd.DataFrame = None
+        
+        self.demand = None
 
 
     
@@ -59,22 +63,28 @@ class Visualizer():
             lambda x: self.fuelmap[x['node']], axis=1)
         
         # Generation from import nodes
-        self.p_import = format_variable_fueltype(df=df, vartype='pimp', fuel_type='import')
-
+        self.p_import = format_variable_fueltype(
+            df=df, vartype='pimp', fuel_type='import'
+            )
         # There are positive and negative shortfalls
         self.shortfall_pos = format_variable_fueltype(
-            df=df, vartype='s_pos', fuel_type='shortfall_positive')
-
+            df=df, vartype='s_pos', fuel_type='shortfall_positive'
+            )
         self.shortfall_neg = format_variable_fueltype(
-            df=df, vartype='s_neg', fuel_type='shortfall_negative')
+            df=df, vartype='s_neg', fuel_type='shortfall_negative'
+            )
+        self.demand = system_input.demand.sum(axis=1)
         
-        # # Fix numerical issue
-        # self.shortfall_pos.loc[self.shortfall_pos['value'] <= 0, 'value'] = 0
-        # self.shortfall_neg.loc[self.shortfall_neg['value'] <= 0, 'value'] = 0
 
     def plot_fuelmix(self, to_save: bool) -> None:
         total_dispatch = pd.concat(
-            [self.thermal_dispatch, self.rnw_dispatch, self.p_import, self.shortfall_pos, self.shortfall_neg], 
+            [
+                self.thermal_dispatch,
+                self.rnw_dispatch,
+                self.p_import,
+                self.shortfall_pos,
+                self.shortfall_neg
+                ], 
             axis = 0)
         
         total_dispatch = total_dispatch.reset_index(drop=True)
@@ -92,7 +102,7 @@ class Visualizer():
             total_dispatch.loc[total_dispatch[col] < 0 , col] = 0
             
         # Plotting section
-        fig, ax = plt.subplots(figsize=(8, 5))
+        fig, ax = plt.subplots(figsize=(8, 5), layout='tight')
         # If we are plotting longer than 2 days, then the area plot
         # is better at visualizing the fuel mix.
         timesteps = total_dispatch.shape[0]
@@ -108,8 +118,20 @@ class Visualizer():
                 ax = ax,
                 linewidth = 0
                 )
-            
-        ax.legend(bbox_to_anchor=(1, 1))
+        
+        ax.plot(
+            range(0, timesteps), 
+            self.demand[:timesteps],
+            color='k',
+            linestyle=':',
+            label = 'demand'
+            )
+        
+        # Plot formatting
+        ax.legend(
+            title = 'Legend',
+            bbox_to_anchor=(1, 1)
+            )
         ax.set_ylabel('Power (MW)')
         ax.set_xlabel('Hour')
         ax.set_ylim(bottom=0)
@@ -119,8 +141,6 @@ class Visualizer():
             plt.savefig(os.path.join(
                 get_output_dir(), f'{c_time}_{self.model_name}_fuelmix.png'))
         plt.show()
-                
-
     
     
     def plot_thermal_units(self, to_save: bool) -> None:
