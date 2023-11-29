@@ -33,13 +33,17 @@ class SystemInput:
         None
 
         '''
-        self.T = T
-        self.formulation = formulation
-        self.model_name = model_name
+        self.T: int = T
+        self.formulation: str = formulation
+        self.model_name: str = model_name
 
         self.model_dir: str = os.path.join(get_model_dir(), model_name)
         
         # User inputs
+        self.year: int = pd.read_csv(
+            os.path.join(self.model_dir, 'demand_export.csv'),
+            header=0)['year'].iloc[0]
+        
         self.demand: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, 'demand_export.csv'),
             header=0).drop(DATE_COLS, axis=1, errors='ignore')

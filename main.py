@@ -15,7 +15,7 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 1
+    STEPS = 365
     
     #############################
     output_dir = get_output_dir()
