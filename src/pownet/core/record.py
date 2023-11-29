@@ -108,7 +108,7 @@ class SystemRecord():
         
         # Some variables are not in the (node, t) format. 
         # These are system-level variables
-        col2exclude = ['flow', 'rsys']
+        col2exclude = ['flow', 'sys_spin']
         
         # Format the dataframe into vartype, node, hour, value columns
         cur_var_node_t = results[~results['vartype'].isin(col2exclude)]
@@ -117,7 +117,7 @@ class SystemRecord():
         cur_var_flow = results[results['vartype'] == 'flow']
         cur_var_flow = get_nodehour_flow(cur_var_flow)
         
-        cur_var_syswide = results[results['vartype'] == 'rsys']
+        cur_var_syswide = results[results['vartype'] == 'sys_spin']
         cur_var_syswide = get_nodehour_sys(cur_var_syswide)
         
         # Save some variables as initial conditions for the next simulation period

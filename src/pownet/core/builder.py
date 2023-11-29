@@ -6,7 +6,13 @@ import gurobipy as gp
 import networkx as nx
 import pandas as pd
 
-from pownet.config import is_warmstart, get_line_safety_factor
+from pownet.config import (
+    is_warmstart, 
+    get_line_safety_factor, 
+    get_line_loss_factor,
+    get_shortfall_penalty,
+    get_spin_reserve_penalty
+    )
 from pownet.core.input import SystemInput
 from pownet.folder_sys import get_output_dir
 
@@ -44,12 +50,12 @@ class ModelBuilder():
         self.prnw = None # renewables
         self.pimp = None # import
         
-        self.spin = None
-        self.rsys = None
+        self.spin = None # unit-specific spinning reserve
+        self.sys_spin = None # system-wide spinning reserve
 
         self.s_pos = None
         self.s_neg = None
-        self.sys_shortfall = None
+        self.sys_shortfall = None # Not yet implemented
         
         self.u = None
         self.v = None
@@ -117,8 +123,11 @@ class ModelBuilder():
         
         # The cost of shortfall is the slack variable (s_pos) needed to meet demand
         shortfall_expr = (
-            self.inputs.fuelprice.loc[1, 'shortfall'] * (gp.quicksum(self.s_pos) + gp.quicksum(self.s_neg))
+            get_shortfall_penalty() * (gp.quicksum(self.s_pos) + gp.quicksum(self.s_neg))
             )
+        
+        # Penalize the system if it cannot meet the spinning reserve requirement
+        spin_reserve_penalty_expr = get_spin_reserve_penalty() * gp.quicksum(self.sys_spin)
         
         self.model.setObjective(
             (
@@ -126,6 +135,7 @@ class ModelBuilder():
                     + rnw_expr 
                     + import_expr
                     + shortfall_expr
+                    + spin_reserve_penalty_expr
                 ),
             sense = GRB.MINIMIZE)
         
@@ -646,23 +656,25 @@ class ModelBuilder():
         '''Equation 65 of Kneuven et al (2019).
         We do not aggregate thermal units to a node. A thermal unit is its own node.
         '''
+        # We will tax all generators and import nodes with line loss
+        line_efficiency = 1 - get_line_loss_factor()
         for t in self.timesteps:
             for node in self.inputs.nodes:
                 # If n is a thermal unit, then it can generate energy
                 if node in self.inputs.thermal_units:
-                    thermal_gen = self.dispatch[node, t]
+                    thermal_gen = self.dispatch[node, t] * line_efficiency
                 else: 
                     thermal_gen = 0
                 
                 # If n has renewables, then it can generate energy
                 if node in self.inputs.rnw_units:
-                    re_gen = self.prnw[node, t]
+                    re_gen = self.prnw[node, t] * line_efficiency
                 else:
                     re_gen = 0
                     
                 # If n is an import node, then it can generate energy
                 if node in self.inputs.nodes_import:
-                    imp_gen = self.pimp[node, t]
+                    imp_gen = self.pimp[node, t] * line_efficiency
                 else:
                     imp_gen = 0
                     
@@ -697,7 +709,7 @@ class ModelBuilder():
         self.model.addConstrs(
             (
                 gp.quicksum(self.pbar[unit_g, t] for unit_g in self.inputs.thermal_units)
-                    + self.rsys[t]
+                    + self.sys_spin[t]
                 >= gp.quicksum(
                     self.inputs.demand.loc[t + self.T*self.k, n] for n in self.inputs.nodes_w_demand)
                         + self.inputs.spin_req[t + self.T*self.k]
@@ -764,12 +776,12 @@ class ModelBuilder():
             vtype = GRB.CONTINUOUS,
             name = 'spin')
         
-        # Reserve of the overall system. Unit: MW
-        self.rsys = self.model.addVars(
+        # Spinning reserve of the overall system. Unit: MW
+        self.sys_spin = self.model.addVars(
             self.timesteps,
             lb = 0,
             vtype = GRB.CONTINUOUS,
-            name = 'rsys')
+            name = 'sys_spin')
         
         # Positive mismatch. Unit: MW
         self.s_pos = self.model.addVars(

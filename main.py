@@ -15,7 +15,7 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 2
+    STEPS = 1
     
     #############################
     output_dir = get_output_dir()
@@ -53,6 +53,8 @@ def main():
     # Delete the last solution file when warmstarting
     if is_warmstart():
         delete_all_gurobi_solutions()
+
+
 
 if __name__ == '__main__':
     main()
