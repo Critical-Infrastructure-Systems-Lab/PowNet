@@ -642,7 +642,7 @@ class ModelBuilder():
                  gp.quicksum(
                      (cycle_incidence.loc[(a, b), cycle_id]
                          * 1/cycle_susceptance.loc[t + self.T*self.k, [(a, b)]]
-                         * self.flow[a, b, t])[0]
+                         * self.flow[a, b, t]).iloc[0]
                          for (a, b) in cycle_susceptance.columns
                          ) 
                      == 0
