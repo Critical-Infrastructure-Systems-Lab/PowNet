@@ -41,7 +41,7 @@ class Simulator:
         for k in range(0, steps):
             # Create a gurobipy model for each simulation period
             print('\n\n\n============')
-            print(f'Simulate step {k+1}\n\n')
+            print(f'PowNet: Simulate step {k+1}\n\n')
             
             if k == 0:
                 self.model = builder.build(
@@ -56,7 +56,7 @@ class Simulator:
             # In case when the model is infeasible, we generate an output file
             # to troubleshoot the problem. The model should always be feasible.
             if self.model.status == 3:
-                print(f'Iteration: {k} is infeasible.')
+                print(f'PowNet: Iteration: {k} is infeasible.')
                 self.model.computeIIS()
                 c_time = get_current_time()
                 ilp_file = os.path.join(
