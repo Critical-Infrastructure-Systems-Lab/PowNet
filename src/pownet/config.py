@@ -57,3 +57,9 @@ def get_spin_reserve_penalty() -> int:
     return config.getint('POWNET', 'RESERVE_PENALTY')
 
 
+def get_mip_gap() -> float:
+    ''' Gurobi MIPGAP significantly affect computation time.
+    '''
+    config = get_config()
+    return config.getint('GUROBI', 'MIPGAP')
+
