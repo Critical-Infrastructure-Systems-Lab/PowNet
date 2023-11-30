@@ -38,7 +38,9 @@ def main():
     
     record = simulator.run(steps=STEPS)
     
+    # Uncomment if want to save results
     # record.to_csv()
+    
     print('\n\n====')
     print(f'PowNet: Total time = {datetime.now() - time_start}')
     print(f'PowNet: Optimization time (s) = {round(sum(record.runtimes), 2)}')

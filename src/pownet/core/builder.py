@@ -11,7 +11,9 @@ from pownet.config import (
     get_line_capacity_factor, 
     get_line_loss_factor,
     get_shortfall_penalty,
-    get_spin_reserve_penalty
+    get_spin_reserve_penalty,
+    get_mip_gap,
+    get_to_log
     )
 from pownet.core.input import SystemInput
 from pownet.folder_sys import get_output_dir
@@ -916,7 +918,11 @@ class ModelBuilder():
         self.initial_min_on = init_conds['initial_min_on']
         self.initial_min_off = init_conds['initial_min_off']
         
+        # Create a gurobipy model along with parameter settings
         self.model = gp.Model(f'{self.model_name}_{k+1}')
+        self.model.setParam('MIPGap', get_mip_gap())
+        self.model.setParam('LogToConsole', get_to_log())
+        
         self._add_variables()
         self._set_objective()
         self._add_constraints()
