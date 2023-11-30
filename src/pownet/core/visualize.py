@@ -245,7 +245,8 @@ class Visualizer():
             ax1.set_xlabel('Hour')
             ax1.set_ylabel('Power (MW)')
             
-            ax1.set_ylim(bottom=0)
+            # If ymax is too low, then we cannot see the blue line
+            ax1.set_ylim(bottom=0, top=1.05*max(df1['value']))
             ax1.tick_params(axis='x', labelrotation=45)
         
             plt.title(unit_g)
