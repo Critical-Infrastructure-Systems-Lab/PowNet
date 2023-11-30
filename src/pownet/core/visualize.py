@@ -202,7 +202,7 @@ class Visualizer():
             ax.set_xlabel('')
             
         # Plot formatting
-        fig.legend(
+        legend = fig.legend(
             loc = 'outside lower center',
             # title = 'Legend',
             ncols = 4,
@@ -214,8 +214,14 @@ class Visualizer():
         
         if to_save:
             c_time = datetime.now().strftime("%Y%m%d_%H%M")
-            plt.savefig(os.path.join(
-                get_output_dir(), f'{c_time}_{self.model_name}_fuelmix.png'))
+            fig.savefig(
+                os.path.join(
+                    get_output_dir(), f'{c_time}_{self.model_name}_fuelmix.png'
+                    ),
+                bbox_extra_artists = (legend,),
+                bbox_inches = 'tight',
+                dpi = 350
+                )
         plt.show()
     
     
@@ -253,8 +259,9 @@ class Visualizer():
             
             if to_save:
                 c_time = datetime.now().strftime("%Y%m%d_%H%M")
-                plt.savefig(
+                fig.savefig(
                     os.path.join(
                         get_output_dir(), 
-                    f'{c_time}_{self.model_name}_{unit_g}.png'))
+                    f'{c_time}_{self.model_name}_{unit_g}.png'),
+                    dpi = 350)
             plt.show()
