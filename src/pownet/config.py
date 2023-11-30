@@ -61,5 +61,12 @@ def get_mip_gap() -> float:
     ''' Gurobi MIPGAP significantly affect computation time.
     '''
     config = get_config()
-    return config.getint('GUROBI', 'MIPGAP')
+    return config.getfloat('GUROBI', 'MIPGAP')
+
+
+def get_to_log() -> bool:
+    ''' Gurobi MIPGAP significantly affect computation time.
+    '''
+    config = get_config()
+    return config.getboolean('GUROBI', 'LOGTOCONSOLE')
 
