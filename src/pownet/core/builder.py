@@ -8,7 +8,7 @@ import pandas as pd
 
 from pownet.config import (
     is_warmstart, 
-    get_line_safety_factor, 
+    get_line_capacity_factor, 
     get_line_loss_factor,
     get_shortfall_penalty,
     get_spin_reserve_penalty
@@ -708,7 +708,11 @@ class ModelBuilder():
         '''
         self.model.addConstrs(
             (
-                gp.quicksum(self.pbar[unit_g, t] for unit_g in self.inputs.thermal_units)
+                gp.quicksum(
+                    self.pbar[unit_g, t] 
+                        + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
+                    for unit_g in self.inputs.thermal_units
+                    )
                     + self.sys_spin[t]
                 >= gp.quicksum(
                     self.inputs.demand.loc[t + self.T*self.k, n] for n in self.inputs.nodes_w_demand)
@@ -817,16 +821,16 @@ class ModelBuilder():
         # line segment (a,b) at hour t in MW/hr). If the flow is positive, 
         # then energy flows from a to b. 
         # We set the bounds based on the transmission limit
-        line_safety_factor = get_line_safety_factor()
+        line_capacity_factor = get_line_capacity_factor()
         if not self.reverse_flow:
             self.flow = self.model.addVars(
                 self.inputs.arcs, self.timesteps,
                 lb = {
-                    (source, sink, t): -1*line_safety_factor*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
+                    (source, sink, t): -1*line_capacity_factor*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
                     for source, sink in self.inputs.arcs
                     for t in self.timesteps
                     },
-                ub = {(source, sink, t): line_safety_factor*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
+                ub = {(source, sink, t): line_capacity_factor*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
                       for source, sink in self.inputs.arcs
                       for t in self.timesteps
                     },
@@ -838,7 +842,7 @@ class ModelBuilder():
             self.flow = self.model.addVars(
                 self.inputs.arcs, self.timesteps,
                 lb = 0,
-                ub = {(source, sink, t): line_safety_factor*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
+                ub = {(source, sink, t): line_capacity_factor*self.inputs.linecap.loc[t + self.T*self.k, (source, sink)]
                       for source, sink in self.inputs.arcs
                       for t in self.timesteps
                     },
