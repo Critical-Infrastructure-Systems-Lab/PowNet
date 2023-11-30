@@ -11,7 +11,7 @@ from pownet.folder_sys import get_output_dir, delete_all_gurobi_solutions
 
 def main():
     #------- User defined inputs
-    MODEL_NAME = 'dummy_trade'
+    MODEL_NAME = 'cambodia'
     # The default simulation horizon T is 24 hours
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
@@ -42,6 +42,7 @@ def main():
     # record.to_csv()
     
     print('\n\n====')
+    print(f'PowNet: Solved {MODEL_NAME}')
     print(f'PowNet: Total time = {datetime.now() - time_start}')
     print(f'PowNet: Optimization time (s) = {round(sum(record.runtimes), 2)}')
     
