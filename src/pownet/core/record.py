@@ -97,6 +97,7 @@ class SystemRecord():
     def __init__(self, system_input: SystemInput) -> None:
         self.T: int = system_input.T
         self.model_name: str = system_input.model_name
+        self.runtimes = None
         
         self.thermal_units: list = system_input.thermal_units
         self.TD: dict[str, int] = system_input.TD
@@ -193,6 +194,13 @@ class SystemRecord():
             thermal_units = self.thermal_units,
             TD = self.TD
             )
+        
+        # Save the model runtime
+        if k == 0:
+            self.runtimes = [model.runtime]
+        else:
+            self.runtimes.append(model.runtime)
+        
     
     
     def get_init_conds(self) -> dict[str, dict]:
@@ -220,6 +228,10 @@ class SystemRecord():
     
     def get_system_variables(self) -> pd.DataFrame:
         return self.var_syswide
+    
+    
+    def runtimes(self) -> list[datetime.datetime]:
+        return self.runtimes
     
     
     def to_csv(self) -> None:

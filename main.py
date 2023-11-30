@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 
 from pownet.config import is_warmstart
@@ -15,7 +16,7 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 1
+    STEPS = 2
     
     #############################
     output_dir = get_output_dir()
@@ -25,6 +26,8 @@ def main():
         os.makedirs(output_dir)
     
     # The user should create their own model in the model_library folder
+    time_start = datetime.now()
+    
     system_input = SystemInput(
         T = T,
         formulation = 'kirchhoff',
@@ -36,6 +39,9 @@ def main():
     record = simulator.run(steps=STEPS)
     
     # record.to_csv()
+    print('\n\n====')
+    print(f'PowNet: Total time = {datetime.now() - time_start}')
+    print(f'PowNet: Optimization time (s) = {round(sum(record.runtimes), 2)}')
     
     node_variables = record.get_node_variables()
     visualizer = Visualizer()
