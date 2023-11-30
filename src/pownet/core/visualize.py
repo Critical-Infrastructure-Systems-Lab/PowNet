@@ -84,10 +84,10 @@ class Visualizer():
             )
         # There are positive and negative shortfalls
         self.shortfall_pos = format_variable_fueltype(
-            df=df, vartype='s_pos', fuel_type='shortfall_positive'
+            df=df, vartype='s_pos', fuel_type='shortfall'
             )
         self.shortfall_neg = format_variable_fueltype(
-            df=df, vartype='s_neg', fuel_type='shortfall_negative'
+            df=df, vartype='s_neg', fuel_type='curtailment'
             )
         self.demand = system_input.demand.sum(axis=1)
         

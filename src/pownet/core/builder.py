@@ -681,10 +681,10 @@ class ModelBuilder():
                 # Get the demand of node n at time t
                 if node in self.inputs.nodes_w_demand:
                     demand_n_t = self.inputs.demand.loc[t + self.T*self.k, node]
-                    shortfall = self.s_pos[node, t] - self.s_neg[node, t]
+                    mismatch = self.s_pos[node, t] - self.s_neg[node, t]
                 else:
                     demand_n_t = 0
-                    shortfall = 0
+                    mismatch = 0
                     
                 # Flow into a node is positive, while flow out is negative
                 arc_flow = 0
@@ -697,7 +697,7 @@ class ModelBuilder():
                 # Given the above terms, we can specify the energy balance
                 self.model.addConstr(
                     (
-                        thermal_gen + re_gen + imp_gen + arc_flow + shortfall
+                        thermal_gen + re_gen + imp_gen + arc_flow + mismatch
                         == demand_n_t),
                     name = 'flowBal' + f'[{node},{t}]'
                     )
