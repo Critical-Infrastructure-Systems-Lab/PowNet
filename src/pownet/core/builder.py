@@ -207,15 +207,6 @@ class ModelBuilder():
                 ),
             name = 'p_lower_bound'
             )
-        # self.model.addConstrs(
-        #     (
-        #         self.dispatch[unit_g, t]
-        #             <= self.pbar[unit_g, t] + self.inputs.min_cap[unit_g]*self.u[unit_g, t]
-        #         for unit_g in self.inputs.thermal_units
-        #         for t in self.timesteps
-        #         ),
-        #     name = 'link_ppbar',
-        #     )
         self.model.addConstrs(
             (
                 self.pbar[unit_g, t] + self.inputs.min_cap[unit_g]*self.u[unit_g, t]
@@ -718,8 +709,12 @@ class ModelBuilder():
 
     def _c_reserve_req_carrion(self):
         '''Equation 67 of Kneuven et al (2019). System-wide spinning reserve requirement.
-        Note that we substitute in the max_dispatch using Equation 13.
+        We substitute in the max_dispatch using Equation 13.
+        
+        THE FORMULATION IN KNUEVEN ET AL  (2020) IS MISLEADING. WE NEED TO 
+        CONSIDER GENERATION FROM ALL GENERATORS AND NOT JUST THERMAL UNITS.
         '''
+        raise NotImplementedError('This formulation needs modification.')
         self.model.addConstrs(
             (
                 gp.quicksum(
