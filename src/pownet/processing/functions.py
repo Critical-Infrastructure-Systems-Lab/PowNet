@@ -164,6 +164,6 @@ def get_nodehour_sys(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_current_time() -> str:
-    return datetime.now().strftime("%Y%m%d_%H%M")
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M")
         
 
