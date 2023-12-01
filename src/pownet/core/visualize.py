@@ -44,7 +44,7 @@ class Visualizer():
         self.status: pd.DataFrame = None
         self.fuelmap: dict[str, str] = None
         self.thermal_units: list[str] = None
-        self.max_cap: dict[str, float] = None
+        self.full_max_cap: dict[str, float] = None
         
         self.thermal_dispatch: pd.DataFrame = None
         self.rnw_dispatch: pd.DataFrame = None
@@ -62,7 +62,7 @@ class Visualizer():
         self.thermal_units = system_input.thermal_units
         self.fuelmap = system_input.fuelmap[['name', 'fuel_type']]\
             .set_index('name').to_dict()['fuel_type']
-        self.max_cap = system_input.max_cap
+        self.full_max_cap = system_input.full_max_cap
         
         # Generation from thermal units
         self.thermal_dispatch = df[df['vartype'] == 'dispatch']
@@ -252,7 +252,10 @@ class Visualizer():
             ax1.set_ylabel('Power (MW)')
             
             # If ymax is too low, then we cannot see the blue line
-            ax1.set_ylim(bottom=0, top=1.05*max(df1['value']))
+            ax1.set_ylim(
+                bottom = 0, 
+                top = self.full_max_cap[unit_g]*1.05
+                )
             ax1.tick_params(axis='x', labelrotation=45)
         
             plt.title(unit_g)

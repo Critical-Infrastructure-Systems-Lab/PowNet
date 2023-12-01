@@ -136,10 +136,10 @@ class SystemInput:
                 self.cycle_map: dict = json.load(f)
 
         # Thermal unit params
-        # self.full_max_cap: dict = pd.read_csv(
-        #     os.path.join(self.model_dir, 'unit_param.csv'),
-        #     header=0, index_col='name', usecols=['name', 'max_capacity']
-        #     ).to_dict()['max_capacity']
+        self.full_max_cap: dict = pd.read_csv(
+            os.path.join(self.model_dir, 'unit_param.csv'),
+            header=0, index_col='name', usecols=['name', 'max_capacity']
+            ).to_dict()['max_capacity']
         
         # The maximum capacity is reduced by the derating factor
         self.max_cap: dict = pd.read_csv(
