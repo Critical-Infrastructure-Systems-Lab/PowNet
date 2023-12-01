@@ -97,12 +97,12 @@ class ModelBuilder():
             }
         
         fixed_coeffs = {
-            (unit_g, t): self.inputs.max_cap[unit_g][t] * self.inputs.unit_econ.loc[unit_g, 'fixed_cost']
+            (unit_g, t): self.inputs.full_max_cap[unit_g] * self.inputs.unit_econ.loc[unit_g, 'fixed_cost']
             for t in self.timesteps for unit_g in self.inputs.thermal_units
             }
         
         startup_coeffs = {
-            (unit_g, t): self.inputs.max_cap[unit_g][t] * self.inputs.unit_econ.loc[unit_g, 'startup_cost']
+            (unit_g, t): self.inputs.full_max_cap[unit_g] * self.inputs.unit_econ.loc[unit_g, 'startup_cost']
             for t in self.timesteps for unit_g in self.inputs.thermal_units
             }
         
