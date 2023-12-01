@@ -196,7 +196,8 @@ class ModelBuilder():
     
     def _c_link_pu(self) -> None:
         '''Equation 18 of Kneuven et al (2019). 
-        Establish the relationship among p, pbar, and status
+        Establish the relationship among p, pbar, and status.
+        Note that we use Equation 13 to substitute in maximum dispatch at t
         '''
         self.model.addConstrs(
             (
@@ -206,9 +207,19 @@ class ModelBuilder():
                 ),
             name = 'p_lower_bound'
             )
+        # self.model.addConstrs(
+        #     (
+        #         self.dispatch[unit_g, t]
+        #             <= self.pbar[unit_g, t] + self.inputs.min_cap[unit_g]*self.u[unit_g, t]
+        #         for unit_g in self.inputs.thermal_units
+        #         for t in self.timesteps
+        #         ),
+        #     name = 'link_ppbar',
+        #     )
         self.model.addConstrs(
             (
-                self.pbar[unit_g, t] <= self.inputs.max_cap[unit_g][t]*self.u[unit_g, t]
+                self.pbar[unit_g, t] + self.inputs.min_cap[unit_g]*self.u[unit_g, t]
+                    <= self.inputs.max_cap[unit_g][t]*self.u[unit_g, t]
                 for unit_g in self.inputs.thermal_units
                 for t in self.timesteps
                 ),
@@ -705,8 +716,9 @@ class ModelBuilder():
                     )
 
 
-    def _c_reserve_req(self):
+    def _c_reserve_req_carrion(self):
         '''Equation 67 of Kneuven et al (2019). System-wide spinning reserve requirement.
+        Note that we substitute in the max_dispatch using Equation 13.
         '''
         self.model.addConstrs(
             (
@@ -719,6 +731,21 @@ class ModelBuilder():
                 >= gp.quicksum(
                     self.inputs.demand.loc[t + self.T*self.k, n] for n in self.inputs.nodes_w_demand)
                         + self.inputs.spin_req[t + self.T*self.k]
+                for t in self.timesteps
+                ),
+            name = 'reserveReq'
+            )
+        
+        
+    def _c_reserve_req(self):
+        '''Equation 68 of Kneuven et al (2019).
+        '''
+        self.model.addConstrs(
+            (
+                gp.quicksum(
+                    self.spin[unit_g, t] for unit_g in self.inputs.thermal_units
+                    ) + self.sys_spin[t]
+                >= self.inputs.spin_req[t + self.T*self.k]
                 for t in self.timesteps
                 ),
             name = 'reserveReq'
