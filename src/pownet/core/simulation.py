@@ -1,4 +1,4 @@
-import json
+import pickle
 import os
 
 from pownet.core.builder import ModelBuilder
@@ -75,11 +75,11 @@ class Simulator:
                 # Need to learn about the initial conditions as well
                 with open(
                         os.path.join(
-                            os.get_output_dir(),
-                            f'finfeasible_{self.model_name}_{k}_{c_time}.json'
+                            get_output_dir(),
+                            f'infeasible_{self.model_name}_{k}_{c_time}.json'
                             ),
                         'wb') as f:
-                    f.write(system_record)
+                    pickle.dump(system_record, f)
                 
                 break
             
