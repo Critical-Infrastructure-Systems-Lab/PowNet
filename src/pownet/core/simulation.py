@@ -76,7 +76,7 @@ class Simulator:
                 with open(
                         os.path.join(
                             get_output_dir(),
-                            f'infeasible_{self.model_name}_{k}_{c_time}.json'
+                            f'infeasible_{self.model_name}_{k}_{c_time}.pkl'
                             ),
                         'wb') as f:
                     pickle.dump(system_record, f)
