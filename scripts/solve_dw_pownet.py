@@ -11,7 +11,7 @@ from pypolp.tools.parser import parse_mps_with_orders, parse_mps, get_dataframe_
 
 
 
-MODEL_NAME = 'cambodia'
+MODEL_NAME = 'laos'
 
 
 CTIME = c_time = datetime.now().strftime("%Y%m%d_%H%M")
@@ -95,6 +95,7 @@ for k in range(num_instances):
     lp_objvals.append(lp_objval)
     
     # Check if the LP is integer solution
+    # TODO: Do actual check of variables: u,v,w
     obj_diff = np.isclose(mip_objval - lp_objval, 0)
     lp_is_int_solution.append(obj_diff == 0)
     

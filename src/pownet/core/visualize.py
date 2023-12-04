@@ -113,10 +113,6 @@ class Visualizer():
             .reset_index(drop=True)
         total_dispatch.index += 1
         
-        # Ensure all close to zero values are zero
-        for col in total_dispatch.columns:
-            total_dispatch.loc[total_dispatch[col] < 0 , col] = 0
-        
         # Define the order of fuel mix. Baseload at the bottom, 
         # renewables in the middle, then peaker plants, and shortfall
         fuel_mix_order = pd.read_csv(

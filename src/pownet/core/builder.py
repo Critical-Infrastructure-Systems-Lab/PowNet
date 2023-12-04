@@ -57,7 +57,7 @@ class ModelBuilder():
 
         self.s_pos = None
         self.s_neg = None
-        self.sys_shortfall = None # Not yet implemented
+        self.sys_shortfall = None # Not implemented
         
         self.u = None
         self.v = None
