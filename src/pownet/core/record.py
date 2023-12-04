@@ -136,6 +136,13 @@ class SystemRecord():
         # Format the dataframe into vartype, node, hour, value columns
         cur_var_node_t = results[~results['vartype'].isin(col2exclude)]
         cur_var_node_t = get_nodehour(cur_var_node_t)
+        # Prevent numerical instability by ensuring the binary values are zero or one
+        cur_var_node_t.loc[
+            np.isclose(cur_var_node_t['value'], 0, atol=1e-4), 'value'
+            ] = 0
+        cur_var_node_t.loc[
+            np.isclose(cur_var_node_t['value'], 1, atol=1e-4), 'value'
+            ] = 0
         
         cur_var_flow = results[results['vartype'] == 'flow']
         cur_var_flow = get_nodehour_flow(cur_var_flow)
@@ -156,10 +163,9 @@ class SystemRecord():
         self.current_w = cur_var_node_t[cur_var_node_t['vartype'] == 'shut']\
             .drop('vartype', axis=1).set_index(['node', 'hour']).to_dict()['value']
             
-        # Prevent numerical instability by converting to binary values
-        self.current_u = {k: int(v) for k, v in self.current_u.items()}
-        self.current_v = {k: int(v) for k, v in self.current_v.items()}
-        self.current_w = {k: int(v) for k, v in self.current_w.items()}
+        self.current_u = {k: v for k, v in self.current_u.items()}
+        self.current_v = {k: v for k, v in self.current_v.items()}
+        self.current_w = {k: v for k, v in self.current_w.items()}
         
         # Record the results after incrementing the hour by the simulation period
         cur_var_node_t = increment_hour(cur_var_node_t, T=self.T, k=k)
@@ -215,18 +221,28 @@ class SystemRecord():
     
     
     def get_record(self) -> None:
+        ''' Return all the variables as a set of three dataframes
+        '''
         return [self.var_node_t, self.var_flow, self.var_syswide]
     
     
     def get_node_variables(self) -> pd.DataFrame:
+        ''' Return node-specific variables. These variables include
+        dispatch, unit status, unit switching, etc.
+        '''
         return self.var_node_t
     
     
     def get_flow_variables(self) -> pd.DataFrame:
+        ''' Return the flow variables.
+        '''
         return self.var_flow
     
     
     def get_system_variables(self) -> pd.DataFrame:
+        ''' Return the system variables. We currently only have the 
+        system-wide spinning reserve shortfall.
+        '''
         return self.var_syswide
     
     

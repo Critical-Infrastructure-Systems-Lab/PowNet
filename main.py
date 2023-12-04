@@ -11,12 +11,16 @@ from pownet.folder_sys import get_output_dir, delete_all_gurobi_solutions
 
 def main():
     #------- User defined inputs
-    MODEL_NAME = 'cambodia'
+    MODEL_NAME = 'dummy_trade'
     # The default simulation horizon T is 24 hours
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 2
+    STEPS = 365
+    
+    # Decide whether to save results
+    SAVE_RESULT = False
+    SAVE_PLOT = False
     
     #############################
     output_dir = get_output_dir()
@@ -38,8 +42,8 @@ def main():
     
     record = simulator.run(steps=STEPS)
     
-    # Uncomment if want to save results
-    # record.to_csv()
+    if SAVE_RESULT:
+        record.to_csv()
     
     print('\n\n====')
     print(f'PowNet: Solved {MODEL_NAME}')
@@ -54,11 +58,11 @@ def main():
         model_name = MODEL_NAME
         )
     
-    visualizer.plot_fuelmix(to_save=False)
+    visualizer.plot_fuelmix(to_save=SAVE_PLOT)
     # The dispatch plot does not work well when simulating more than 2 day or
     # there are more than 10 thermal units.
     if STEPS <= 48 and len(system_input.thermal_units) <= 10:
-        visualizer.plot_thermal_units(to_save=False)
+        visualizer.plot_thermal_units(to_save=SAVE_PLOT)
         
     # Delete the last solution file when warmstarting
     if is_warmstart():
