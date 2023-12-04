@@ -52,6 +52,23 @@ class Simulator:
                 self.model = builder.update(
                     k = k,
                     init_conds = init_conds)
+                
+            # We can write the model as .MPS and use non-Gurobi solvers
+            if self.write_model:
+                # Save the model
+                dirname = os.path.join(
+                    get_output_dir(), f'{self.model_name}_instances'
+                    )
+                if not os.path.exists(dirname):
+                    os.makedirs(dirname)
+                self.model.write(
+                    os.path.join(
+                        dirname, f'{self.model_name}_{k}.mps'
+                        )
+                    )
+            
+            # TODO: Revise this section when using a non-Gurobi solver
+            # Replace the Gurobi model with a non_gurobi model
             self.model.optimize()
             
             # In case when the model is infeasible, we generate an output file
@@ -95,18 +112,7 @@ class Simulator:
             system_record.keep(self.model, k)
             init_conds = system_record.get_init_conds()
             
-            if self.write_model:
-                # Save the model
-                dirname = os.path.join(
-                    get_output_dir(), f'{self.model_name}_instances'
-                    )
-                if not os.path.exists(dirname):
-                    os.makedirs(dirname)
-                self.model.write(
-                    os.path.join(
-                        dirname, f'{self.model_name}_{k}.mps'
-                        )
-                    )
+
         
         return system_record
     
