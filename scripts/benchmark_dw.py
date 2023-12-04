@@ -14,7 +14,7 @@ from pypolp.optim import GurobipyOptimizer
 from pypolp.tools.parser import parse_mps_dec
 
 
-MODEL_NAME = 'thailand'
+MODEL_NAME = 'laos'
 PARSE_INSTANCE = True # Save the instance after 
 SAVE_RESULT = False
 DW_FUELPLOT = False
@@ -22,13 +22,13 @@ DW_BOXPLOTS = False
 
 
 # Get out of decomposition and src
+c_time = datetime.now().strftime("%Y%m%d_%H%M")
 PDIR = os.path.dirname(os.getcwd())
+instance_folder = os.path.join(PDIR, 'outputs', f'{MODEL_NAME}_instances')
+path_dec = os.path.join(instance_folder, f'{MODEL_NAME}.dec')
 
-path_mps = os.path.join(
-    PDIR, 'temp', 'decom_files', f'{MODEL_NAME}.mps')
+path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_0.mps')
 
-path_dec = os.path.join(
-    PDIR, 'temp', 'decom_files', f'{MODEL_NAME}.dec')
 
 
 #%% Parse the instance
@@ -84,7 +84,6 @@ t_end_lp = time.time()
 
 
 
-
 #%% Solving as MIP
 print('\n=== Benchmark: Solve as MIP ===\n')
 
@@ -111,7 +110,6 @@ if SAVE_RESULT:
     solutions = dw_solution.join(lp_solution, how='left')
     solutions = solutions.join(mip_solution, how='left')
      
-    c_time = datetime.now().strftime("%Y%m%d_%H%M")
     solutions.to_csv(
         os.path.join(
             PDIR, 'temp', 'decom_results', 
@@ -150,22 +148,28 @@ if DW_FUELPLOT:
 master_time, subproblem_time = dw_instance.get_stats(mode='runtime')
 
 print('\n===== STATS =====')
-print('DW objval:  ', int(dw_objval))
-print('LP objval:  ', int(lp_objval))
-print('MIP objval: ', int(mip_objval))
-print(
-      '\nOptimality gap (%): ',
-      round(abs((mip_objval - dw_objval) / mip_objval)*100, 2)
-      )
-print('\nTotal DW Time (s):   ', round(t_end_dw - t_start_dw, 2))
-print('Total LP Time (s):   ', round(t_end_lp - t_start_lp, 2))
-print('Total MIP Time (s):  ', round(t_end_mip - t_start_mip, 2))
-print('Parse Time (s) ', round(t_end_parse - t_start_parse, 2))
-print(f'\nOpt time - Master Problem:   {round(master_time, 5)} s')
-print(f'Opt time - Subproblem:       {round(subproblem_time, 5)} s')
-print(f'Opt time - DW Total:         {round(master_time+subproblem_time, 5)} s')
-print(f'Opt time - LP Gurobi:      {round(base_opt.runtime, 5)} s')
-print(f'Opt time - MIP Gurobi:      {round(base_opt_mip.runtime, 5)} s')
+print(f'{"DW objval:":<20} {int(dw_objval)}')
+print(f'{"LP objval:":<20} {int(lp_objval)}')
+print(f'{"MIP objval:":<20} {int(mip_objval)}')
+
+mip_dw_gap = round(abs((mip_objval - dw_objval)/mip_objval+0.01)*100, 2)
+print(f'\n{"MIP-DW gap (%):":<20} {mip_dw_gap}')
+
+mip_lp_gap = round(abs((mip_objval - lp_objval) / mip_objval+0.01)*100, 2)
+print(f'{"MIP-LP gap (%):":<20} {mip_lp_gap}')
+
+print(f'\n{"DW Structure Read Time (s):":<20} {round(t_end_parse - t_start_parse, 2)}')
+
+print(f'\n{"Total DW Time (s):":<20} {round(t_end_dw - t_start_dw, 2)}')
+
+print(f'{"Total LP Time (s):":<20} {round(t_end_lp - t_start_lp, 2)}')
+print(f'{"Total MIP Time (s):":<20} {round(t_end_mip - t_start_mip, 2)}')
+
+print(f'\n{"Opt time - Master Problem:":<30} {round(master_time, 5)} s')
+print(f'{"Opt time - Subproblem:":<30} {round(subproblem_time, 5)} s')
+print(f'{"Opt time - DW Total:":<30} {round(master_time+subproblem_time, 5)} s')
+print(f'{"Opt time - LP Gurobi:":<30} {round(base_opt.runtime, 5)} s')
+print(f'{"Opt time - MIP Gurobi:":<30} {round(base_opt_mip.runtime, 5)} s')
 
 
 #%% Visualize the stats
