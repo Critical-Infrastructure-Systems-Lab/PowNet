@@ -10,7 +10,7 @@ from pownet.folder_sys import get_output_dir, get_model_dir
 
 
 
-MODEL_NAME = 'thailand'
+MODEL_NAME = 'laos'
 MODEL_FOLDER = os.path.join(get_model_dir(), MODEL_NAME)
 
 WRITE_DEC = True
@@ -19,20 +19,23 @@ WRITE_DEC = True
 # We are only optimizing one step which is 24 hours. This optimization
 # is just to initiate a model so we can extract the model from Gurobi
 T = 24
-steps = 1
+steps = 365
 
 
 
 ##--------------- This section writes MPS file(s)
-system_input = SystemInput(T=T, model_name=MODEL_NAME)
-simulator = Simulator(
+system_input = SystemInput(
     T = T, 
-    system_input = system_input,
     model_name = MODEL_NAME,
+    formulation = 'kirchhoff'
+    )
+
+simulator = Simulator(
+    system_input = system_input,
     write_model = True)
 
 # Run the model to instantiate the model
-var_node_t, var_flow, var_syswide = simulator.run(steps=steps)
+_ = simulator.run(steps=steps)
 
 
 
