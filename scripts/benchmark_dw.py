@@ -43,7 +43,6 @@ else:
         dw_problem = pkl.load(f)
 t_end_parse = time.time()
 
-
 # The current DW implementation only supports LP
 dw_problem_lp = copy.deepcopy(dw_problem)
 # Relax the integrality constraints
@@ -67,6 +66,10 @@ dw_objval, dw_solution = dw_instance.get_solution(record)
 
 t_end_dw = time.time()
 
+
+#%% Solving with DW as MIP
+
+dw_objval_mip, dw_solution_mip = dw_instance.get_solution(record, recover_integer=True)
 
 
 #%% Solve the LP
@@ -148,12 +151,16 @@ if DW_FUELPLOT:
 master_time, subproblem_time = dw_instance.get_stats(mode='runtime')
 
 print('\n===== STATS =====')
+print(f'{"DW_MIP objval:":<20} {int(dw_objval_mip)}')
 print(f'{"DW objval:":<20} {int(dw_objval)}')
 print(f'{"LP objval:":<20} {int(lp_objval)}')
 print(f'{"MIP objval:":<20} {int(mip_objval)}')
 
+mip_dwmip_gap = round(abs((mip_objval - dw_objval_mip)/mip_objval+0.01)*100, 2)
+print(f'\n{"MIP-DW_MIP gap (%):":<20} {mip_dwmip_gap}')
+
 mip_dw_gap = round(abs((mip_objval - dw_objval)/mip_objval+0.01)*100, 2)
-print(f'\n{"MIP-DW gap (%):":<20} {mip_dw_gap}')
+print(f'{"MIP-DW gap (%):":<20} {mip_dw_gap}')
 
 mip_lp_gap = round(abs((mip_objval - lp_objval) / mip_objval+0.01)*100, 2)
 print(f'{"MIP-LP gap (%):":<20} {mip_lp_gap}')
