@@ -3,12 +3,11 @@ from datetime import datetime
 import os
 
 import gurobipy as gp
-import numpy as np
 import pandas as pd
 
 from pypolp.dw.dw import DantzigWolfe, Record
 from pypolp.tools.parser import parse_mps_with_orders, parse_mps, get_dataframe_orders
-
+from pypolp.tools.functions import check_is_binary
 
 
 MODEL_NAME = 'laos'
@@ -30,6 +29,7 @@ del A_df
 del col_df
 
 master_times = []
+master_mip_times = []
 master_itercounts = []
 
 subp_times = []
@@ -39,6 +39,7 @@ lp_gurobi_times = []
 mip_gurobi_times = []
 
 dw_objvals = []
+dw_mip_objvals = []
 lp_objvals = []
 mip_objvals = []
 
@@ -51,6 +52,8 @@ for k in range(num_instances):
     print(f'\n\n=== Solving Day {k} ===')
     path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_{k}.mps')
 
+
+    # Solve with Dantzig-Wolfe
     dw_problem = parse_mps_with_orders(path_mps, row_order, col_order)
     record = Record()
     record.fit(dw_problem)
@@ -95,24 +98,38 @@ for k in range(num_instances):
     lp_objvals.append(lp_objval)
     
     # Check if the LP is integer solution
-    # TODO: Do actual check of variables: u,v,w
-    obj_diff = np.isclose(mip_objval - lp_objval, 0)
-    lp_is_int_solution.append(obj_diff == 0)
+    lp_is_int_solution.append(
+        check_is_binary(
+            model = gp_model, 
+            target_varnames = ['status', 'start', 'shut']
+            )
+        )
+    
+    # If the last iteration 
+    dw_mip_objval, dw_solution_mip = dw_instance.get_solution(
+        record, 
+        recover_integer = True
+        )
+    dw_mip_objvals.append(dw_mip_objval)
+    master_mip_times.append(dw_instance.master_problem.model.runtime)
+    
     
 
 # Create a dataframe and 
 dw_times = [x+y for x,y in zip(master_times, subp_times)]
 dw_stats = pd.DataFrame({
     'master_times': master_times,
+    'master_mip_times': master_mip_times,
     'master_iters': master_itercounts,
     'subp_times': subp_times,
     'subp_iters': subp_itercounts,
     'dw_times': dw_times,
     'lp_gurobi_times': lp_gurobi_times,
     'mip_gurobi_times': mip_gurobi_times,
+    'mip_objvals': mip_objvals,
+    'dw_mip_objvals': dw_mip_objvals,
     'dw_objvals': dw_objvals,
     'lp_objvals': lp_objvals,
-    'mip_objvals': mip_objvals,
     'int_solution': lp_is_int_solution
     })
 
