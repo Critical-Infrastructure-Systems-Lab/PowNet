@@ -31,9 +31,9 @@ del col_df
 master_times = []
 master_mip_times = []
 master_itercounts = []
-
 subp_times = []
 subp_itercounts = []
+dw_iter_count = []
 
 lp_gurobi_times = []
 mip_gurobi_times = []
@@ -51,7 +51,6 @@ num_instances = len(os.listdir(instance_folder)) - 1
 for k in range(num_instances):
     print(f'\n\n=== Solving Day {k} ===')
     path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_{k}.mps')
-
 
     # Solve with Dantzig-Wolfe
     dw_problem = parse_mps_with_orders(path_mps, row_order, col_order)
@@ -73,6 +72,7 @@ for k in range(num_instances):
     
     dw_objval, dw_solution = dw_instance.get_solution(record)
     dw_objvals.append(dw_objval)
+    dw_iter_count.append(dw_instance.dw_iter)
     
     
     # Solve with Gurobi as MIP
@@ -121,6 +121,7 @@ dw_stats = pd.DataFrame({
     'master_times': master_times,
     'master_mip_times': master_mip_times,
     'master_iters': master_itercounts,
+    'dw_iter_count': dw_iter_count,
     'subp_times': subp_times,
     'subp_iters': subp_itercounts,
     'dw_times': dw_times,
