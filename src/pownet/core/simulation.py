@@ -25,7 +25,12 @@ class Simulator:
         self.write_model = write_model
         
         
-    def run(self, steps: int) -> SystemRecord:
+    def run(
+            self,
+            steps: int,
+            mip_gap: float = None,
+            timelimit: float = None
+            ) -> SystemRecord:
         # Instantiate objects
         system_record = SystemRecord(self.system_input)
         
@@ -47,11 +52,17 @@ class Simulator:
             if k == 0:
                 self.model = builder.build(
                     k = k,
-                    init_conds = init_conds)
+                    init_conds = init_conds,
+                    mip_gap = mip_gap,
+                    timelimit = timelimit
+                    )
             else:
                 self.model = builder.update(
                     k = k,
-                    init_conds = init_conds)
+                    init_conds = init_conds,
+                    mip_gap = mip_gap,
+                    timelimit = timelimit
+                    )
                 
             # We can write the model as .MPS and use non-Gurobi solvers
             if self.write_model:
@@ -112,8 +123,6 @@ class Simulator:
             system_record.keep(self.model, k)
             init_conds = system_record.get_init_conds()
             
-
-        
         return system_record
     
     

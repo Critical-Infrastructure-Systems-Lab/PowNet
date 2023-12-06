@@ -15,7 +15,8 @@ from pypolp.tools.parser import parse_mps_dec
 
 
 MODEL_NAME = 'laos'
-PARSE_INSTANCE = True # Save the instance after 
+PARSE_INSTANCE = True # Save the instance after
+SAVE_FIGURE = True
 SAVE_RESULT = False
 DW_FUELPLOT = False
 DW_BOXPLOTS = False
@@ -24,9 +25,9 @@ DW_BOXPLOTS = False
 # Get out of decomposition and src
 c_time = datetime.now().strftime("%Y%m%d_%H%M")
 PDIR = os.path.dirname(os.getcwd())
+
 instance_folder = os.path.join(PDIR, 'outputs', f'{MODEL_NAME}_instances')
 path_dec = os.path.join(instance_folder, f'{MODEL_NAME}.dec')
-
 path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_0.mps')
 
 

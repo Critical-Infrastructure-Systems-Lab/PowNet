@@ -4,17 +4,22 @@ import matplotlib.pyplot as plt
 import mplcursors
 
 from pypolp.tools.parser import parse_mps_dec
+from pownet.folder_sys import get_output_dir
 
 
 
-
-MODEL_NAME = 'thailand'
+MODEL_NAME = 'dummy_trade'
+SAVE_FIGURE = True
 
 # Get the A matrix as a dataframe
 
 pdir = os.path.dirname(os.getcwd())
-path_mps = os.path.join(pdir, 'temp', 'decom_files', f'{MODEL_NAME}.mps')
-path_dec = os.path.join(pdir, 'temp', 'decom_files', f'{MODEL_NAME}.dec')
+path_mps = os.path.join(
+    get_output_dir(), f'{MODEL_NAME}_instances', f'{MODEL_NAME}_0.mps'
+    )
+path_dec = os.path.join(
+    get_output_dir(), f'{MODEL_NAME}_instances', f'{MODEL_NAME}.dec'
+    )
     
 dw_problem = parse_mps_dec(path_mps, path_dec)
 
@@ -41,6 +46,10 @@ def on_add(sel):
     sel.annotation.get_bbox_patch().set(fc="white")
     sel.annotation.set(text=tt, fontsize=13, ha='left')
 
-plt.savefig(
-    os.path.join(pdir, 'temp', f'{MODEL_NAME}_structure.png'), dpi=350, bbox_inches='tight')
+if SAVE_FIGURE:
+    fig.savefig(
+        os.path.join(get_output_dir(), f'{MODEL_NAME}_structure.png'), 
+        dpi = 350,
+        bbox_inches = 'tight')
+
 plt.show()

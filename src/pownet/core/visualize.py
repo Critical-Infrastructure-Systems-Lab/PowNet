@@ -58,6 +58,9 @@ class Visualizer():
         self.model_name = model_name
         self.year = system_input.year
         
+        # For saving files
+        self.ctime = datetime.now().strftime("%Y%m%d_%H%M")
+        
         self.status = df[df['vartype'] == 'status']
         self.thermal_units = system_input.thermal_units
         self.fuelmap = system_input.fuelmap[['name', 'fuel_type']]\
@@ -92,7 +95,12 @@ class Visualizer():
         self.demand = system_input.demand.sum(axis=1)
         
 
-    def plot_fuelmix(self, to_save: bool) -> None:
+    def plot_fuelmix(
+            self,
+            to_save: bool,
+            output_folder: str = None,
+            figure_name: str = None
+            ) -> None:
         total_dispatch = pd.concat(
             [
                 self.thermal_dispatch,
@@ -209,11 +217,14 @@ class Visualizer():
         ax.set_ylim(bottom=0)
         
         if to_save:
-            c_time = datetime.now().strftime("%Y%m%d_%H%M")
-            fig.savefig(
-                os.path.join(
-                    get_output_dir(), f'{c_time}_{self.model_name}_fuelmix.png'
-                    ),
+            
+            if not output_folder:
+                output_folder = get_output_dir()
+            
+            if not figure_name:
+                figure_name = f'{self.c_time}_{self.model_name}_fuelmix.png'
+                
+            fig.savefig(os.path.join(output_folder, figure_name),
                 bbox_extra_artists = (legend,),
                 bbox_inches = 'tight',
                 dpi = 350
@@ -221,7 +232,12 @@ class Visualizer():
         plt.show()
     
     
-    def plot_thermal_units(self, to_save: bool) -> None:
+    def plot_thermal_units(
+            self,
+            to_save: bool,
+            output_folder: str = None,
+            figure_name: str = None
+            ) -> None:
         ''' Plot the on/off status of individual thermal units
         '''
         for unit_g in self.thermal_units:
@@ -257,10 +273,14 @@ class Visualizer():
             plt.title(unit_g)
             
             if to_save:
-                c_time = datetime.now().strftime("%Y%m%d_%H%M")
+                
+                if not output_folder:
+                    output_folder = get_output_dir()
+                    
+                if not figure_name:
+                    figure_name = f'{self.c_time}_{self.model_name}_{unit_g}.png'
+                
                 fig.savefig(
-                    os.path.join(
-                        get_output_dir(), 
-                    f'{c_time}_{self.model_name}_{unit_g}.png'),
+                    os.path.join(output_folder, figure_name),
                     dpi = 350)
             plt.show()

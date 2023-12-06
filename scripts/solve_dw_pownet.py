@@ -16,6 +16,7 @@ MODEL_NAME = 'cambodia'
 SAVE_SOLUTIONS = True
 RECOVER_INT_FROM_DW = True
 
+terminate_criterion = '_0d0001' # 0d0001 = 0.0001
 
 ############################
 start_time_script = datetime.now()
@@ -24,8 +25,8 @@ CTIME = start_time_script.strftime("%Y%m%d_%H%M")
 print(f'\n==== Begin collecting statistics for {MODEL_NAME} ====')
 
 # Create a folder to save the outputs
-save_name = f'{CTIME}_{MODEL_NAME}'
-save_folder = os.path.join(get_temp_dir(), save_name)
+save_folder = f'{CTIME}_{MODEL_NAME}_{terminate_criterion}'
+save_folder = os.path.join(get_temp_dir(), save_folder)
 if not os.path.exists(save_folder):
     os.makedirs(save_folder)
 
