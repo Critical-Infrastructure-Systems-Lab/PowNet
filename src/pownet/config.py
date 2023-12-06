@@ -70,3 +70,10 @@ def get_to_log() -> bool:
     config = get_config()
     return config.getboolean('GUROBI', 'LOGTOCONSOLE')
 
+
+def get_timelimit() -> float:
+    ''' Enforces timelimit to solve the problem. 
+    '''
+    config = get_config()
+    return config.getfloat('GUROBI', 'TIMELIMIT')
+

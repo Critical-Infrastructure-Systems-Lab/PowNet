@@ -13,7 +13,8 @@ from pownet.config import (
     get_shortfall_penalty,
     get_spin_reserve_penalty,
     get_mip_gap,
-    get_to_log
+    get_to_log,
+    get_timelimit
     )
 from pownet.core.input import SystemInput
 from pownet.folder_sys import get_output_dir
@@ -926,6 +927,8 @@ class ModelBuilder():
             self,
             k: int,
             init_conds: dict[str, dict],
+            mip_gap: float = None,
+            timelimit: float = None
             ) -> gp.Model:
 
         self.k = k
@@ -942,7 +945,18 @@ class ModelBuilder():
         
         # Create a gurobipy model along with parameter settings
         self.model = gp.Model(f'{self.model_name}_{k+1}')
-        self.model.setParam('MIPGap', get_mip_gap())
+        
+        # User does not provide mip_gap to function call by default
+        if not mip_gap:
+            self.model.setParam('MIPGap', get_mip_gap())
+        else:
+            self.model.setParam('MIPGap', mip_gap)
+        
+        if not timelimit:
+            self.model.setParam('TimeLimit', get_timelimit())
+        else:
+            self.model.setParam('TimeLimit', timelimit)
+        
         self.model.setParam('LogToConsole', get_to_log())
         
         self._add_variables()

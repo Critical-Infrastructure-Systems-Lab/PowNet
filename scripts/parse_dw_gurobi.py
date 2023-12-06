@@ -1,3 +1,5 @@
+''' This script parses the Dantzig-Wolfe log to perform analysis. Also, creates the activity plot.
+'''
 from collections import defaultdict
 import math
 import os

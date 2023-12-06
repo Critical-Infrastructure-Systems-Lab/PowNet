@@ -1,3 +1,12 @@
+''' This script prepares the input files based on user inputs. This script calls the InputProcessor class.
+- Append line capacities to transmission.csv
+- create fuel_price.csv
+- create pownet_cycle_map.json
+- create derate_factor.csv
+- create pownet_derate_factor.csv
+- create pownet_derated_capacity.csv
+'''
+
 from pownet.input_processor import InputProcessor
 
 frequency = 50
