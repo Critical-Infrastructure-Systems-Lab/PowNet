@@ -927,8 +927,8 @@ class ModelBuilder():
             self,
             k: int,
             init_conds: dict[str, dict],
-            mip_gap: float = None,
-            timelimit: float = None
+            mip_gap: float,
+            timelimit: float
             ) -> gp.Model:
 
         self.k = k
@@ -946,7 +946,9 @@ class ModelBuilder():
         # Create a gurobipy model along with parameter settings
         self.model = gp.Model(f'{self.model_name}_{k+1}')
         
-        # User does not provide mip_gap to function call by default
+        self.model.setParam('LogToConsole', get_to_log())
+        
+        # User might not specify these parameters to the Simulation class
         if not mip_gap:
             self.model.setParam('MIPGap', get_mip_gap())
         else:
@@ -957,8 +959,6 @@ class ModelBuilder():
         else:
             self.model.setParam('TimeLimit', timelimit)
         
-        self.model.setParam('LogToConsole', get_to_log())
-        
         self._add_variables()
         self._set_objective()
         self._add_constraints()
@@ -966,13 +966,19 @@ class ModelBuilder():
         return self.model
     
     
-    def update(self, k:int, init_conds: dict[str, dict]) -> None:
+    def update(
+            self,
+            k:int, 
+            init_conds: dict[str, dict],
+            mip_gap: float,
+            timelimit: float,
+            ) -> None:
         ''' Update the model instead of creating a new one 
         so we can perform warm start
         '''
         # TODO: Consider updating the model instead of creating a new one
         # Update cost coeffs, constraints, RHS
-        self.model = self.build(k, init_conds)
+        self.model = self.build(k, init_conds, mip_gap=mip_gap, timelimit=timelimit)
         
         # Use the solution from the previous solve
         if is_warmstart():
