@@ -252,24 +252,29 @@ class Visualizer():
                 df1['hour'], df1['value'], 
                 where = 'mid', 
                 color = 'b', 
-                label = 'Power')
-            
-            ax2.bar(
-                df2['hour'], df2['value'], 
-                color = 'k', 
-                alpha = 0.2,
-                label = 'Unit status')
-            
-            ax1.set_xlabel('Hour')
-            ax1.set_ylabel('Power (MW)')
-            
+                label = 'Power'
+                )
             # If ymax is too low, then we cannot see the blue line
             ax1.set_ylim(
                 bottom = 0, 
                 top = self.full_max_cap[unit_g]*1.05
                 )
             ax1.tick_params(axis='x', labelrotation=45)
-        
+            ax1.set_xlabel('Hour')
+            ax1.set_ylabel('Power (MW)')
+            
+            ax2.bar(
+                df2['hour'], df2['value'], 
+                color = 'k', 
+                alpha = 0.2,
+                label = 'Unit status'
+                )
+            ax2.set_ylim(
+                bottom = 0, 
+                top = 1
+                )
+            ax2.set_ylabel('Unit Status')
+
             plt.title(unit_g)
             
             if to_save:
