@@ -120,10 +120,12 @@ class SystemRecord():
     
     def keep(self, model: gp.Model, k: int) -> None:
         # Extract the variables from the model to process them
-        all_vars = model.getVars()
-        values = model.getAttr("X", all_vars)
-        names = model.getAttr("VarName", all_vars)
-        results = pd.DataFrame({'varname':names, 'value':values})
+        results = pd.DataFrame(
+            {
+                'varname': model.getAttr('varname'),
+                'value': model.getAttr('X')
+                }
+            )
         
         # Create a col of variable types for filtering
         pat_vartype = r'(\w+)\['
