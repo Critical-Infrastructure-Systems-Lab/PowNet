@@ -222,7 +222,7 @@ class Visualizer():
                 output_folder = get_output_dir()
             
             if not figure_name:
-                figure_name = f'{self.c_time}_{self.model_name}_fuelmix.png'
+                figure_name = f'{self.ctime}_{self.model_name}_fuelmix.png'
                 
             fig.savefig(os.path.join(output_folder, figure_name),
                 bbox_extra_artists = (legend,),
@@ -283,7 +283,7 @@ class Visualizer():
                     output_folder = get_output_dir()
                     
                 if not figure_name:
-                    figure_name = f'{self.c_time}_{self.model_name}_{unit_g}.png'
+                    figure_name = f'{self.ctime}_{self.model_name}_{unit_g}.png'
                 
                 fig.savefig(
                     os.path.join(output_folder, figure_name),
