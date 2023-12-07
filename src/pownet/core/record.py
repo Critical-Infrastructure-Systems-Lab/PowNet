@@ -142,7 +142,7 @@ class SystemRecord():
             ] = 0
         cur_var_node_t.loc[
             np.isclose(cur_var_node_t['value'], 1, atol=1e-4), 'value'
-            ] = 0
+            ] = 1
         
         cur_var_flow = results[results['vartype'] == 'flow']
         cur_var_flow = get_nodehour_flow(cur_var_flow)
