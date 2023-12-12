@@ -235,8 +235,6 @@ class Visualizer():
     def plot_thermal_units(
             self,
             to_save: bool,
-            output_folder: str = None,
-            figure_name: str = None
             ) -> None:
         ''' Plot the on/off status of individual thermal units
         '''
@@ -278,14 +276,12 @@ class Visualizer():
             plt.title(unit_g)
             
             if to_save:
-                
-                if not output_folder:
-                    output_folder = get_output_dir()
+                unit_plot_folder = os.path.join(get_output_dir(), f'{self.ctime}_unit_plots')
+                if not os.path.exists(unit_plot_folder):
+                    os.mkdir(unit_plot_folder)
                     
-                if not figure_name:
-                    figure_name = f'{self.ctime}_{self.model_name}_{unit_g}.png'
-                
                 fig.savefig(
-                    os.path.join(output_folder, figure_name),
+                    os.path.join(unit_plot_folder,  f'{self.ctime}_{self.model_name}_{unit_g}.png'),
                     dpi = 350)
+                
             plt.show()
