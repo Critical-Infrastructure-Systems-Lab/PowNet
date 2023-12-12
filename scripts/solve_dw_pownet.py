@@ -8,7 +8,7 @@ import gurobipy as gp
 from pownet.folder_sys import get_temp_dir, get_output_dir
 from pypolp.dw.dw import DantzigWolfe, DWRecord
 from pypolp.parser import parse_mps_with_orders, parse_mps, get_dataframe_orders
-from pypolp.functions import check_is_binary
+from pypolp.functions import check_is_binary_from_df, check_is_binary_from_model
 
 
 
@@ -21,7 +21,7 @@ RECOVER_INT_FROM_DW = True
 start_time_script = datetime.now()
 CTIME = start_time_script.strftime("%Y%m%d_%H%M")
 
-print(f'\n==== Begin collecting statistics for {MODEL_NAME} ====')
+print(f'\nDW-PowNet: ==== Begin collecting statistics for {MODEL_NAME} ====')
 
 # Create a folder to save the outputs
 save_folder = f'{CTIME}_{MODEL_NAME}'
@@ -76,7 +76,7 @@ with open(csv_name, 'w', newline='', encoding='utf-8') as csvfile:
 num_instances = len(os.listdir(instance_folder)) - 1
 # Days are labeled from k = 0 to k = 364
 for k in range(num_instances):
-    print(f'\n\n=== Solving Day {k} ===')
+    print(f'\n\nDW-PowNet: === Solving Day {k} ===')
     path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_{k}.mps')
 
 
@@ -109,6 +109,18 @@ for k in range(num_instances):
             )
         master_mip_time = dw_instance.master_problem.model.runtime
         dw_mip_time = dw_time  + master_mip_time
+        
+        # Check the subproblems produce integer solutions
+        dw_solution_mip = dw_solution_mip.reset_index(names='name')
+        dw_is_int, dw_non_binary_vars = check_is_binary_from_df(
+                df = dw_solution_mip,
+                target_varnames = ['status', 'start', 'shut'],
+                return_non_binary = True
+                )
+        if not dw_is_int:
+            fname = f'dw_nonbin_{MODEL_NAME}_{k}.csv'
+            print(f'DW-PowNet: Saving {fname}...')
+            dw_non_binary_vars.to_csv(os.path.join(save_folder, fname), index=False)
     else:
         dw_mip_objval = None
         dw_solution_mip = None
@@ -142,7 +154,7 @@ for k in range(num_instances):
     wall_clock_lp_gurobi = (datetime.now() - wall_clock_lp_gurobi).total_seconds()
 
     # Check if the LP is integer solution
-    is_int, non_binary_vars = check_is_binary(
+    is_int, non_binary_vars = check_is_binary_from_model(
         model = gp_model,
         target_varnames = ['status', 'start', 'shut'],
         return_non_binary = True
@@ -182,10 +194,10 @@ for k in range(num_instances):
     mip_lp_gap = abs(mip_objval - lp_objval)/(mip_objval+.01)
     if mip_lp_gap <= 0.015 and SAVE_SOLUTIONS:
         fname = f'nonbin_{MODEL_NAME}_{k}.csv'
-        print(f'Saving {fname}...')
-        non_binary_vars.to_csv(os.path.join(save_folder, fname))
+        print(f'DW-PowNet: Saving {fname}...')
+        non_binary_vars.to_csv(os.path.join(save_folder, fname), index=False)
 
 # Save solutions for future reference. Place them in a folder
-print(f'\n\n==== Completed collecting compute statistics for {MODEL_NAME} ====')
+print(f'\n\nDW-PowNet: ==== Completed collecting compute statistics for {MODEL_NAME} ====')
 print(f'Results saved to {save_folder}')
 print(f'{"Total time to complete:":<20} {datetime.now()- start_time_script}')
