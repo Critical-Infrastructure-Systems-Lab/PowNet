@@ -12,9 +12,11 @@ from pypolp.functions import check_is_binary_from_df, check_is_binary_from_model
 
 
 
-MODEL_NAME = 'dummy_trade'
+MODEL_NAME = 'laos'
 SAVE_SOLUTIONS = True
 RECOVER_INT_FROM_DW = True
+DWOPTGAP = 0.0001
+RELAX_SUBPROBLEMS = True
 
 
 ############################
@@ -22,9 +24,11 @@ start_time_script = datetime.now()
 CTIME = start_time_script.strftime("%Y%m%d_%H%M")
 
 print(f'\nDW-PowNet: ==== Begin collecting statistics for {MODEL_NAME} ====')
+print(f'Relax subproblems: {RELAX_SUBPROBLEMS}')
 
 # Create a folder to save the outputs
-save_folder = f'{CTIME}_{MODEL_NAME}'
+save_folder = f'{CTIME}_{MODEL_NAME}_{DWOPTGAP}_{RELAX_SUBPROBLEMS}'
+    
 save_folder = os.path.join(get_temp_dir(), save_folder)
 if not os.path.exists(save_folder):
     os.makedirs(save_folder)
@@ -64,7 +68,7 @@ FIELDS = [
     ]
 
 # Create a csv file with only headers. We will append to this csv later.
-csv_name = os.path.join(save_folder, f'{MODEL_NAME}_dw_stats.csv')
+csv_name = os.path.join(save_folder, f'{MODEL_NAME}_{DWOPTGAP}_{RELAX_SUBPROBLEMS}_dwstats.csv')
 with open(csv_name, 'w', newline='', encoding='utf-8') as csvfile:  
     # creating a csv writer object  
     csvwriter = csv.writer(csvfile)  
@@ -86,7 +90,10 @@ for k in range(num_instances):
     record = DWRecord()
     record.fit(dw_problem)
     
-    dw_instance = DantzigWolfe()
+    dw_instance = DantzigWolfe(
+        dw_optgap = DWOPTGAP,
+        relax_subproblems = RELAX_SUBPROBLEMS
+        )
     
     dw_instance.fit(dw_problem, record)
     dw_instance.solve(record)
@@ -101,7 +108,7 @@ for k in range(num_instances):
     dw_time = master_time + subp_time
     
     #----- Solve with Dantzig-Wolfe but recover integer solution
-    # This step takes a very long time and is not possible large instances
+    # This step takes a very long time and is not for possible large instances
     if RECOVER_INT_FROM_DW:
         dw_mip_objval, dw_solution_mip = dw_instance.get_solution(
             record, 
@@ -110,17 +117,19 @@ for k in range(num_instances):
         master_mip_time = dw_instance.master_problem.model.runtime
         dw_mip_time = dw_time  + master_mip_time
         
-        # Check the subproblems produce integer solutions
         dw_solution_mip = dw_solution_mip.reset_index(names='name')
         dw_is_int, dw_non_binary_vars = check_is_binary_from_df(
                 df = dw_solution_mip,
                 target_varnames = ['status', 'start', 'shut'],
                 return_non_binary = True
                 )
+        
+        # Verify subproblems produce integer solutions
         if not dw_is_int:
             fname = f'dw_nonbin_{MODEL_NAME}_{k}.csv'
             print(f'DW-PowNet: Saving {fname}...')
             dw_non_binary_vars.to_csv(os.path.join(save_folder, fname), index=False)
+            
     else:
         dw_mip_objval = None
         dw_solution_mip = None
