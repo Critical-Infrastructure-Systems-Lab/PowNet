@@ -6,13 +6,13 @@ import os
 import gurobipy as gp
 
 from pownet.folder_sys import get_temp_dir, get_output_dir
-from pypolp.dw.dw import DantzigWolfe, Record
-from pypolp.tools.parser import parse_mps_with_orders, parse_mps, get_dataframe_orders
-from pypolp.tools.functions import check_is_binary
+from pypolp.dw.dw import DantzigWolfe, DWRecord
+from pypolp.parser import parse_mps_with_orders, parse_mps, get_dataframe_orders
+from pypolp.functions import check_is_binary
 
 
 
-MODEL_NAME = 'cambodia'
+MODEL_NAME = 'dummy_trade'
 SAVE_SOLUTIONS = True
 RECOVER_INT_FROM_DW = True
 
@@ -83,7 +83,7 @@ for k in range(num_instances):
     #----- Solve with Dantzig-Wolfe
     wall_clock_dw = datetime.now()
     dw_problem = parse_mps_with_orders(path_mps, row_order, col_order)
-    record = Record()
+    record = DWRecord()
     record.fit(dw_problem)
     
     dw_instance = DantzigWolfe()
