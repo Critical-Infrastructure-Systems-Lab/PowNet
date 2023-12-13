@@ -27,11 +27,10 @@ print(f'\nDW-PowNet: ==== Begin collecting statistics for {MODEL_NAME} ====')
 print(f'Relax subproblems: {RELAX_SUBPROBLEMS}')
 
 # Create a folder to save the outputs
-save_folder = f'{CTIME}_{MODEL_NAME}_{DWOPTGAP}_{RELAX_SUBPROBLEMS}'
-    
-save_folder = os.path.join(get_temp_dir(), save_folder)
-if not os.path.exists(save_folder):
-    os.makedirs(save_folder)
+session_name = f'{CTIME}_{MODEL_NAME}_{DWOPTGAP}_{RELAX_SUBPROBLEMS}'
+session_name = os.path.join(get_temp_dir(), session_name)
+if not os.path.exists(session_name):
+    os.makedirs(session_name)
 
 # Need to extract row/column orders to parse the DW structure
 instance_folder = os.path.join(get_output_dir(), f'{MODEL_NAME}_instances')
@@ -68,7 +67,7 @@ FIELDS = [
     ]
 
 # Create a csv file with only headers. We will append to this csv later.
-csv_name = os.path.join(save_folder, f'{MODEL_NAME}_{DWOPTGAP}_{RELAX_SUBPROBLEMS}_dwstats.csv')
+csv_name = os.path.join(get_temp_dir(), f'{session_name}_dwstats.csv')
 with open(csv_name, 'w', newline='', encoding='utf-8') as csvfile:  
     # creating a csv writer object  
     csvwriter = csv.writer(csvfile)  
@@ -128,7 +127,7 @@ for k in range(num_instances):
         if not dw_is_int:
             fname = f'dw_nonbin_{MODEL_NAME}_{k}.csv'
             print(f'DW-PowNet: Saving {fname}...')
-            dw_non_binary_vars.to_csv(os.path.join(save_folder, fname), index=False)
+            dw_non_binary_vars.to_csv(os.path.join(session_name, fname), index=False)
             
     else:
         dw_mip_objval = None
@@ -204,9 +203,9 @@ for k in range(num_instances):
     if mip_lp_gap <= 0.015 and SAVE_SOLUTIONS:
         fname = f'nonbin_{MODEL_NAME}_{k}.csv'
         print(f'DW-PowNet: Saving {fname}...')
-        non_binary_vars.to_csv(os.path.join(save_folder, fname), index=False)
+        non_binary_vars.to_csv(os.path.join(session_name, fname), index=False)
 
 # Save solutions for future reference. Place them in a folder
 print(f'\n\nDW-PowNet: ==== Completed collecting compute statistics for {MODEL_NAME} ====')
-print(f'Results saved to {save_folder}')
+print(f'Results for {session_name}')
 print(f'{"Total time to complete:":<20} {datetime.now()- start_time_script}')
