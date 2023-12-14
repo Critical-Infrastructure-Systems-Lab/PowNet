@@ -1,102 +1,151 @@
 import os
 
 from matplotlib.colors import LinearSegmentedColormap
-
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 
+from pownet.folder_sys import get_temp_dir, get_output_dir
+from pownet.core.input import SystemInput
+from pownet.core.visualize import Visualizer
 
-PDIR = os.path.dirname(os.getcwd())
-TEMPDIR = os.path.join(PDIR, 'temp')
-FILENAME = '20231108_2143_cambodia_dw_stats'
-
-
-
-#=================== Plotting
-
-dw_times = pd.read_csv(
-    os.path.join(TEMPDIR, f'{FILENAME}.csv'), 
-    header = 0, 
-    usecols = ['master_times', 'subp_times'])
-dw_times.columns = ['Master time', 'Subproblem time']
-
-dw_itercounts = pd.read_csv(
-    f'..//temp//{FILENAME}.csv', 
-    header = 0, 
-    usecols = ['master_iters', 'subp_iters'])
-dw_itercounts.columns = ['Master itercount', 'Subproblem itercount']
-
-gp_times_lp = pd.read_csv(
-    f'..//temp//{FILENAME}.csv', 
-    header = 0, 
-    usecols = ['lp_gurobi_times'])
-
-gp_times_mip = pd.read_csv(
-    f'..//temp//{FILENAME}.csv', 
-    header = 0, 
-    usecols = ['mip_gurobi_times'])
-
-instances_as_lp = pd.read_csv(
-    f'..//temp//{FILENAME}.csv', 
-    header = 0, 
-    usecols = ['int_solution'])
+from functions import calc_percent_change, get_total_load, get_total_renewable
 
 
 
-# Compare optimization time
-fig, ax = plt.subplots()
-# dw_times.plot.bar(stacked=True, ax=ax)
-dw_times.plot.area(stacked=True, linewidth=0, ax=ax)
-ax.plot(gp_times_lp, linewidth=2, color='black', label='LP Gurobi time')
-ax.plot(gp_times_mip, linewidth=2, color='red', linestyle='dotted', label='MIP Gurobi time')
-ax.legend()
-ax.set(xlabel='Day', ylabel='Time (s)')
-# plt.savefig(
-#     os.path.join(TEMPDIR, f'{FILENAME}_time.png'),
-#     dpi = 350,
-#     bbox_inches = 'tight'
-#     )
+
+
+#=================== Read the file with the most stringent termination criterion
+
+FILENAME = '20231212_1506_laos_0.0001_False_dwstats.csv'
+
+folder_name = os.path.join(get_temp_dir(), 'dw_stats')
+dw_stats = pd.read_csv(os.path.join(folder_name, FILENAME))
+
+# Contextual info that affects runtime
+dw_stats['total_load'] = get_total_load(model_name='laos')
+# dw_stats['total_load'] = dw_stats['total_load'] / dw_stats['total_load'].max()
+
+dw_stats['total_renewable'] = get_total_renewable(model_name='laos')
+# dw_stats['total_renewable'] = dw_stats['total_renewable'] / dw_stats['total_renewable'].max()
+
+dw_stats['excess_renewable'] = dw_stats['total_renewable'] - dw_stats['total_load']
+
+
+# Ratio of opt time: DW-MIP to Gurobi-MIP
+dw_stats['dwmip_mip_opt_time'] = dw_stats['dw_mip_time']/dw_stats['mip_gurobi_time']
+
+# Optgap: DW-MIP to Gurobi-MIP
+dw_stats['dwmip_mip_gap'] = calc_percent_change(
+    dw_stats['dw_mip_objval'], dw_stats['mip_objval'])
+
+# Optgap: DW-LP to Gurobi-MIP
+dw_stats['dw_mip_gap'] = calc_percent_change(
+    dw_stats['dw_objval'], dw_stats['mip_objval'])
+
+# Optgap: Gurobi-LP to Gurobi-MIP
+dw_stats['lp_mip_gap'] = calc_percent_change(
+    dw_stats['lp_objval'], dw_stats['mip_objval'])
+
+
+
+#%% Plot the optimality gap
+
+# Compare the optimality gaps. Highlight there are periods where DW works well
+optgap_columns = ['dwmip_mip_gap', 'dw_mip_gap']
+optgap_column_labels = ['DW (MIP)', 'DW']
+colors = ['#1b9e77', '#d95f02', '#7570b3', '#e7298a']
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+for col, lab, color in zip(optgap_columns, optgap_column_labels, colors):
+    ax.plot(
+        dw_stats[col],
+        color = color,
+        alpha = 0.9,
+        linewidth = 3,
+        label = lab
+        )
+ax.set_xlabel('Day')
+ax.set_ylabel('MIP GAP (%)')
+
+
+# Plot contextual information
+ax2 = ax.twinx()
+ax2.plot(
+        dw_stats['excess_renewable'],
+        linewidth = 1,
+        linestyle = 'dotted',
+        color = 'black',
+        label = 'Excess renewables'
+        )
+ax2.set_ylabel('Power (MW)')
+
+fig.legend()
 plt.show()
 
 
 
-# Compare itercount
-fig, ax = plt.subplots()
-# dw_itercounts.plot.bar(stacked=True, ax=ax)
-dw_itercounts.plot.area(stacked=True, linewidth=0, ax=ax)
-ax.set(xlabel='Day', ylabel='Itercount')
-# plt.savefig(
-#     os.path.join(TEMPDIR, f'{FILENAME}_itercount.png'),
-#     dpi = 350,
-#     bbox_inches = 'tight'
-#     )
+#%% Plot the computation time
+opt_time_columns = ['dw_mip_time', 'mip_gurobi_time', 'lp_gurobi_time']
+opt_time_column_labels = ['DW (MIP)', 'Gurobi-MIP', 'Gurobi-LP']
+colors = ['#1b9e77', '#d95f02', '#7570b3', '#e7298a']
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+for col, lab, color in zip(opt_time_columns, opt_time_column_labels, colors):
+    ax.plot(
+        dw_stats[col],
+        color = color,
+        alpha = 0.9,
+        linewidth = 3,
+        label = lab
+        )
+ax.set_xlabel('Day')
+ax.set_ylabel('Optimization time (s)')
+
+
+# Plot the fraction of dispatch from thermal units
+ax2 = ax.twinx()
+ax2.plot(
+        dw_stats['excess_renewable'],
+        linewidth = 1,
+        linestyle = 'dotted',
+        color = 'black',
+        label = 'Excess renewables'
+        )
+ax2.set_ylabel('Power (MW)')
+
+fig.legend()
 plt.show()
 
 
-# Visualize when an instance is solved as LP
 
-colors = ["black", "lightgrey"] 
-cmap = LinearSegmentedColormap.from_list('Custom', colors, len(colors))
+#%% What happens during those periods? Plot against share of hydro
+MODEL_NAME = 'laos'
+T = 24
 
-plt.tight_layout()
-fig, ax = plt.subplots()
-sns.heatmap(
-    instances_as_lp,
-    cmap=cmap,
-    ax=ax
+node_variables = pd.read_csv(
+    os.path.join(get_output_dir(), '20231212_1327_laos_node_variables.csv')
     )
-plt.ylabel('Day')
-ax.get_xaxis().set_visible(False)
 
-# Set the colorbar labels
-colorbar = ax.collections[0].colorbar
-colorbar.set_ticks([0.25, 0.75])
-colorbar.set_ticklabels(['False', 'True'])
-plt.show()
+system_input = SystemInput(
+    T = T,
+    formulation = 'kirchhoff',
+    model_name = MODEL_NAME
+    )
+
+visualizer = Visualizer()
+visualizer.load(
+    df = node_variables, 
+    system_input = system_input, 
+    model_name = MODEL_NAME
+    )
+visualizer.plot_area_fuelmix()
 
 
-# Analysis
+#%% Analysis
 print(f'\n\nStats for {FILENAME}')
 print('\nFraction as LP:', round(instances_as_lp.sum()*100/365, 0)[0], ' %')
 print(f'Total DW time: {dw_times.sum().round(3)[0]} s')
