@@ -49,8 +49,13 @@ class Visualizer():
         self.thermal_dispatch: pd.DataFrame = None
         self.rnw_dispatch: pd.DataFrame = None
         self.shortfall: pd.DataFrame = None
+        self.total_dispatch: pd.DataFrame = None
         
-        self.demand = None
+        self.fuel_mix_order: pd.DataFrame = None
+        self.fuel_color_map: dict = None
+        self.total_timesteps: int = None
+        
+        self.demand: pd.Series = None
 
 
     
@@ -94,14 +99,8 @@ class Visualizer():
             )
         self.demand = system_input.demand.sum(axis=1)
         
-
-    def plot_fuelmix(
-            self,
-            to_save: bool,
-            output_folder: str = None,
-            figure_name: str = None
-            ) -> None:
-        total_dispatch = pd.concat(
+        # Dispatch is the power needed to satisfy system requirements
+        self.total_dispatch = pd.concat(
             [
                 self.thermal_dispatch,
                 self.rnw_dispatch,
@@ -109,64 +108,73 @@ class Visualizer():
                 self.shortfall_pos,
                 self.shortfall_neg
                 ], 
-            axis = 0)
-        
-        total_dispatch = total_dispatch.reset_index(drop=True)
-        total_dispatch = total_dispatch[['fuel_type', 'value', 'hour']]\
+            axis = 0
+            )
+        self.total_dispatch = self.total_dispatch.reset_index(drop=True)
+        self.total_dispatch = self.total_dispatch[['fuel_type', 'value', 'hour']]\
             .groupby(['fuel_type', 'hour']).sum()
             
-        total_dispatch = total_dispatch.reset_index()
-        total_dispatch = total_dispatch.pivot(
+        self.total_dispatch = self.total_dispatch.reset_index()
+        self.total_dispatch = self.total_dispatch.pivot(
             columns=['hour'], index=['fuel_type']).T\
             .reset_index(drop=True)
-        total_dispatch.index += 1
+        self.total_dispatch.index += 1
         
         # Define the order of fuel mix. Baseload at the bottom, 
         # renewables in the middle, then peaker plants, and shortfall
-        fuel_mix_order = pd.read_csv(
+        self.fuel_mix_order = pd.read_csv(
             os.path.join(get_database_dir(), 'fuels.csv'),
             header = 0,
             )['name']
-        fuel_mix_order = [fuel for fuel in fuel_mix_order if fuel in total_dispatch.columns]
-        total_dispatch = total_dispatch[fuel_mix_order]
+        self.fuel_mix_order = [fuel for fuel in self.fuel_mix_order if fuel in self.total_dispatch.columns]
+        self.total_dispatch = self.total_dispatch[self.fuel_mix_order]
         
         # We have a pre-defined set of colors for fuel types
-        fuel_color_map = get_fuel_color_map()
+        self.fuel_color_map = get_fuel_color_map()
+        self.total_timesteps = self.total_dispatch.shape[0]
         
-        timesteps = total_dispatch.shape[0]
+
+    def plot_fuelmix(
+            self,
+            to_save: bool,
+            output_folder: str = None,
+            figure_name: str = None
+            ) -> None:
         
         # Plotting section
         fig, ax = plt.subplots(figsize=(8, 5))
-        if math.ceil(timesteps/24) < 3:
+        # If shorter than 3 days, then we do a barplot
+        if math.ceil(self.total_timesteps/24) < 3:
             # Bar plot
-            total_dispatch.plot.bar(
+            self.total_dispatch.plot.bar(
                 stacked = True,
                 ax = ax,
                 linewidth = 0,
-                color = fuel_color_map,
+                color = self.fuel_color_map,
                 legend = False
                 )
             ax.plot(
-                range(0, timesteps), 
-                self.demand[:timesteps],
+                range(0, self.total_timesteps), 
+                self.demand[:self.total_timesteps],
                 color = 'k',
                 linewidth = 2,
                 linestyle = ':',
                 label = 'demand'
                 )
             ax.set_xlabel('Hour')
-        elif math.ceil(timesteps/24) < 62:
+            
+        elif math.ceil(self.total_timesteps/24) < 62:
             # If we are plotting longer than 2 days, then the area plot
             # is better at visualizing the fuel mix.
-            total_dispatch.plot.area(
+            self.total_dispatch.plot.area(
                 stacked = True,
                 ax = ax,
                 linewidth = 0,
-                color = fuel_color_map,
+                color = self.fuel_color_map,
                 legend = False
                 )
             ax.plot(
-                self.demand[:timesteps],
+                self.demand[:self.total_timesteps],
                 color = 'k',
                 linewidth = 2,
                 linestyle = ':',
@@ -178,12 +186,12 @@ class Visualizer():
             dates = get_dates(year=self.year)
             dates.index += 1
             
-            monthly_dispatch = total_dispatch.iloc[:timesteps+1].copy()
+            monthly_dispatch = self.total_dispatch.copy()
             monthly_dispatch['month'] = dates['date'].dt.to_period('M')
             monthly_dispatch = monthly_dispatch.groupby('month').sum()
             monthly_dispatch.index = monthly_dispatch.index.strftime('%b')
             
-            monthly_demand = self.demand[:timesteps].to_frame()
+            monthly_demand = self.demand[:self.total_timesteps].to_frame()
             monthly_demand.columns = ['demand']
             monthly_demand['month'] = dates['date'].dt.to_period('M')
             monthly_demand = monthly_demand.groupby('month').sum()
@@ -193,7 +201,7 @@ class Visualizer():
                 stacked = True,
                 ax = ax,
                 linewidth = 0,
-                color = fuel_color_map,
+                color = self.fuel_color_map,
                 legend = False
                 )
             ax.plot(
@@ -229,6 +237,49 @@ class Visualizer():
                 bbox_inches = 'tight',
                 dpi = 350
                 )
+        plt.show()
+        
+        
+    
+    def plot_area_fuelmix(self) -> None:
+        ''' Return an area plot of the fuel mix
+        '''
+        # Aggregate dispatch by day
+        dates = get_dates(year=self.year)
+        dates.index += 1
+        
+        daily_dispatch = self.total_dispatch.copy()
+        daily_dispatch = daily_dispatch.groupby(daily_dispatch.index // 24).mean()
+        
+        daily_demand = self.demand.groupby(self.demand.index // 24).mean()
+        
+        # Plotting
+        fig, ax = plt.subplots(figsize=(8, 5))
+        daily_dispatch.plot.area(
+            stacked = True,
+            ax = ax,
+            linewidth = 0,
+            color = self.fuel_color_map,
+            legend = False
+            )
+        ax.plot(
+            daily_demand,
+            color = 'k',
+            linewidth = 2,
+            linestyle = ':',
+            label = 'demand'
+            )
+        ax.set_xlabel('Day')
+        
+        fig.legend(
+            loc = 'outside lower center',
+            # title = 'Legend',
+            ncols = 4,
+            fontsize = 'small',
+            bbox_to_anchor=(0.5, -0.1)
+            )
+        ax.set_ylabel('Power (MW)')
+        ax.set_ylim(bottom=0)
         plt.show()
     
     
