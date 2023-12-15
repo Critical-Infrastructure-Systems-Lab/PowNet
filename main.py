@@ -4,7 +4,7 @@ import os
 from pownet.config import is_warmstart
 from pownet.core.input import SystemInput
 from pownet.core.simulation import Simulator
-from pownet.core.visualize import Visualizer
+from pownet.core.output import OutputProcessor, Visualizer
 from pownet.folder_sys import get_output_dir, delete_all_gurobi_solutions
 
 
@@ -51,19 +51,30 @@ def main():
     print(f'PowNet: Optimization time (s) = {round(sum(record.runtimes), 2)}')
     
     node_variables = record.get_node_variables()
-    visualizer = Visualizer()
-    visualizer.load(
-        df = node_variables, 
-        system_input = system_input, 
+
+    output_processor = OutputProcessor()
+    output_processor.load(
+        df = node_variables,
+        system_input = system_input,
         model_name = MODEL_NAME
+    )
+
+    visualizer = Visualizer(model_name=MODEL_NAME, ctime=output_processor.ctime)
+    visualizer.plot_fuelmix_area(
+        dispatch = output_processor.get_total_dispatch(),
+        demand = output_processor.get_total_demand(),
+        to_save = SAVE_PLOT
         )
-    
-    visualizer.plot_fuelmix(to_save=SAVE_PLOT)
     # The dispatch plot does not work well when simulating more than 2 day or
     # there are more than 10 thermal units.
     if STEPS <= 48 and len(system_input.thermal_units) <= 10:
-        visualizer.plot_thermal_units(to_save=SAVE_PLOT)
-        
+        visualizer.plot_thermal_units(
+            thermal_dispatch = output_processor.get_dispatch(),
+            unit_status = output_processor.get_unit_status(),
+            thermal_units = system_input.thermal_units,
+            full_max_cap = system_input.full_max_cap,
+            to_save=SAVE_PLOT
+            )        
     # Delete the last solution file when warmstarting
     if is_warmstart():
         delete_all_gurobi_solutions()

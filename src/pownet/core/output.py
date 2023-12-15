@@ -1,5 +1,4 @@
 from datetime import datetime
-import math
 import os
 
 import pandas as pd
@@ -10,12 +9,13 @@ from pownet.folder_sys import get_output_dir, get_database_dir
 from pownet.processing.functions import get_dates
 
 
+
 def format_variable_fueltype(
         df: pd.DataFrame,
         vartype: str,
         fuel_type: str
         ) -> pd.DataFrame:
-    ''' Given a dataframe of outputs, filter for a vartype and assign the fuel type.
+    ''' Given a dataframe of PowNet outputs, filter for a vartype and assign the fuel type.
     Use this function for import, s_pos, and s_neg.
     '''
     output_df = df[df['vartype'] == vartype]
@@ -36,41 +36,58 @@ def get_fuel_color_map() -> dict:
 
 
 
-class Visualizer():
-    def __init__(self) -> None:
-        self.model_name = None
-        self.year = None
+class OutputProcessor():
+    def __init__(self):
+        self.model_name:str = None
+        self.year: int = None
         
-        self.status: pd.DataFrame = None
+        self.total_timesteps: int = None # Simulation hours
+        self.ctime: str = None # Date in 'YYYYMMDD_mmss' format
+        self.dates: pd.Series = None
+        
         self.fuelmap: dict[str, str] = None
-        self.thermal_units: list[str] = None
-        self.full_max_cap: dict[str, float] = None
         
         self.thermal_dispatch: pd.DataFrame = None
         self.rnw_dispatch: pd.DataFrame = None
-        self.shortfall: pd.DataFrame = None
+        self.shortfall: pd.Series = None
+        self.curtailment: pd.Series = None
+
         self.total_dispatch: pd.DataFrame = None
+        self.monthly_dispatch: pd.DataFrame = None
+        self.daily_dispatch: pd.DataFrame = None
         
-        self.fuel_mix_order: pd.DataFrame = None
-        self.fuel_color_map: dict = None
-        self.total_timesteps: int = None
+        self.total_demand: pd.Series = None
+        self.monthly_demand: pd.Series = None
+        self.daily_demand: pd.Series = None
         
-        self.demand: pd.Series = None
+        # Define the order of fuel mix. Baseload at the bottom, 
+        # renewables in the middle, then peaker plants, and shortfall
+        self.fuel_mix_order: list[str] = None
+
+        self.unit_status: pd.DataFrame = None
 
 
-    
-    def load(self, df: pd.DataFrame, system_input: SystemInput, model_name) -> None:
+    def load(
+            self,
+            df: pd.DataFrame,
+            system_input: SystemInput,
+            model_name: str
+            ) -> None:
+        ''' Process node-specific variables from PowNet.
+        '''
         self.model_name = model_name
         self.year = system_input.year
         
         # For saving files
         self.ctime = datetime.now().strftime("%Y%m%d_%H%M")
         
-        self.status = df[df['vartype'] == 'status']
-        self.thermal_units = system_input.thermal_units
+        # For processing dataframes
+        self.dates = get_dates(year=self.year)
+        self.dates.index += 1
+        
+        #-- Extract information from PowNet's node variables
         self.fuelmap = system_input.fuelmap[['name', 'fuel_type']]\
             .set_index('name').to_dict()['fuel_type']
-        self.full_max_cap = system_input.full_max_cap
         
         # Generation from thermal units
         self.thermal_dispatch = df[df['vartype'] == 'dispatch']
@@ -90,23 +107,22 @@ class Visualizer():
         self.p_import = format_variable_fueltype(
             df=df, vartype='pimp', fuel_type='import'
             )
-        # There are positive and negative shortfalls
-        self.shortfall_pos = format_variable_fueltype(
+        # Shortfall (positive) and curtailment (negative)
+        self.shortfall = format_variable_fueltype(
             df=df, vartype='s_pos', fuel_type='shortfall'
             )
-        self.shortfall_neg = format_variable_fueltype(
+        self.curtailment = format_variable_fueltype(
             df=df, vartype='s_neg', fuel_type='curtailment'
             )
-        self.demand = system_input.demand.sum(axis=1)
         
-        # Dispatch is the power needed to satisfy system requirements
+        # Calculate the total dispatch for each fuel type and timestep
         self.total_dispatch = pd.concat(
             [
                 self.thermal_dispatch,
                 self.rnw_dispatch,
                 self.p_import,
-                self.shortfall_pos,
-                self.shortfall_neg
+                self.shortfall,
+                self.curtailment
                 ], 
             axis = 0
             )
@@ -118,105 +134,117 @@ class Visualizer():
         self.total_dispatch = self.total_dispatch.pivot(
             columns=['hour'], index=['fuel_type']).T\
             .reset_index(drop=True)
+        # PowNet indexing starts at 1
         self.total_dispatch.index += 1
         
-        # Define the order of fuel mix. Baseload at the bottom, 
-        # renewables in the middle, then peaker plants, and shortfall
-        self.fuel_mix_order = pd.read_csv(
+        # Reorder the columns of total dispatch in case we want to plot
+        self.fuel_mix_order: pd.DataFrame = pd.read_csv(
             os.path.join(get_database_dir(), 'fuels.csv'),
             header = 0,
             )['name']
         self.fuel_mix_order = [fuel for fuel in self.fuel_mix_order if fuel in self.total_dispatch.columns]
         self.total_dispatch = self.total_dispatch[self.fuel_mix_order]
+
+        # Sum across each month to get the monthly dispatch
+        self.monthly_dispatch = self.total_dispatch.copy()
+        self.monthly_dispatch['month'] = self.dates['date'].dt.to_period('M')
+        self.monthly_dispatch = self.monthly_dispatch.groupby('month').sum()
+        self.monthly_dispatch.index = self.monthly_dispatch.index.strftime('%b')
+
+        # Sum across 24 hours to get the daily dispatch.
+        self.daily_dispatch = self.total_dispatch.copy()
+        self.daily_dispatch = self.daily_dispatch.groupby(self.daily_dispatch.index // 24).mean()
+    
+        # Demand is an input to the simulation
+        self.total_demand = system_input.demand.sum(axis=1)
+
+        # Sum across each month to get the monthly demand
+        self.monthly_demand = self.total_demand[:self.total_timesteps].to_frame()
+        self.monthly_demand.columns = ['demand']
+        self.monthly_demand['month'] = self.dates['date'].dt.to_period('M')
+        self.monthly_demand = self.monthly_demand.groupby('month').sum()
+        self.monthly_demand.index = self.monthly_demand.index.strftime('%b')
+
+        self.daily_demand = self.total_demand.groupby(self.total_demand.index // 24).sum()
+
+        # Need unit statuses for plotting their activities
+        self.unit_status = df[df['vartype'] == 'status']
+
+
+    def get_total_dispatch(self) -> pd.DataFrame:
+        return self.total_dispatch
         
-        # We have a pre-defined set of colors for fuel types
-        self.fuel_color_map = get_fuel_color_map()
-        self.total_timesteps = self.total_dispatch.shape[0]
+    
+    def get_monthly_dispatch(self) -> pd.DataFrame:
+        return self.monthly_dispatch
+
+
+    def get_daily_dispatch(self) -> pd.DataFrame:
+        return self.daily_dispatch
+    
+
+    def get_total_demand(self) -> pd.Series:
+        return self.total_demand
+    
+
+    def get_monthly_demand(self) -> pd.Series:
+        return self.monthly_demand
+    
+
+    def get_daily_demand(self) -> pd.Series:
+        return self.daily_demand
+    
+
+    def get_dispatch(self) -> pd.DataFrame:
+        return self.thermal_dispatch
+    
+
+    def get_unit_status(self) -> pd.DataFrame:
+        return self.unit_status
         
 
-    def plot_fuelmix(
+
+class Visualizer():
+    def __init__(self, model_name: str, ctime: str):
+        self.fuel_color_map: dict = get_fuel_color_map()
+        self.model_name: str = model_name
+        # Need to get timestamp from OutputProcessor in 'YYYYMMDD_mmss' format
+        self.ctime: str = ctime
+
+
+    def plot_fuelmix_bar(
             self,
+            dispatch: pd.DataFrame,
+            demand: pd.Series,
             to_save: bool,
-            output_folder: str = None,
-            figure_name: str = None
             ) -> None:
         
+        # Use total_timesteps to index demand because 
+        # the length of demand can be longer than the total simulation hours
+        total_timesteps: int = dispatch.shape[0]
         # Plotting section
         fig, ax = plt.subplots(figsize=(8, 5))
-        # If shorter than 3 days, then we do a barplot
-        if math.ceil(self.total_timesteps/24) < 3:
-            # Bar plot
-            self.total_dispatch.plot.bar(
-                stacked = True,
-                ax = ax,
-                linewidth = 0,
-                color = self.fuel_color_map,
-                legend = False
-                )
-            ax.plot(
-                range(0, self.total_timesteps), 
-                self.demand[:self.total_timesteps],
-                color = 'k',
-                linewidth = 2,
-                linestyle = ':',
-                label = 'demand'
-                )
-            ax.set_xlabel('Hour')
-            
-        elif math.ceil(self.total_timesteps/24) < 62:
-            # If we are plotting longer than 2 days, then the area plot
-            # is better at visualizing the fuel mix.
-            self.total_dispatch.plot.area(
-                stacked = True,
-                ax = ax,
-                linewidth = 0,
-                color = self.fuel_color_map,
-                legend = False
-                )
-            ax.plot(
-                self.demand[:self.total_timesteps],
-                color = 'k',
-                linewidth = 2,
-                linestyle = ':',
-                label = 'demand'
-                )
-            ax.set_xlabel('Hour')
-        else:
-            # Do bar plot by month
-            dates = get_dates(year=self.year)
-            dates.index += 1
-            
-            monthly_dispatch = self.total_dispatch.copy()
-            monthly_dispatch['month'] = dates['date'].dt.to_period('M')
-            monthly_dispatch = monthly_dispatch.groupby('month').sum()
-            monthly_dispatch.index = monthly_dispatch.index.strftime('%b')
-            
-            monthly_demand = self.demand[:self.total_timesteps].to_frame()
-            monthly_demand.columns = ['demand']
-            monthly_demand['month'] = dates['date'].dt.to_period('M')
-            monthly_demand = monthly_demand.groupby('month').sum()
-            monthly_demand.index = monthly_demand.index.strftime('%b')
-            
-            monthly_dispatch.plot.bar(
-                stacked = True,
-                ax = ax,
-                linewidth = 0,
-                color = self.fuel_color_map,
-                legend = False
-                )
-            ax.plot(
-                monthly_demand,
-                color = 'k',
-                linewidth = 2,
-                linestyle = ':',
-                label = 'demand'
-                )
-            ax.set_xlabel('')
-            
+
+        dispatch.plot.bar(
+            stacked = True,
+            ax = ax,
+            linewidth = 0,
+            color = self.fuel_color_map,
+            legend = False
+            )
+        ax.plot(
+            range(0, total_timesteps), 
+            demand[:total_timesteps],
+            color = 'k',
+            linewidth = 2,
+            linestyle = ':',
+            label = 'demand'
+            )
+        ax.set_xlabel('Hour')
+
         # Plot formatting
         legend = fig.legend(
             loc = 'outside lower center',
-            # title = 'Legend',
             ncols = 4,
             fontsize = 'small',
             bbox_to_anchor=(0.5, -0.1)
@@ -225,37 +253,30 @@ class Visualizer():
         ax.set_ylim(bottom=0)
         
         if to_save:
-            
-            if not output_folder:
-                output_folder = get_output_dir()
-            
-            if not figure_name:
-                figure_name = f'{self.ctime}_{self.model_name}_fuelmix.png'
-                
-            fig.savefig(os.path.join(output_folder, figure_name),
+            figure_name = f'{self.ctime}_{self.model_name}_fuelmix.png'
+            fig.savefig(os.path.join(get_output_dir(), figure_name),
                 bbox_extra_artists = (legend,),
                 bbox_inches = 'tight',
                 dpi = 350
                 )
+            
         plt.show()
         
         
-    
-    def plot_area_fuelmix(self) -> None:
-        ''' Return an area plot of the fuel mix
+    def plot_fuelmix_area(
+            self,
+            dispatch: pd.DataFrame,
+            demand: pd.Series,
+            to_save: bool
+            ) -> None:
+        ''' Return an area plot of the fuel mix.
         '''
-        # Aggregate dispatch by day
-        dates = get_dates(year=self.year)
-        dates.index += 1
-        
-        daily_dispatch = self.total_dispatch.copy()
-        daily_dispatch = daily_dispatch.groupby(daily_dispatch.index // 24).mean()
-        
-        daily_demand = self.demand.groupby(self.demand.index // 24).mean()
-        
-        # Plotting
+        # Use total_timesteps to index demand because 
+        # the length of demand can be longer than the total simulation hours
+        total_timesteps: int = dispatch.shape[0]
+
         fig, ax = plt.subplots(figsize=(8, 5))
-        daily_dispatch.plot.area(
+        dispatch.plot.area(
             stacked = True,
             ax = ax,
             linewidth = 0,
@@ -263,36 +284,49 @@ class Visualizer():
             legend = False
             )
         ax.plot(
-            daily_demand,
+            demand[:total_timesteps],
             color = 'k',
             linewidth = 2,
             linestyle = ':',
             label = 'demand'
             )
-        ax.set_xlabel('Day')
+        ax.set_xlabel('')
         
-        fig.legend(
+        legend = fig.legend(
             loc = 'outside lower center',
-            # title = 'Legend',
             ncols = 4,
             fontsize = 'small',
             bbox_to_anchor=(0.5, -0.1)
             )
         ax.set_ylabel('Power (MW)')
         ax.set_ylim(bottom=0)
+        
+        if to_save:
+            figure_name = f'{self.ctime}_{self.model_name}_fuelmix.png'
+            fig.savefig(os.path.join(get_output_dir(), figure_name),
+                bbox_extra_artists = (legend,),
+                bbox_inches = 'tight',
+                dpi = 350
+                )
+        
         plt.show()
     
     
     def plot_thermal_units(
             self,
+            thermal_dispatch: pd.DataFrame,
+            unit_status: pd.DataFrame,
+            thermal_units: list[str],
+            full_max_cap: dict[str, float],
             to_save: bool,
             ) -> None:
         ''' Plot the on/off status of individual thermal units
         '''
-        for unit_g in self.thermal_units:
+        
+        for unit_g in thermal_units:
             # Extract the dispatch of each thermal unit and plot the value
-            df1 = self.thermal_dispatch[self.thermal_dispatch.node == unit_g]
-            df2 = self.status[self.status['node'] == unit_g]
+            df1 = thermal_dispatch[thermal_dispatch.node == unit_g]
+            df2 = unit_status[unit_status['node'] == unit_g]
             
             fig, ax1 = plt.subplots(figsize=(8, 5))
             ax2 = ax1.twinx()
@@ -306,7 +340,7 @@ class Visualizer():
             # If ymax is too low, then we cannot see the blue line
             ax1.set_ylim(
                 bottom = 0, 
-                top = self.full_max_cap[unit_g]*1.05
+                top = full_max_cap[unit_g]*1.05
                 )
             ax1.tick_params(axis='x', labelrotation=45)
             ax1.set_xlabel('Hour')
@@ -323,7 +357,6 @@ class Visualizer():
                 top = 1
                 )
             ax2.set_ylabel('Unit Status')
-
             plt.title(unit_g)
             
             if to_save:
