@@ -8,7 +8,7 @@ import seaborn as sns
 
 from pownet.folder_sys import get_temp_dir, get_output_dir
 from pownet.core.input import SystemInput
-from pownet.core.visualize import Visualizer
+from pownet.core.output import Visualizer
 
 from functions import calc_percent_change, get_total_load, get_total_renewable
 

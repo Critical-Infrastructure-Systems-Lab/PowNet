@@ -8,7 +8,7 @@ import pandas as pd
 
 from pownet.core.input import SystemInput
 from pownet.core.simulation import Simulator
-from pownet.core.visualize import Visualizer
+from pownet.core.output import Visualizer
 from pownet.folder_sys import get_output_dir
 
 
