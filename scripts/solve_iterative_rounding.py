@@ -10,21 +10,8 @@ from pownet.folder_sys import get_temp_dir, get_output_dir
 from pypolp.functions import check_is_binary_from_model
 
 
-
 SAVE_SOLUTIONS = True
 
-'''
-    MODEL_NAME = 'laos'
-    MAX_K = 10
-    ROUND_THRESHOLD = 0.3 # Try [0.3, 0.5] or None
-    ADAPTIVE = False
-    VERBOSE = True
-    # We found that round down by itself does not work well.
-    # Both is alright if doing static rounding
-    ROUND_DIRECTION = 'both' # up, down, both
-    
-    # When doing adaptive rounding, we only round up and not both directions
-'''
 
 #################
 
@@ -267,7 +254,7 @@ def run_experiment(
 if __name__ == '__main__':
     
     model_name = 'laos'
-    max_k = 10
+    max_k = 30
     thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     
     static_rounds = list(
@@ -299,7 +286,7 @@ if __name__ == '__main__':
                 max_k = max_k,
                 round_direction = direction,
                 round_threshold = threshold,
-                adaptive = False,
+                adaptive = True,
                 verbose = True
                 )
         
