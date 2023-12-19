@@ -94,7 +94,7 @@ def run_experiment(
     
     # Define variables for naming the session
     ctime = datetime.now().strftime("%Y%m%d_%H%M")
-    session_name = f'{ctime}_rounding_{model_name}_{round_direction}_{round_threshold}'
+    session_name = f'{ctime}_rounding_{model_name}_{round_direction}_{round_threshold}_{max_k}'
     
     # We will store the statistics of all sessions 
     # in a folder called 'rounding_stats'
@@ -243,7 +243,7 @@ def run_experiment(
 if __name__ == '__main__':
     
     model_name = 'laos'
-    max_k = 30
+    max_k = 100
     thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     verbose = True
     
