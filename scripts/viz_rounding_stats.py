@@ -27,7 +27,7 @@ files_adaptive = [f for f in files if 'True' in f]
 
 # Read the files and compile into a single dataframe
 compiled_df = pd.DataFrame()
-capture_pat = r'.*_rounding_(\w+)_(\w+)_(.+)_(/d+).csv'
+capture_pat = r'.*_rounding_(\w+)_(\w+)_(.+)_(\d+).csv'
 for file in files:
     # Extract information from file name
     match = re.search(capture_pat, file)
@@ -40,8 +40,8 @@ for file in files:
     # Extract info from filename
     subset['model_name'] = model_name
     subset['direction'] = direction
-    subset['threshold'] = threshold
-    subset['max_k'] = max_k
+    subset['threshold'] = float(threshold)
+    subset['max_k'] = int(max_k)
     # Create new features
     subset['is_valid'] = subset['rounding_is_feasible'] & subset['rounding_is_int']
     subset['lp_mip_gap'] = calc_percent_change(subset['rounding_objval'], subset['mip_objval'])
@@ -53,15 +53,19 @@ for file in files:
     compiled_df = pd.concat([compiled_df, subset], axis=0)
 
 # Order compiled_df by model_name and direction for standardized plotting
-compiled_df['direction'] = pd.Categorical(compiled_df['direction'])
+# compiled_df['direction'] = pd.Categorical(compiled_df['direction'])
 compiled_df = compiled_df.sort_values(by=['model_name', 'direction', 'threshold'])
+
+# Filter to max_k = 30
+compiled_df = compiled_df[compiled_df['max_k'] == 30]
 
 #%% Analyze feasibility metric
 # Valid fractions
 cols = ['model_name', 'direction', 'threshold', 'is_valid']
 # Feasibility metric: the number of times the solution is feasible and is integer
 valid_fraction = compiled_df[cols].groupby(
-    ['model_name', 'direction', 'threshold']
+    ['model_name', 'direction', 'threshold'],
+    observed = False
     )['is_valid'].mean().reset_index()
 
 # Create a grid of subplots for each unique value in the 'direction' column
@@ -69,13 +73,16 @@ g = sns.FacetGrid(valid_fraction, col = "direction", row = 'model_name')
 g = g.map(
     sns.lineplot,
     'threshold', 'is_valid', 'direction',
-    hue_order = ['Infeasible', 'up', 'adaptive'],
+    # order = ['both', 'up', 'adaptive'],
     linewidth = 2.5
     )
 
 g.set_titles(col_template="{col_name}", row_template="{row_name}")
-g.set_axis_labels('Rounding Threshold', 'Valid fraction')
+g.set_axis_labels('Rounding threshold', 'Valid fraction')
+for ax in g.axes.flatten():
+    ax.axhline(1, ls='--', color='k', label=['1.0x'])
 plt.show()
+
 
 #%% Determine reason for infeasibility
 infeasi_count_df = compiled_df.loc[~compiled_df['is_valid']].copy()
@@ -86,7 +93,7 @@ infeasi_count_df.loc[~infeasi_count_df['rounding_is_int'] & ~infeasi_count_df['r
 infeasi_count_df['infeasibility_reason'] = pd.Categorical(infeasi_count_df['infeasibility_reason'])
 
 infeasi_count_df = infeasi_count_df.groupby(
-    ['model_name', 'direction', 'threshold', 'infeasibility_reason']
+    ['model_name', 'direction', 'threshold', 'infeasibility_reason'], observed = False
 )['infeasibility_reason'].count().reset_index(name='count')
 
 
@@ -100,41 +107,41 @@ g = (
     g.map(
         sns.barplot,
         'threshold', 'count',
-        # order = ['up', 'adaptive', 'both']
+        order = [x/10 for x in range(1, 10)]
         ).add_legend()
         )
-g.set_titles(col_template="{col_name}", row_template="{row_name}")
-g.set_axis_labels('Rounding Threshold', 'Infeasibility count')
+g.set_titles(col_template='{col_name}', row_template="{row_name}")
+g.set_axis_labels('Rounding threshold', 'Infeasibility count')
 plt.show()
 
 
-
-
 #%% Plot the MIP gap
-gap_df = compiled_df[compiled_df.is_valid].groupby(
-    ['model_name', 'direction', 'threshold']
-    )['lp_mip_gap'].mean().reset_index()
+gap_df = compiled_df[compiled_df.is_valid].reset_index()
 
 # Create a grid of subplots for each unique value in the 'direction' column
 g = sns.FacetGrid(gap_df, col = "direction", row = 'model_name')
 g = g.map(sns.lineplot, "threshold", "lp_mip_gap", "model_name", linewidth=2.5)
 
 g.set_titles(col_template="{col_name}", row_template="{row_name}")
-g.set_axis_labels('Threshold', 'MIPGap')
-g.set(ylim=(0, 100))
+g.set_axis_labels('Rounding threshold', 'MIPGap (%)')
+g.set(ylim=(0, 25))
 plt.show()
 
 
-#%% Plot the optim time speed-up
+
+#%% Plot the compute time gain
 cols = ['model_name', 'direction', 'threshold', 'opt_xspeed', 'wall_clock_xspeed']
 speed_df = compiled_df.loc[compiled_df.is_valid, cols].reset_index(drop=True)
 
-# Optimization time
+# opt_time speed-up
 g = sns.FacetGrid(speed_df, col = "direction", row = 'model_name')
 g = g.map(sns.lineplot, "threshold", "opt_xspeed", "model_name", linewidth=2.5)
 
 g.set_titles(col_template="{col_name}", row_template="{row_name}")
-g.set_axis_labels('Threshold', 'Opt.time speed-up (times)')
+g.set_axis_labels('Rounding threshold', 'x(Opt.time)')
+# Add horizontal lines at breakeven point of 1.0x
+for ax in g.axes.flatten():
+    ax.axhline(1, ls='--', color='k', label=['1.0x'])
 plt.show()
 
 # Wall clock speed-up
@@ -142,57 +149,31 @@ g = sns.FacetGrid(speed_df, col = "direction", row = 'model_name')
 g = g.map(sns.lineplot, "threshold", "wall_clock_xspeed", "model_name", linewidth=2.5)
 
 g.set_titles(col_template="{col_name}", row_template="{row_name}")
-g.set_axis_labels('Threshold', 'Wallclock speed-up (times)')
+g.set_axis_labels('Rounding threshold', 'x(Wallclock)')
+for ax in g.axes.flatten():
+    ax.axhline(1, ls='--', color='k', label=['1.0x'])
+plt.show()
 plt.show()
 
 
-#%% Print the statistics
+#%% Create statistics
+groupby_cols = ['model_name', 'direction', 'threshold']
+# Mean speed-up
+x_opt_time = compiled_df.groupby(groupby_cols)['opt_xspeed'].mean()
+x_wallclock = compiled_df.groupby(groupby_cols)['wall_clock_xspeed'].mean()
 
-# Print the average speed up
-print('\nMean opt_time speed up:')
-print(compiled_df.groupby(['direction'])['opt_xspeed'].mean().iloc[0])
-
-# Print the average MIP gap
-print('\nMean MIP gap:')
-print(
-      compiled_df.groupby(['direction'])['lp_mip_gap'].mean().iloc[0]
-      )
+# Mean MIPGap
+mean_mipgap = compiled_df.groupby(groupby_cols)['lp_mip_gap'].mean()
 
 # Print the average feasibility
-print('\nMean feasible&integer:')
-print(compiled_df.groupby(['direction'])['is_valid'].mean().iloc[0])
+mean_feasibility = compiled_df.groupby(groupby_cols)['is_valid'].mean()
 
-
-#%% What causes infeasibility?
-
-infeasi_count_df = compiled_df.loc[~compiled_df['is_valid']].copy()
-infeasi_count_df['infeasibility_reason'] = None
-infeasi_count_df.loc[~infeasi_count_df['rounding_is_int'], 'infeasibility_reason'] = 'Not integer'
-infeasi_count_df.loc[~infeasi_count_df['rounding_is_feasible'], 'infeasibility_reason'] = 'Not feasible'
-infeasi_count_df.loc[~infeasi_count_df['rounding_is_int'] & ~infeasi_count_df['rounding_is_feasible'], 'infeasibility_reason'] = 'Both'
-
-infeasi_count_df = infeasi_count_df.groupby(
-    ['model_name', 'direction', 'threshold', 'infeasibility_reason']
-)['infeasibility_reason'].count().reset_index(name='count'
-)
-pivot_df = infeasi_count_df.pivot_table(index=['threshold', 'direction'], columns='infeasibility_reason', values='count', fill_value=0)
-
-melt_df = pivot_df.reset_index().melt(id_vars=['threshold', 'direction'], var_name='infeasibility_reason', value_name='count')
-
-# Create a FacetGrid
-g = sns.FacetGrid(melt_df, col='direction', height=6, aspect=1)
-
-# Map the barplot to each subplot
-g.map(sns.barplot, 'threshold', 'count', 'infeasibility_reason', palette='deep', ci=None)
-
-# Add a legend
-g.add_legend()
-
-# Show the plot
-plt.show()
 
 
 #%% Plot histogram of k
 compiled_df.groupby(
     ['model_name', 'direction']
-    )['rounding_k'].hist(legend=['both', 'up', 'adaptive'])
+    )['rounding_k'].hist(
+        alpha = 0.4,
+        legend=['both', 'up', 'adaptive']
+        )
