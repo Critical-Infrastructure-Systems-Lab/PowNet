@@ -14,7 +14,7 @@ from pownet.folder_sys import get_temp_dir, get_output_dir
 from functions import calc_percent_change
 
 
-MODEL_NAME = 'cambodia'
+MODEL_NAME = 'laos'
 
 
 
@@ -27,28 +27,25 @@ files_adaptive = [f for f in files if 'True' in f]
 
 # Read the files and compile into a single dataframe
 compiled_df = pd.DataFrame()
-capture_pat = r'.*_rounding_(\w+)_(\w+)_(.+)_(\w+).csv'
+capture_pat = r'.*_rounding_(\w+)_(\w+)_(.+).csv'
 for file in files:
     # Extract information from file name
     match = re.search(capture_pat, file)
     model_name = match.group(1)
     direction = match.group(2)
     threshold = match.group(3)
-    is_adaptive = match.group(4)
     # Append filename info to dataframe
     subset = pd.read_csv(os.path.join(get_temp_dir(), 'rounding_stats', file))
     # Extract info from filename
     subset['model_name'] = model_name
     subset['direction'] = direction
     subset['threshold'] = threshold
-    subset['is_adaptive'] = (is_adaptive == 'True')
     # Create new features
-    subset['is_valid'] = subset['iter_rounding_feasible'] & subset['rounding_is_int']
-    subset['lp_mip_gap'] = calc_percent_change(subset['iter_rounding_objval'], subset['mip_objval'])
-    subset['x_speed_up'] = subset['mip_opt_time'] / subset['iter_rounding_opt_time']
-    subset['fraction_runtime'] = subset['iter_rounding_opt_time']/ subset['wall_clock_rounding']
-    # We always round up for the adaptive strategy, so change the direction column accordingly
-    subset.loc[subset['is_adaptive'] == True, 'direction'] = 'adaptive'
+    subset['is_valid'] = subset['rounding_is_feasible'] & subset['rounding_is_int']
+    subset['lp_mip_gap'] = calc_percent_change(subset['rounding_objval'], subset['mip_objval'])
+    subset['opt_xspeed'] = subset['mip_opt_time'] / subset['rounding_opt_time']
+    subset['wall_lock_xspeed'] = subset['wall_clock_mip'] / subset['wall_clock_rounding']
+    subset['fraction_runtime'] = subset['rounding_opt_time']/ subset['wall_clock_rounding']
 
     # Append the new df to the master_df   
     compiled_df = pd.concat([compiled_df, subset], axis=0)
@@ -114,8 +111,8 @@ print(valid_fraction_df.groupby(['model_name', 'direction'])['is_valid'].mean())
 infeasibility_df = compiled_df.loc[~compiled_df['is_valid']].copy()
 infeasibility_df['infeasibility_reason'] = None
 infeasibility_df.loc[~infeasibility_df['rounding_is_int'], 'infeasibility_reason'] = 'Not integer'
-infeasibility_df.loc[~infeasibility_df['iter_rounding_feasible'], 'infeasibility_reason'] = 'Not feasible'
-infeasibility_df.loc[~infeasibility_df['rounding_is_int'] & ~infeasibility_df['iter_rounding_feasible'], 'infeasibility_reason'] = 'Both'
+infeasibility_df.loc[~infeasibility_df['rounding_is_feasible'], 'infeasibility_reason'] = 'Not feasible'
+infeasibility_df.loc[~infeasibility_df['rounding_is_int'] & ~infeasibility_df['rounding_is_feasible'], 'infeasibility_reason'] = 'Both'
 
 infeasibility_df = infeasibility_df.groupby(
     ['model_name', 'direction', 'threshold', 'infeasibility_reason']
@@ -139,4 +136,4 @@ plt.show()
 #%% Plot histogram of k
 compiled_df.groupby(
     ['model_name', 'direction']
-    )['iter_rounding_k'].hist(legend=['both', 'up', 'adaptive'])
+    )['rounding_k'].hist(legend=['both', 'up', 'adaptive'])
