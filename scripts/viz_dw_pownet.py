@@ -15,7 +15,7 @@ from functions import calc_percent_change, get_total_load, get_total_renewable
 
 
 
-MODEL_NAME = 'cambodia'
+MODEL_NAME = 'thailand'
 BASECASE = '0.0001'
 
 
@@ -202,7 +202,7 @@ ax.set_xlabel('Pct. Difference: primal/dual objective values')
 plt.show()
 
 
-#%%
+#%% Boxplot of Optimization time (s)
 fig, ax = plt.subplots()
 sns.boxplot(
     x = 'dw_gap',
