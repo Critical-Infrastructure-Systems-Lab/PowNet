@@ -9,17 +9,20 @@ import time
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from pypolp.dw.dw import DantzigWolfe, Record
+from pypolp.dw.dw import DantzigWolfe
+from pypolp.dw.record import DWRecord
 from pypolp.optim import GurobipyOptimizer
-from pypolp.tools.parser import parse_mps_dec
+from pypolp.parser import parse_mps_dec
 
 
-MODEL_NAME = 'laos'
+MODEL_NAME = 'cambodia'
 PARSE_INSTANCE = True # Save the instance after
-SAVE_FIGURE = True
+SAVE_FIGURE = False
 SAVE_RESULT = False
-DW_FUELPLOT = False
-DW_BOXPLOTS = False
+DW_FUELPLOT = True
+DW_BOXPLOTS = True
+
+DWOPTGAP = 0.1
 
 
 # Get out of decomposition and src
@@ -44,7 +47,7 @@ else:
         dw_problem = pkl.load(f)
 t_end_parse = time.time()
 
-# The current DW implementation only supports LP
+# Create a gurobipy relax model later
 dw_problem_lp = copy.deepcopy(dw_problem)
 # Relax the integrality constraints
 dw_problem_lp.var_info.type = 'C'
@@ -56,10 +59,10 @@ opt_problem_lp = dw_problem_lp.get_opt_problem()
 #%% Solving with DW
 t_start_dw = time.time()
 
-record = Record()
+record = DWRecord()
 record.fit(dw_problem)
     
-dw_instance = DantzigWolfe()
+dw_instance = DantzigWolfe(dw_optgap = DWOPTGAP)
 dw_instance.fit(dw_problem, record)
 dw_instance.solve(record)
 
@@ -69,7 +72,6 @@ t_end_dw = time.time()
 
 
 #%% Solving with DW as MIP
-
 dw_objval_mip, dw_solution_mip = dw_instance.get_solution(record, recover_integer=True)
 
 
@@ -77,7 +79,7 @@ dw_objval_mip, dw_solution_mip = dw_instance.get_solution(record, recover_intege
 print('\n=== Benchmark: Solve as LP ===\n')
 t_start_lp = time.time()
 
-base_opt = GurobipyOptimizer.create(opt_problem_lp, to_log=True)
+base_opt = GurobipyOptimizer.create(opt_problem_lp)
 _ = base_opt.optimize()
 
 lp_objval = base_opt.objval
@@ -93,7 +95,7 @@ print('\n=== Benchmark: Solve as MIP ===\n')
 
 t_start_mip = time.time()
 
-base_opt_mip = GurobipyOptimizer.create(opt_problem, to_log=True)
+base_opt_mip = GurobipyOptimizer.create(opt_problem)
 _ = base_opt_mip.optimize()
 
 mip_objval = base_opt_mip.objval
@@ -140,11 +142,12 @@ if DW_FUELPLOT:
     ax.grid()
     plt.legend()
     # plt.legend(['Dantzig-Wolfe', 'Normal Opt'])
-    plt.savefig(
-        os.path.join(
-            PDIR, 'temp', 'decom_results',
-            f'{c_time}_{MODEL_NAME}_dw.png'),
-        dpi=350)
+    if SAVE_FIGURE:
+        plt.savefig(
+            os.path.join(
+                PDIR, 'temp', 'decom_results',
+                f'{c_time}_{MODEL_NAME}_dw.png'),
+            dpi=350)
 
 
 
@@ -200,7 +203,7 @@ def get_subplot_name(block_id: int | str) -> str:
         return 'Master'
     
     
-def get_boxplots(stat_dict, value_name, fig_title):
+def get_boxplots(stat_dict: dict, value_name: str, fig_title: str, save_figure: bool) -> None:
     blocks = list(stat_dict.keys())
     fig, axes = plt.subplots(
         math.ceil(len(blocks)/4), 4,
@@ -217,11 +220,12 @@ def get_boxplots(stat_dict, value_name, fig_title):
         else:
             ax.set_visible(False)
     fig.suptitle(fig_title, fontsize=16)
-    plt.savefig(
-        os.path.join(
-            PDIR, 'temp', 'decom_results', f'{c_time}_{MODEL_NAME}_{fig_title}.png'),
-        dpi = 350
-        )
+    if save_figure:
+        plt.savefig(
+            os.path.join(
+                PDIR, 'temp', 'decom_results', f'{c_time}_{MODEL_NAME}_{fig_title}.png'),
+            dpi = 350
+            )
     plt.show()
             
     
@@ -229,12 +233,14 @@ if DW_BOXPLOTS:
     get_boxplots(
         stat_dict = dw_runtimes, 
         value_name = 'Time (s)',
-        fig_title = 'Optimization time'
+        fig_title = 'Optimization time',
+        save_figure = SAVE_FIGURE
         )
     get_boxplots(
         stat_dict = dw_itercounts, 
         value_name = 'Number',
-        fig_title = 'Iteration count'
+        fig_title = 'Iteration count',
+        save_figure = SAVE_FIGURE
         )
 
 
