@@ -12,10 +12,11 @@ from pypolp.functions import check_is_binary_from_df, check_is_binary_from_model
 
 
 
-MODEL_NAME = 'laos'
+MODEL_NAME = 'cambodia'
 SAVE_SOLUTIONS = True
 RECOVER_INT_FROM_DW = True
 DWOPTGAP = 0.0001
+GUROBIMIPGAP = 0.001
 RELAX_SUBPROBLEMS = True
 
 
@@ -140,6 +141,7 @@ for k in range(num_instances):
     wall_clock_mip_gurobi = datetime.now()
     gp_model = gp.read(path_mps)
     gp_model.setParam('outputflag', 0)
+    gp_model.setParam('MIPGap', GUROBIMIPGAP)
     gp_model.optimize()
     
     mip_gurobi_time = gp_model.runtime
