@@ -3,6 +3,7 @@
 2) Computational time - time to solve the MIP
 '''
 #%% Import packages
+import itertools
 import os
 import re
 
@@ -14,13 +15,9 @@ from pownet.folder_sys import get_temp_dir
 from functions import calc_percent_change
 
 
-MODEL_NAME = 'dummy_trade'
-
-
 
 #%% Read statistics from files and compile into a single dataframe
 files = os.listdir(os.path.join(get_temp_dir(), 'rounding_stats'))
-# files = [f for f in files if MODEL_NAME in f]
 files_both = [f for f in files if ('both' in f) and ('False' in f)]
 files_up = [f for f in files if ('up' in f) and ('False' in f)]
 files_adaptive = [f for f in files if 'True' in f]
@@ -68,51 +65,87 @@ valid_fraction = compiled_df[cols].groupby(
     observed = False
     )['is_valid'].mean().reset_index()
 
+
+ordered_titles = [
+    'Cambodia | Adaptive',
+    'Cambodia | Up and down',
+    'Cambodia | Up only',
+    'Laos | Adaptive',
+    'Laos | Up and down',
+    'Laos | Up only',
+    'Thailand | Adaptive',
+    'Thailand | Up and down',
+    'Thailand | Up only',
+    ]
+
 # Create a grid of subplots for each unique value in the 'direction' column
 g = sns.FacetGrid(valid_fraction, col = "direction", row = 'model_name')
 g = g.map(
     sns.lineplot,
     'threshold', 'is_valid', 'direction',
-    # order = ['both', 'up', 'adaptive'],
     linewidth = 2.5
     )
+# g.set_titles(col_template="{col_name}", row_template="{row_name}")
+g.set_axis_labels('Rounding threshold', 'Fraction feasible')
 
-g.set_titles(col_template="{col_name}", row_template="{row_name}")
-g.set_axis_labels('Rounding threshold', 'Valid fraction')
-for ax in g.axes.flatten():
+for idx, ax in enumerate(g.axes.flatten()):
     ax.axhline(1, ls='--', color='k', label=['1.0x'])
+    ax.set_title(ordered_titles[idx])
 plt.show()
 
 
 #%% Determine reason for infeasibility
-infeasi_count_df = compiled_df.loc[~compiled_df['is_valid']].copy()
+# infeasi_count_df = compiled_df.loc[~compiled_df['is_valid']].copy()
+
+infeasi_count_df = compiled_df.copy()
 infeasi_count_df['infeasibility_reason'] = None
 infeasi_count_df.loc[~infeasi_count_df['rounding_is_int'], 'infeasibility_reason'] = 'Not integer'
-infeasi_count_df.loc[~infeasi_count_df['rounding_is_feasible'], 'infeasibility_reason'] = 'Rounding infeasible'
-infeasi_count_df.loc[~infeasi_count_df['rounding_is_int'] & ~infeasi_count_df['rounding_is_feasible'], 'infeasibility_reason'] = 'Both'
-infeasi_count_df['infeasibility_reason'] = pd.Categorical(infeasi_count_df['infeasibility_reason'])
+infeasi_count_df.loc[~infeasi_count_df['rounding_is_feasible'], 'infeasibility_reason'] = 'Infeasible rounding'
+infeasi_count_df.loc[~infeasi_count_df['rounding_is_int'] & ~infeasi_count_df['rounding_is_feasible'],'infeasibility_reason'] = 'Both' 
+infeasi_count_df.loc[infeasi_count_df['rounding_is_int'] & infeasi_count_df['rounding_is_feasible'],'infeasibility_reason'] = 'Feasible' 
 
 infeasi_count_df = infeasi_count_df.groupby(
     ['model_name', 'direction', 'threshold', 'infeasibility_reason'], observed = False
 )['infeasibility_reason'].count().reset_index(name='count')
 
-
-g = sns.FacetGrid(
+# Convert from long to wide format to do plotting
+infeasi_count_df = pd.pivot(
     infeasi_count_df,
-    col = 'direction',
-    row = 'model_name',
-    hue = 'infeasibility_reason'
+    index=['model_name', 'direction', 'threshold'],
+    columns='infeasibility_reason',
+    values = 'count'
     )
-g = (
-    g.map(
-        sns.barplot,
-        'threshold', 'count',
-        order = [x/10 for x in range(1, 10)]
-        ).add_legend()
-        )
-g.set_titles(col_template='{col_name}', row_template="{row_name}")
-g.set_axis_labels('Rounding threshold', 'Infeasibility count')
+infeasi_count_df = infeasi_count_df.reset_index()
+['model_name', 'direction', 'threshold']
+
+sub_cols = ['Feasible', 'Not integer', 'Infeasible rounding', 'Both']
+infeasi_count_df[sub_cols] /= 365
+
+
+plot_cols = ['threshold', 'Feasible', 'Not integer', 'Infeasible rounding', 'Both']
+
+pairs = itertools.product(infeasi_count_df.model_name.unique(), infeasi_count_df.direction.unique())
+fig, axes = plt.subplots(
+    nrows=3, 
+    ncols=3, 
+    figsize=(8,8),
+    layout='constrained')
+for (country, direction), ax in zip(pairs, axes.flatten()):
+    subset = infeasi_count_df.loc[
+        (infeasi_count_df['model_name'] == country)
+        & (infeasi_count_df['direction'] == direction)
+        ]
+    subset = subset[plot_cols]
+    subset = subset.set_index('threshold')
+    if len(subset) > 0:
+        subset.plot.bar(stacked=True, legend=False, ax=ax)
+        
+        ax.set_title(f'{country.title()} | {direction}')
+        
+handles, labels = ax.get_legend_handles_labels()
+fig.legend(handles, labels, loc='outside upper center', ncol=4)
 plt.show()
+    
 
 
 #%% Plot the MIP gap
@@ -124,7 +157,7 @@ g = g.map(sns.lineplot, "threshold", "lp_mip_gap", "model_name", linewidth=2.5)
 
 g.set_titles(col_template="{col_name}", row_template="{row_name}")
 g.set_axis_labels('Rounding threshold', 'MIPGap (%)')
-g.set(ylim=(0, 25))
+g.set(ylim=(0, 5))
 plt.show()
 
 
