@@ -1,3 +1,9 @@
+"""
+
+Prepare plots for Dantzig-Wolfe
+
+"""
+
 import os
 import re
 
@@ -20,7 +26,7 @@ from functions import (
 )
 
 
-MODEL_NAME = "thailand"
+MODEL_NAME = "cambodia"
 DWSTOP = 0.0001
 
 
