@@ -7,7 +7,7 @@ from pypolp.parser import parse_mps_dec
 from pownet.folder_sys import get_output_dir
 
 
-MODEL_NAME = "thailand"
+MODEL_NAME = "cambodia"
 SAVE_FIGURE = True
 
 # Get the A matrix as a dataframe
@@ -48,7 +48,7 @@ def on_add(sel):
 
 if SAVE_FIGURE:
     fig.savefig(
-        os.path.join(get_output_dir(), f"{MODEL_NAME}_structure.png"),
+        os.path.join(get_output_dir(), f"structure_{MODEL_NAME}.png"),
         dpi=350,
         bbox_inches="tight",
     )
