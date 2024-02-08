@@ -64,7 +64,9 @@ class Simulator:
             # We can write the model as .MPS and use non-Gurobi solvers
             if self.write_model:
                 # Save the model
-                dirname = os.path.join(get_output_dir(), f"{self.model_name}_instances")
+                dirname = os.path.join(
+                    get_output_dir(), f"{self.model_name}_{self.T}_instances"
+                )
                 if not os.path.exists(dirname):
                     os.makedirs(dirname)
                 self.model.write(os.path.join(dirname, f"{self.model_name}_{k}.mps"))
