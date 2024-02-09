@@ -41,7 +41,10 @@ class Simulator:
 
         # The indexing of 'k' starts at zero because we use this to
         # index the parameters of future simulation periods (t + self.k*self.T)
-        for k in range(0, steps):
+        # Need to ensure that steps is a multiple of T
+        steps_to_run = min(steps, 365 * 24 // self.T)
+
+        for k in range(0, steps_to_run):
             # Create a gurobipy model for each simulation period
             print("\n\n\n============")
             print(f"PowNet: Simulate step {k+1}\n\n")
