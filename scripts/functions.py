@@ -1,8 +1,10 @@
 """ This file contains supporting functions to perform analysis.
 """
+
 import os
 import re
 
+import gurobipy as gp
 import pandas as pd
 
 from pownet.folder_sys import get_model_dir, get_output_dir, get_temp_dir
@@ -73,7 +75,7 @@ def read_dw_stats():
         # Add labels from the filename
         subset["model_name"] = model_name
         subset["dw_stop"] = float(dw_stop)
-        subset["relaxed_subp"] = (relaxed_subp == "True")
+        subset["relaxed_subp"] = relaxed_subp == "True"
 
         # Calculate attributes for analysis
         # Ratio of opt time: DW-MIP to Gurobi-MIP
@@ -100,3 +102,14 @@ def read_dw_stats():
 
         dw_stats = pd.concat([dw_stats, subset], axis=0)
     return dw_stats.reset_index(drop=True)
+
+
+def create_infeasibility_file(mps_file: str):
+    model = gp.Model(mps_file)
+    model.optimize()
+    # Check model status
+    if model.status == gp.GRB.INFEASIBLE:
+        model.computeIIS()
+        model.write(f"{mps_file}.ilp")
+    else:
+        raise ValueError("Optimal solution found")
