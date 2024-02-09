@@ -100,8 +100,7 @@ def run_experiment(
 if __name__ == "__main__":
     model_name = "thailand"
     T_simulates = [24, 48, 72]  # in hours
-    # gp_timelimits = [5, 10, 20, 40, 60]  # in seconds
-    gp_timelimits = [1, 2, 3, 4, 6, 7, 8, 9, 15, 25, 30, 50, 60]
+    gp_timelimits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 25, 20, 30, 40, 50, 60]
 
     pairs = [(x, y) for x in T_simulates for y in gp_timelimits]
 
@@ -110,4 +109,8 @@ if __name__ == "__main__":
             model_name,
             T_simulate=T_simulate,
             gp_timelimit=gp_timelimit,
+        )
+
+        print(
+            f"\n\nCompleted {model_name} for T_simulate = {T_simulate} and gp_timelimit = {gp_timelimit}..."
         )
