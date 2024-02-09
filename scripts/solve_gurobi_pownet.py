@@ -41,7 +41,7 @@ def run_experiment(
         "gp_timelimit",
         "mip_objval",
         "mip_opt_time",
-        "mip_opt_gap",
+        "mip_opt_gap",  # Note that this is in fraction (|zp| - |zd|) / |zp|
         "wall_clock_mip",
     ]
 
@@ -88,7 +88,7 @@ def run_experiment(
                     gp_timelimit,
                     mip_model.objval,
                     mip_opt_time,
-                    mip_opt_gap,
+                    mip_opt_gap,  # This is in fraction (|zp| - |zd|) / (1e-10 + |zp|)
                     wall_clock_mip,
                 ]
             )
@@ -100,7 +100,8 @@ def run_experiment(
 if __name__ == "__main__":
     model_name = "thailand"
     T_simulates = [24, 48, 72]  # in hours
-    gp_timelimits = [5, 10, 20, 40, 60]  # in seconds
+    # gp_timelimits = [5, 10, 20, 40, 60]  # in seconds
+    gp_timelimits = [1, 2, 3, 4, 6, 7, 8, 9, 15, 25, 30, 50, 60]
 
     pairs = [(x, y) for x in T_simulates for y in gp_timelimits]
 
