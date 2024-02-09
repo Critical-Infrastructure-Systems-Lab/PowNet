@@ -23,7 +23,7 @@ def write_df(
     df.to_csv(
         os.path.join(
             get_output_dir(),
-            f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_{output_name}.csv',
+            f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_{T}_{output_name}.csv',
         ),
         index=False,
     )
