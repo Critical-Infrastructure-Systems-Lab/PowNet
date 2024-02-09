@@ -105,6 +105,7 @@ def read_dw_stats():
 
 
 def create_infeasibility_file(mps_file: str):
+    """Generate an infeasibility file from the given mps file."""
     model = gp.Model(mps_file)
     model.optimize()
     # Check model status
