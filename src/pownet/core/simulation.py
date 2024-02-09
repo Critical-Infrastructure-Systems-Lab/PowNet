@@ -29,9 +29,8 @@ class Simulator:
     def run(
         self, steps: int, mip_gap: float = None, timelimit: float = None
     ) -> SystemRecord:
-        # Instantiate objects
+        # Initialize objects
         system_record = SystemRecord(self.system_input)
-
         builder = ModelBuilder(self.system_input)
 
         # Initially, we can define the initial conditions
@@ -85,12 +84,14 @@ class Simulator:
                 self.model.computeIIS()
                 c_time = get_current_time()
                 ilp_file = os.path.join(
-                    get_output_dir(), f"infeasible_{self.model_name}_{k}_{c_time}.ilp"
+                    get_output_dir(),
+                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.ilp",
                 )
                 self.model.write(ilp_file)
 
                 mps_file = os.path.join(
-                    get_output_dir(), f"infeasible_{self.model_name}_{k}_{c_time}.mps"
+                    get_output_dir(),
+                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.mps",
                 )
                 self.model.write(mps_file)
 
@@ -98,7 +99,7 @@ class Simulator:
                 with open(
                     os.path.join(
                         get_output_dir(),
-                        f"infeasible_{self.model_name}_{k}_{c_time}.pkl",
+                        f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.pkl",
                     ),
                     "wb",
                 ) as f:
@@ -109,7 +110,9 @@ class Simulator:
             # Save the solution file to warmstart the next instance
             if is_warmstart():
                 self.model.write(
-                    os.path.join(get_output_dir(), f"{self.model_name}_{k}.sol")
+                    os.path.join(
+                        get_output_dir(), f"{self.model_name}_{self.T}_{k}.sol"
+                    )
                 )
 
             # Need k to increment the hours field
@@ -117,7 +120,3 @@ class Simulator:
             init_conds = system_record.get_init_conds()
 
         return system_record
-
-
-if __name__ == "__main__":
-    print("Jigglypuffs")
