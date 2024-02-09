@@ -18,7 +18,7 @@ WRITE_DEC = False
 # We are only optimizing one step which is 24 hours. This optimization
 # is just to initiate a model so we can extract the model from Gurobi
 T = 72
-steps = 365
+steps = 1
 
 
 ##--------------- This section writes MPS file(s)
@@ -118,7 +118,7 @@ if WRITE_DEC:
 
     # This section writes the text file
     dec_filename = os.path.join(
-        get_output_dir(), f"{MODEL_NAME}_instances", f"{MODEL_NAME}.dec"
+        get_output_dir(), f"{MODEL_NAME}_{T}_instances", f"{MODEL_NAME}.dec"
     )
     with open(dec_filename, "w") as f:
         # Unspecified constraints are put into the master problem
