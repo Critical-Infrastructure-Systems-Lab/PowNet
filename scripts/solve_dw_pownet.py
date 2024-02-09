@@ -1,180 +1,141 @@
-# Solves PowNet
+"""
+Run experments with Dantzig-Wolfe decomposition for the PowNet model
+The script will collect statistics for each day and save them in a csv file
+"""
+
 import csv
 from datetime import datetime
 import os
 
 import gurobipy as gp
 
-from pownet.folder_sys import get_temp_dir, get_output_dir
+from pownet.folder_sys import get_temp_dir, get_output_dir, count_mps_files
 from pypolp.dw.dw import DantzigWolfe, DWRecord
 from pypolp.parser import parse_mps_with_orders, parse_mps, get_dataframe_orders
-from pypolp.functions import check_is_binary_from_df, check_is_binary_from_model
+from pypolp.functions import check_is_binary_from_df
 
 
-
-MODEL_NAME = 'cambodia'
-SAVE_SOLUTIONS = True
+#### Define parameters ####
+MODEL_NAME = "thailand"
+T = "72"
 RECOVER_INT_FROM_DW = True
-DWOPTGAP = 0.0001
-GUROBIMIPGAP = 0.001
-RELAX_SUBPROBLEMS = True
+DWOPTGAP = 10  # 0.0001
+RELAX_SUBPROBLEMS = False
 
+###########################
 
-############################
+# Start time
 start_time_script = datetime.now()
 CTIME = start_time_script.strftime("%Y%m%d_%H%M")
 
-print(f'\nDW-PowNet: ==== Begin collecting statistics for {MODEL_NAME} ====')
-print(f'Relax subproblems: {RELAX_SUBPROBLEMS}')
+print(f"\nDW-PowNet: ==== Begin collecting statistics for {MODEL_NAME} ====")
+print(f"Relax subproblems: {RELAX_SUBPROBLEMS}")
 
-# Create a folder to save the outputs
-session_name = f'{CTIME}_{MODEL_NAME}_{DWOPTGAP}_{RELAX_SUBPROBLEMS}'
+# Define the session name and create a folder to save the outputs
+session_name = f"{CTIME}_{MODEL_NAME}_{T}_{DWOPTGAP}_{RELAX_SUBPROBLEMS}"
 session_name = os.path.join(get_temp_dir(), session_name)
 if not os.path.exists(session_name):
     os.makedirs(session_name)
 
 # Need to extract row/column orders to parse the DW structure
-instance_folder = os.path.join(get_output_dir(), f'{MODEL_NAME}_instances')
-path_dec = os.path.join(instance_folder, f'{MODEL_NAME}.dec')
-path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_0.mps')
-
+instance_folder = os.path.join(get_output_dir(), f"{MODEL_NAME}_{T}_instances")
+path_dec = os.path.join(instance_folder, f"{MODEL_NAME}.dec")
+path_mps = os.path.join(instance_folder, f"{MODEL_NAME}_0.mps")
 (_, A_df, _, _, col_df) = parse_mps(path_mps)
-
 row_order, col_order = get_dataframe_orders(path_dec, A_df, col_df)
 del A_df
 del col_df
 
 # Collect statistics to compare computational performance
 FIELDS = [
-    'master_itercount',
-    'master_time',
-    'master_mip_time', # Time to optimize the last interation of master as integer
-    'subp_itercount',
-    'subp_time',
-    'dw_itercount',
-    'dw_time',
-    'dw_mip_time',
-    'dw_objval',
-    'dw_mip_objval',
-    'mip_gurobi_time',
-    'mip_objval',
-    'lp_gurobi_time',
-    'lp_objval',
-    'is_int', # Check if the lp solution is integer
+    "master_itercount",
+    "master_time",
+    "master_mip_time",  # Time to optimize the last interation of master as integer
+    "subp_itercount",
+    "subp_time",
+    "dw_itercount",
+    "dw_time",
+    "dw_mip_time",
+    "dw_objval",
+    "dw_mip_objval",
+    "mip_gurobi_time",
+    "mip_objval",
+    "lp_gurobi_time",
+    "lp_objval",
+    "is_int",  # Check if the lp solution is integer
     # Wall clock is the total time to build, solve, extract solution
-    'wall_clock_dw',
-    'wall_clock_mip_gurobi',
-    'wall_clock_lp_gurobi'
-    ]
+    "wall_clock_dw",
+    "wall_clock_mip_gurobi",
+    "wall_clock_lp_gurobi",
+]
 
 # Create a csv file with only headers. We will append to this csv later.
-csv_name = os.path.join(get_temp_dir(), f'{session_name}_dwstats.csv')
-with open(csv_name, 'w', newline='', encoding='utf-8') as csvfile:  
-    # creating a csv writer object  
-    csvwriter = csv.writer(csvfile)  
-    # writing the fields  
+csv_name = os.path.join(get_temp_dir(), f"{session_name}_dwstats.csv")
+with open(csv_name, "w", newline="", encoding="utf-8") as csvfile:
+    # creating a csv writer object
+    csvwriter = csv.writer(csvfile)
+    # writing the fields
     csvwriter.writerow(FIELDS)
 
-# The number of MPS files is the total number of instances.
-# Note that we have one DEC file, so we need to subtract 1
-num_instances = len(os.listdir(instance_folder)) - 1
-# Days are labeled from k = 0 to k = 364
+# Count the number of files ending with .mps
+# Days are labeled from k = 0 to k = 364 (max)
+num_instances = count_mps_files(instance_folder)
 for k in range(num_instances):
-    print(f'\n\nDW-PowNet: === Solving Day {k} ===')
-    path_mps = os.path.join(instance_folder, f'{MODEL_NAME}_{k}.mps')
+    print(f"\n\nDW-PowNet: === Solving step {k} ===")
+    path_mps = os.path.join(instance_folder, f"{MODEL_NAME}_{k}.mps")
 
-
-    #----- Solve with Dantzig-Wolfe
+    # ----- Solve with Dantzig-Wolfe
     wall_clock_dw = datetime.now()
     dw_problem = parse_mps_with_orders(path_mps, row_order, col_order)
     record = DWRecord()
     record.fit(dw_problem)
-    
-    dw_instance = DantzigWolfe(
-        dw_optgap = DWOPTGAP,
-        relax_subproblems = RELAX_SUBPROBLEMS
-        )
-    
+
+    dw_instance = DantzigWolfe(dw_optgap=DWOPTGAP, relax_subproblems=RELAX_SUBPROBLEMS)
+
     dw_instance.fit(dw_problem, record)
     dw_instance.solve(record)
-    
-    master_time, subp_time = dw_instance.get_stats('runtime')
-    master_itercount, subp_itercount = dw_instance.get_stats('itercount')
-    
+
+    master_time, subp_time = dw_instance.get_stats("runtime")
+    master_itercount, subp_itercount = dw_instance.get_stats("itercount")
+
     dw_objval, dw_solution = dw_instance.get_solution(record)
     dw_itercount = dw_instance.dw_iter
-    
+
     wall_clock_dw = (datetime.now() - wall_clock_dw).total_seconds()
     dw_time = master_time + subp_time
-    
-    #----- Solve with Dantzig-Wolfe but recover integer solution
-    # This step takes a very long time and is not for possible large instances
+
+    # ----- Solve with Dantzig-Wolfe but recover integer solution
     if RECOVER_INT_FROM_DW:
         dw_mip_objval, dw_solution_mip = dw_instance.get_solution(
-            record, 
-            recover_integer = True
-            )
+            record, recover_integer=True
+        )
         master_mip_time = dw_instance.master_problem.model.runtime
-        dw_mip_time = dw_time  + master_mip_time
-        
-        dw_solution_mip = dw_solution_mip.reset_index(names='name')
+        dw_mip_time = dw_time + master_mip_time
+
+        # Check if the solution is integer
+        dw_solution_mip = dw_solution_mip.reset_index(names="name")
         dw_is_int, dw_non_binary_vars = check_is_binary_from_df(
-                df = dw_solution_mip,
-                target_varnames = ['status', 'start', 'shut'],
-                return_non_binary = True
-                )
-        
+            df=dw_solution_mip,
+            target_varnames=["status", "start", "shut"],
+            return_non_binary=False,
+        )
+
         # Verify subproblems produce integer solutions
         if not dw_is_int:
-            fname = f'dw_nonbin_{MODEL_NAME}_{k}.csv'
-            print(f'DW-PowNet: Saving {fname}...')
+            fname = f"dw_nonbin_{MODEL_NAME}_{k}.csv"
+            print(f"DW-PowNet: Saving {fname}...")
             dw_non_binary_vars.to_csv(os.path.join(session_name, fname), index=False)
-            
+            raise ValueError
+
     else:
         dw_mip_objval = None
         dw_solution_mip = None
         dw_mip_time = None
 
-    
-    #----- Solve with Gurobi as MIP
-    print('\n')
-    wall_clock_mip_gurobi = datetime.now()
-    gp_model = gp.read(path_mps)
-    gp_model.setParam('outputflag', 0)
-    gp_model.setParam('MIPGap', GUROBIMIPGAP)
-    gp_model.optimize()
-    
-    mip_gurobi_time = gp_model.runtime
-    mip_objval = gp_model.objval
-
-    wall_clock_mip_gurobi =  (datetime.now() - wall_clock_mip_gurobi).total_seconds()
-
-
-    #----- Solve with Gurobi as LP
-    print('\n')
-    wall_clock_lp_gurobi = datetime.now()
-    
-    gp_model = gp_model.relax()
-    gp_model.setParam('LPWarmStart', 0)
-    gp_model.optimize()
-
-    lp_gurobi_time = gp_model.runtime
-    lp_objval = gp_model.objval
-
-    wall_clock_lp_gurobi = (datetime.now() - wall_clock_lp_gurobi).total_seconds()
-
-    # Check if the LP is integer solution
-    is_int, non_binary_vars = check_is_binary_from_model(
-        model = gp_model,
-        target_varnames = ['status', 'start', 'shut'],
-        return_non_binary = True
-        )
-    
-    
-    #----- Saving intermediate results
-    with open(csv_name, 'a', newline='', encoding='utf-8') as csvfile:  
-        # creating a csv writer object  
-        csvwriter = csv.writer(csvfile)  
+    # ----- Saving intermediate results
+    with open(csv_name, "a", newline="", encoding="utf-8") as csvfile:
+        # creating a csv writer object
+        csvwriter = csv.writer(csvfile)
         # writing the data rows
         csvwriter.writerow(
             [
@@ -188,26 +149,13 @@ for k in range(num_instances):
                 dw_mip_time,
                 dw_objval,
                 dw_mip_objval,
-                mip_gurobi_time,
-                mip_objval,
-                lp_gurobi_time,
-                lp_objval,
-                is_int,
                 wall_clock_dw,
-                wall_clock_mip_gurobi,
-                wall_clock_lp_gurobi
-                ]
-            ) 
-
-    # When the gap between MIP and LP is smaller than 1.5%, 
-    # then save the non-binary variables
-    mip_lp_gap = abs(mip_objval - lp_objval)/(mip_objval+.01)
-    if mip_lp_gap <= 0.015 and SAVE_SOLUTIONS:
-        fname = f'nonbin_{MODEL_NAME}_{k}.csv'
-        print(f'DW-PowNet: Saving {fname}...')
-        non_binary_vars.to_csv(os.path.join(session_name, fname), index=False)
+            ]
+        )
 
 # Save solutions for future reference. Place them in a folder
-print(f'\n\nDW-PowNet: ==== Completed collecting compute statistics for {MODEL_NAME} ====')
-print(f'Results for {session_name}')
+print(
+    f"\n\nDW-PowNet: ==== Completed collecting compute statistics for {MODEL_NAME} ===="
+)
+print(f"Results for {session_name}")
 print(f'{"Total time to complete:":<20} {datetime.now()- start_time_script}')
