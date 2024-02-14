@@ -23,20 +23,32 @@ gurobi_stats["mip_opt_gap"] = gurobi_stats["mip_opt_gap"] * 100
 gurobi_stats.loc[gurobi_stats["mip_opt_gap"] > 100, "mip_opt_gap"] = 100
 
 # Create lineplots for each T_simulate
-T_simulate = 24
-subset_with_T = gurobi_stats[gurobi_stats["T_simulate"] == T_simulate]
 
-g = sns.catplot(
-    data=subset_with_T,
-    y="mip_opt_gap",
-    col="gp_timelimit",
-    col_wrap=3,
-    kind="box",
-    # log_scale=True,
-    sharey=False,
-    margin_titles=True,
-)
+# Create combinations of model_name and T_simulate
+T_simulates = [24, 48, 72]
+model_names = ["laos", "cambodia", "thailand"]
+T_model_pairs = [(T, model) for T in T_simulates for model in model_names]
 
-# Create lineplots for each gp_timelimit
-g_facet = sns.FacetGrid(subset_with_T, col="T_simulate", margin_titles=True)
-g_facet.map(sns.lineplot, "step", "mip_opt_gap")
+sns.set_theme(font_scale=2.5)
+for T_simulate, model_name in T_model_pairs:
+    # Calculate the number of feasible solutions
+
+    subset_with_T_model = gurobi_stats[
+        (gurobi_stats["T_simulate"] == T_simulate)
+        & (gurobi_stats["model_name"] == model_name)
+    ]
+    g = sns.catplot(
+        data=subset_with_T_model,
+        y="mip_opt_gap",
+        col="gp_timelimit",
+        col_wrap=5,
+        kind="box",
+        # log_scale=True,
+        sharey=False,
+        margin_titles=True,
+    )
+    g.figure.suptitle(
+        f"OPTGap: ({model_name}, {T_simulate})", y=1.03, fontsize="x-large"
+    )
+
+    plt.show()
