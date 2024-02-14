@@ -7,7 +7,7 @@ import os
 import gurobipy as gp
 import pandas as pd
 
-from pownet.folder_sys import get_temp_dir, get_output_dir
+from pownet.folder_sys import get_temp_dir, get_output_dir, count_mps_files
 
 
 # Not interested in getting Gurobi Outputs
@@ -59,10 +59,7 @@ def run_experiment(
 
     # Count the number of files ending with .mps
     # Days are labeled from k = 0 to k = 364 (max)
-    num_instances = 0
-    for file in os.listdir(instance_folder):
-        if file.endswith(".mps"):
-            num_instances += 1
+    num_instances = count_mps_files(instance_folder)
     for k in range(num_instances):
         # ----- Solve with Gurobi
         wall_clock_mip = datetime.now()
