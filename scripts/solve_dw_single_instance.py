@@ -1,10 +1,15 @@
-# Solves PowNet
-from datetime import datetime
+""" 
+This script solves a single instance of PowNet with
+Dantzig-Wolfe decomposition. The DW implementation can be
+explored in detail.
+"""
+
+# %% Imports
 import copy
+import datetime as dt
 import math
 import os
 import pickle as pkl
-import time
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -13,181 +18,196 @@ from pypolp.dw.dw import DantzigWolfe
 from pypolp.dw.record import DWRecord
 from pypolp.optim import GurobipyOptimizer
 from pypolp.parser import parse_mps_dec
+from pownet.folder_sys import get_temp_dir, get_output_dir
+
+MODEL_NAME = "dummy_trade"
+PARSE_INSTANCE = False  # Save the instance after
 
 
-MODEL_NAME = "cambodia"
-PARSE_INSTANCE = True  # Save the instance after
-SAVE_FIGURE = False
 SAVE_RESULT = False
-DW_FUELPLOT = True
 DW_BOXPLOTS = True
+SAVE_FIGURE = False
 
-DWOPTGAP = 10
 
+RMPGAP = 0.001
 
-# Get out of decomposition and src
-c_time = datetime.now().strftime("%Y%m%d_%H%M")
-PDIR = os.path.dirname(os.getcwd())
+# Create a timestamp to save files
+c_time = dt.datetime.now().strftime("%Y%m%d_%H%M")
 
-instance_folder = os.path.join(PDIR, "outputs", f"{MODEL_NAME}_instances")
+# Locate the mps and dec files
+instance_folder = os.path.join(get_output_dir(), f"{MODEL_NAME}_24_instances")
 path_dec = os.path.join(instance_folder, f"{MODEL_NAME}.dec")
 path_mps = os.path.join(instance_folder, f"{MODEL_NAME}_0.mps")
 
 
-# %% Parse the instance
-t_start_parse = time.time()
-fn = os.path.join(PDIR, "temp", "decom_files", f"{MODEL_NAME}.p")
+# %% Parse MPS and DEC files
+
+# Parsing the DEC file is a slow process and should be avoided if the instance
+# has been parsed. We can re-use the parsed output.
+timer_parse_dec = dt.datetime.now()
+fn = os.path.join(get_temp_dir(), f"{MODEL_NAME}.p")
 if PARSE_INSTANCE:
     dw_problem = parse_mps_dec(path_mps, path_dec)
-    # with open(fn, 'wb') as f:
-    #     pkl.dump(dw_problem, f)
+    with open(fn, "wb") as f:
+        pkl.dump(dw_problem, f)
 else:
     with open(fn, "rb") as f:
         dw_problem = pkl.load(f)
-t_end_parse = time.time()
+timer_parse_dec = (dt.datetime.now() - timer_parse_dec).total_seconds()
 
-# Create a gurobipy relax model later
-dw_problem_lp = copy.deepcopy(dw_problem)
-# Relax the integrality constraints
-dw_problem_lp.var_info.type = "C"
-
-opt_problem = dw_problem.get_opt_problem()
-opt_problem_lp = dw_problem_lp.get_opt_problem()
+# Create instances to solve with Gurobi
+mip_problem = dw_problem.get_opt_problem()
 
 
 # %% Solving with DW
-t_start_dw = time.time()
+print("\n=== Running experiment: Solve MIP with DW ===\n")
+timer_dw = dt.datetime.now()
 
+# Create a record to store the results
 record = DWRecord()
 record.fit(dw_problem)
 
-dw_instance = DantzigWolfe(dw_optgap=DWOPTGAP)
-dw_instance.fit(dw_problem, record)
-dw_instance.solve(record)
+# Create an instance of the Dantzig-Wolfe algorithm
+dw_model = DantzigWolfe(dw_rmpgap=RMPGAP)
+dw_model.fit(dw_problem, record)
+dw_model.solve(record)
 
-dw_objval, dw_solution = dw_instance.get_solution(record)
+dw_objval_lp, dw_solution_lp = dw_model.get_solution(record)
 
-t_end_dw = time.time()
+timer_dw = (dt.datetime.now() - timer_dw).total_seconds()
+
+# Get statistics for analysis
+master_time, subproblem_time = dw_model.get_stats(mode="runtime")
 
 
-# %% Solving with DW as MIP
-dw_objval_mip, dw_solution_mip = dw_instance.get_solution(record, recover_integer=True)
-
-
-# %% Solve the LP
-print("\n=== Benchmark: Solve as LP ===\n")
-t_start_lp = time.time()
-
-base_opt = GurobipyOptimizer.create(opt_problem_lp)
-_ = base_opt.optimize()
-
-lp_objval = base_opt.objval
-lp_solution = base_opt.get_X()
-lp_solution = lp_solution.set_index("variable")
-
-t_end_lp = time.time()
+# Reoptimize the master problem using binary weights
+timer_dw_binary = dt.datetime.now()
+dw_model.reoptimize_with_binary_weights()
+dw_objval_mip, dw_solution_mip = dw_model.get_solution(record)
+timer_dw_binary = (dt.datetime.now() - timer_dw_binary).total_seconds()
 
 
 # %% Solving as MIP
-print("\n=== Benchmark: Solve as MIP ===\n")
+print("\n=== Running experiment: Solve MIP with Gurobi ===\n")
 
-t_start_mip = time.time()
+timer_mip = dt.datetime.now()
 
-base_opt_mip = GurobipyOptimizer.create(opt_problem)
-_ = base_opt_mip.optimize()
+mip_model = GurobipyOptimizer.create(mip_problem)
+_ = mip_model.optimize()
 
-mip_objval = base_opt_mip.objval
-mip_solution = base_opt_mip.get_X()
-mip_solution = base_opt_mip.get_X().set_index("variable")
+mip_objval = mip_model.objval
+mip_solution = mip_model.get_X()
+mip_solution = mip_model.get_X().set_index("variable")
 
-t_end_mip = time.time()
+timer_mip = (dt.datetime.now() - timer_mip).total_seconds()
 
 
-# %%
+# %% Solve the instance as LP with Gurobi
+print("\n=== Running experiment: Solve with Gurobi as LP ===\n")
+# Create instances when we are interested in exploring
+# the LP problem
+dw_relaxed_problem = copy.deepcopy(dw_problem)
+dw_relaxed_problem.var_info.type = "C"
+lp_problem = dw_relaxed_problem.get_opt_problem()
 
-# Compare the solution of DW to that of Gurobi
+timer_lp = dt.datetime.now()
+
+lp_model = GurobipyOptimizer.create(lp_problem)
+_ = lp_model.optimize()
+
+lp_objval = lp_model.objval
+lp_solution = lp_model.get_X()
+lp_solution = lp_solution.set_index("variable")
+
+timer_lp = (dt.datetime.now() - timer_lp).total_seconds()
+
+print(f'{"LP objval:":<20} {int(lp_objval)}')
+
+
+# %% Compare the solution of DW to that of Gurobi
 if SAVE_RESULT:
-    dw_solution.columns = ["DW"]
-    lp_solution.columns = ["LP"]
+    # Rename "value" to represent the solution approach
+    dw_solution_mip.columns = ["DWMIP"]
+    dw_solution_lp.columns = ["DWLP"]
     mip_solution.columns = ["MIP"]
+    lp_solution.columns = ["LP"]
 
-    solutions = dw_solution.join(lp_solution, how="left")
+    solutions = dw_solution_mip.join(dw_solution_lp, how="left")
     solutions = solutions.join(mip_solution, how="left")
+    solutions = solutions.join(lp_solution, how="left")
 
     solutions.to_csv(
-        os.path.join(
-            PDIR, "temp", "decom_results", f"{c_time}_{MODEL_NAME}_solutions.csv"
-        )
+        os.path.join(get_temp_dir(), f"{c_time}_{MODEL_NAME}_dw_compare_solutions.csv")
     )
 
 
 # %% Visualize DW results
-if DW_FUELPLOT:
-    xmax = len(record.primal_objvals)
-    fig, ax = plt.subplots()  # figsize=(10,10))
-    ax.plot(record.primal_objvals, linewidth=2, label="Dantzig-Wolfe")
-    ax.plot(record.dual_bounds, linewidth=2, label="DW Bound")
-    ax.hlines(
-        y=lp_objval,
-        color="r",
-        xmin=0,
-        xmax=xmax,
-        linewidth=2,
-        linestyle=(0, (1, 1)),
-        label="Gurobi",
-    )
+xmax = len(record.primal_objvals)
+fig, ax = plt.subplots()  # figsize=(10,10))
+ax.plot(record.primal_objvals, linewidth=2, label="Dantzig-Wolfe")
+ax.plot(record.dual_bounds, linewidth=2, label="DW Bound")
+ax.hlines(
+    y=lp_objval,
+    color="r",
+    xmin=0,
+    xmax=xmax,
+    linewidth=2,
+    linestyle=(0, (1, 1)),
+    label="LP Objval",
+)
 
-    # Formating section
-    ax.set(xlabel="Iteration", ylabel="Objective value")
-    ax.set_xticks(ticks=range(xmax), minor=True)
-    ax.grid()
-    plt.legend()
-    # plt.legend(['Dantzig-Wolfe', 'Normal Opt'])
-    if SAVE_FIGURE:
-        plt.savefig(
-            os.path.join(
-                PDIR, "temp", "decom_results", f"{c_time}_{MODEL_NAME}_dw.png"
-            ),
-            dpi=350,
-        )
+# Formating section
+ax.set(xlabel="Iteration", ylabel="Obj.Val")
+ax.set_xticks(ticks=range(xmax), minor=True)
+ax.grid()
+plt.legend()
+# plt.legend(['Dantzig-Wolfe', 'Normal Opt'])
+if SAVE_FIGURE:
+    plt.savefig(
+        os.path.join(get_temp_dir(), f"{c_time}_{MODEL_NAME}_dw_objval_converge.png"),
+        dpi=350,
+    )
 
 
 # %% Print Stats
-master_time, subproblem_time = dw_instance.get_stats(mode="runtime")
-
-print("\n===== STATS =====")
-print(f'{"DW_MIP objval:":<20} {int(dw_objval_mip)}')
-print(f'{"DW objval:":<20} {int(dw_objval)}')
-print(f'{"LP objval:":<20} {int(lp_objval)}')
+print("\n===== Statistics =====")
+print("\nObjvals:")
+print(f'{"DWMIP objval:":<20} {int(dw_objval_mip)}')
 print(f'{"MIP objval:":<20} {int(mip_objval)}')
+print(f'{"DWLP objval:":<20} {int(dw_objval_lp)}')
+print(f'{"LP objval:":<20} {int(lp_objval)}')
 
 mip_dwmip_gap = round(abs((mip_objval - dw_objval_mip) / mip_objval + 0.01) * 100, 2)
-print(f'\n{"MIP-DW_MIP gap (%):":<20} {mip_dwmip_gap}')
+print(f'{"MIP-DWMIP gap (%):":<20} {mip_dwmip_gap}')
 
-mip_dw_gap = round(abs((mip_objval - dw_objval) / mip_objval + 0.01) * 100, 2)
-print(f'{"MIP-DW gap (%):":<20} {mip_dw_gap}')
+print("\nDW Opt.time:")
+dw_binary_time = dw_model.master_problem.model.Runtime
+print(f'{"Opt.time - Master Problem:":<30} {round(master_time, 5)} s')
+print(f'{"Opt.time - Subproblem:":<30} {round(subproblem_time, 5)} s')
 
-mip_lp_gap = round(abs((mip_objval - lp_objval) / mip_objval + 0.01) * 100, 2)
-print(f'{"MIP-LP gap (%):":<20} {mip_lp_gap}')
+print(f'{"Generating Proposals (s):":<30} {round(master_time + subproblem_time, 2)}')
+print(f'{"Reoptimize with binary (s):":<30} {round(dw_binary_time, 2)}')
+print(
+    f'{"Total time (s):":<30} {round(master_time + subproblem_time + dw_binary_time, 2)}'
+)
+print(f'{"Opt.time - MIP Gurobi:":<30} {round(mip_model.runtime, 5)} s')
+print(f'{"Opt.time - LP Gurobi:":<30} {round(lp_model.runtime, 5)} s')
 
-print(f'\n{"DW Structure Read Time (s):":<20} {round(t_end_parse - t_start_parse, 2)}')
-
-print(f'\n{"Total DW Time (s):":<20} {round(t_end_dw - t_start_dw, 2)}')
-
-print(f'{"Total LP Time (s):":<20} {round(t_end_lp - t_start_lp, 2)}')
-print(f'{"Total MIP Time (s):":<20} {round(t_end_mip - t_start_mip, 2)}')
-
-print(f'\n{"Opt time - Master Problem:":<30} {round(master_time, 5)} s')
-print(f'{"Opt time - Subproblem:":<30} {round(subproblem_time, 5)} s')
-print(f'{"Opt time - DW Total:":<30} {round(master_time+subproblem_time, 5)} s')
-print(f'{"Opt time - LP Gurobi:":<30} {round(base_opt.runtime, 5)} s')
-print(f'{"Opt time - MIP Gurobi:":<30} {round(base_opt_mip.runtime, 5)} s')
+print("\nDW Wall clock:")
+print(f'{"Parsing DEC (s):":<30} {round(timer_parse_dec, 2)}')
+print(f'{"Generating Proposals (s):":<30} {round(timer_dw, 2)}')
+print(f'{"Reoptimize with binary (s):":<30} {round(timer_dw_binary, 2)}')
+print(
+    f'{"Total time (s):":<30} {round( timer_parse_dec+ timer_dw + timer_dw_binary, 2)}'
+)
+print(f'{"Total MIP Time (s):":<20} {round(timer_mip, 2)}')
+print(f'{"Total LP Time (s):":<20} {round(timer_lp, 2)}')
 
 
 # %% Visualize the stats
 
-dw_runtimes = dw_instance.get_runtimes_dict()
-dw_itercounts = dw_instance.get_itercounts_dict()
+dw_runtimes = dw_model.get_runtimes_dict()
+dw_itercounts = dw_model.get_itercounts_dict()
 
 
 def plot_boxplot(subset, ax, subplot_name, value_name) -> None:
