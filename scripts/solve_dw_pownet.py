@@ -97,7 +97,7 @@ def run_dw_experiment(
     # Count the number of files ending with .mps
     # Days are labeled from k = 0 to k = 364 (max)
     num_instances = count_mps_files(instance_folder)
-    for k in range(5): #num_instances
+    for k in range(num_instances):
         print(f"\n\nDW-PowNet: === Solving step {k} ===")
         path_mps = os.path.join(instance_folder, f"{model_name}_{k}.mps")
 
@@ -136,8 +136,8 @@ def run_dw_experiment(
         non_bin_variables = get_non_binary_from_df(
             df=dw_solution_mip,
             target_varnames=["status", "start", "shut"],
-            )
-        dw_is_int = (len(non_bin_variables) == 0)
+        )
+        dw_is_int = len(non_bin_variables) == 0
         if not dw_is_int:
             fname = f"dw_nonbin_{model_name}_{k}.csv"
             print(f"DW-PowNet: Saving {fname}...")
@@ -189,7 +189,7 @@ def run_dw_experiment(
                     subp_itercount,
                     subp_time,
                     dw_itercount,
-                    master_time + subp_time + master_mip_time, # dw_total_time
+                    master_time + subp_time + master_mip_time,  # dw_total_time
                     dw_objval,
                     dw_rmpgap,
                     dw_improve,
@@ -202,7 +202,7 @@ def run_dw_experiment(
                     timer_dw,
                     timer_mip,
                     timer_lp,
-                    true_objval
+                    true_objval,
                 ]
             )
 
@@ -213,17 +213,24 @@ def run_dw_experiment(
 
 if __name__ == "__main__":
     #### Define parameters ####
-    model_name = "laos"
+    countries = ["laos", "cambodia", "thailand"]
     T_simulate = "24"
     rmpgap = 10  # in percent
-    dw_improve = 1.0  # in percent
+    dw_improves = [1.0, 0.5, 0.1]  # in percent
 
     relax_subproblem = False
 
-    run_dw_experiment(
-        model_name=model_name,
-        T_simulate=T_simulate,
-        set_rmpgap=rmpgap,
-        set_dwimprove=dw_improve,
-        relax_subproblems=relax_subproblem,
-    )
+    exp_pairs = [
+        (model_name, dw_improve)
+        for model_name in countries
+        for dw_improve in dw_improves
+    ]
+
+    for model_name, dw_improve in exp_pairs:
+        run_dw_experiment(
+            model_name=model_name,
+            T_simulate=T_simulate,
+            set_rmpgap=rmpgap,
+            set_dwimprove=dw_improve,
+            relax_subproblems=relax_subproblem,
+        )
