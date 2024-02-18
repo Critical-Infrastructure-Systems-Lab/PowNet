@@ -21,15 +21,15 @@ from pypolp.parser import parse_mps_dec
 from pownet.folder_sys import get_temp_dir, get_output_dir
 
 MODEL_NAME = "dummy_trade"
-PARSE_INSTANCE = False  # Save the instance after
+PARSE_INSTANCE = True  # Save the instance after
 
 
 SAVE_RESULT = False
-DW_BOXPLOTS = True
+DW_BOXPLOTS = False
 SAVE_FIGURE = False
 
-
-RMPGAP = 0.001
+RMPGAP = 10  # in percent
+DW_IMPROVE = None  # 1.0 # in percent
 
 # Create a timestamp to save files
 c_time = dt.datetime.now().strftime("%Y%m%d_%H%M")
@@ -48,8 +48,8 @@ timer_parse_dec = dt.datetime.now()
 fn = os.path.join(get_temp_dir(), f"{MODEL_NAME}.p")
 if PARSE_INSTANCE:
     dw_problem = parse_mps_dec(path_mps, path_dec)
-    with open(fn, "wb") as f:
-        pkl.dump(dw_problem, f)
+    # with open(fn, "wb") as f:
+    #     pkl.dump(dw_problem, f)
 else:
     with open(fn, "rb") as f:
         dw_problem = pkl.load(f)
@@ -68,7 +68,7 @@ record = DWRecord()
 record.fit(dw_problem)
 
 # Create an instance of the Dantzig-Wolfe algorithm
-dw_model = DantzigWolfe(dw_rmpgap=RMPGAP)
+dw_model = DantzigWolfe(dw_improve=DW_IMPROVE, dw_rmpgap=RMPGAP)
 dw_model.fit(dw_problem, record)
 dw_model.solve(record)
 
@@ -120,8 +120,6 @@ lp_solution = lp_model.get_X()
 lp_solution = lp_solution.set_index("variable")
 
 timer_lp = (dt.datetime.now() - timer_lp).total_seconds()
-
-print(f'{"LP objval:":<20} {int(lp_objval)}')
 
 
 # %% Compare the solution of DW to that of Gurobi
@@ -179,6 +177,8 @@ print(f'{"LP objval:":<20} {int(lp_objval)}')
 
 mip_dwmip_gap = round(abs((mip_objval - dw_objval_mip) / mip_objval + 0.01) * 100, 2)
 print(f'{"MIP-DWMIP gap (%):":<20} {mip_dwmip_gap}')
+print(f'{"RMPGap (%):":<20} {round(dw_model.rmpgap, 2)}')
+print(f'{"Incre.Improve (%):":<20} {round(dw_model.incre_improve, 2)}')
 
 print("\nDW Opt.time:")
 dw_binary_time = dw_model.master_problem.model.Runtime
