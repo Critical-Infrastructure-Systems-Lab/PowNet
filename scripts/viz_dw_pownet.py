@@ -1,15 +1,17 @@
-import os
-import re
+""" This script visualizes results from then new Dantzig-Wolfe experiments.
+We want to show the followings: Solution quality and optimization time.
+Dantzig-Wolfe always generate a feasible solution in this case.
+"""
 
-from matplotlib.colors import LinearSegmentedColormap
+# %% Imports and naming conventions
+import os
+
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
+import numpy as np
 import seaborn as sns
 
 from pownet.folder_sys import get_temp_dir, get_output_dir
-from pownet.core.input import SystemInput
-from pownet.core.output import OutputProcessor, Visualizer
 
 from functions import (
     read_dw_stats,
@@ -20,232 +22,184 @@ from functions import (
 )
 
 
-MODEL_NAME = "thailand"
-DWSTOP = 0.0001
-
-
 naming_map = {
-    'dw_mip_gap': 'DW-MIP Gap (%)',
-    'mip_objval': 'MIP Obj.val ($)',
-    'dw_mip_objval': 'DW-MIP Obj.val ($)',
-    'dw_mip_time': 'DW-MIP opt.time (s)',
-    'mip_gurobi_time':'Gurobi opt.time (s)',
-    'excess_renewable': '(Total Renewables - Total load) in MW',
-    'total_on': 'Online hours of thermal units',
-    }
+    "dw_mip_gap": "DW-MIP Gap (%)",
+    "mip_objval": "MIP Obj.val ($)",
+    "dw_mip_objval": "DW-MIP Obj.val ($)",
+    "dw_mip_time": "DW-MIP opt.time (s)",
+    "mip_gurobi_time": "Gurobi opt.time (s)",
+    "excess_renewable": "(Total Renewables - Total load) in MW",
+    "total_on": "Online hours of thermal units",
+}
+
 
 def plot_scatter(df, model_name: str, xname: str, yname: str):
     fig, ax = plt.subplots(dpi=350)
     ax.scatter(x=df[xname], y=df[yname])
     ax.set_xlabel(naming_map[xname])
     ax.set_ylabel(naming_map[yname])
-    
-    title_name = f'Country: {model_name.title()}'
+
+    title_name = f"Country: {model_name.title()}"
     ax.set_title(title_name)
     plt.show()
-    
-
-# %%=================== Read the file with the most stringent termination criterion
-dw_stats = read_dw_stats()
-dw_stats = dw_stats[
-    (dw_stats["model_name"] == MODEL_NAME)
-    & (dw_stats["dw_stop"] == DWSTOP)
-    & (dw_stats["relaxed_subp"] == False)
-    ]
-dw_stats = dw_stats[dw_stats["model_name"] == MODEL_NAME]
-
-dw_stats = dw_stats.reset_index(drop=True)
 
 
-#%% Is there a relationship between shortfall/curtailment/r_sys/import and excess renewables?
+# %% Load the data
+# Fast DW only contains ones with rmpgap = 10. We relax the incremental improvement to get faster solution.
+folder_name = os.path.join(get_temp_dir(), "new_dw_stats")
+filesets = os.listdir(folder_name)
 
-output_vars = ['s_pos', 's_neg'] #
-dw_stats['mva_vars'] = get_total_daily_from_output(
-    variables=output_vars,
-    model_name=MODEL_NAME,
+# We will compare the quicker termination criteria with the slower one
+slow_dw_stats = pd.read_csv(
+    os.path.join(get_temp_dir(), "dw_stats_wo_incre_improve.csv")
+)
+slow_dw_stats["dw_gap"] = calc_percent_change(
+    slow_dw_stats["dw_mip_objval"], slow_dw_stats["true_objval"]
 )
 
-dw_stats['total_on'] = get_total_daily_from_output(
-    variables=['status'],
-    model_name=MODEL_NAME,
-)
-
-# plot_scatter(dw_stats, model_name=MODEL_NAME, xname='mva_vars', yname='excess_renewable')
-# plot_scatter(dw_stats, model_name=MODEL_NAME, xname='total_on', yname='excess_renewable')
-
-
-# plot_scatter(dw_stats, model_name=MODEL_NAME, xname='mva_vars', yname='dw_mip_time')
-# plot_scatter(dw_stats, model_name=MODEL_NAME, xname='mva_vars', yname='dw_mip_gap')
-
-plot_scatter(dw_stats, model_name=MODEL_NAME, xname='excess_renewable', yname='dw_mip_time')
-plot_scatter(dw_stats, model_name=MODEL_NAME, xname='total_on', yname='dw_mip_time')
-plot_scatter(dw_stats, model_name=MODEL_NAME, xname='mip_objval', yname='dw_mip_time')
-
-
-
-plot_scatter(dw_stats, model_name=MODEL_NAME, xname='total_on', yname='dw_mip_gap')
-plot_scatter(dw_stats, model_name=MODEL_NAME, xname='excess_renewable', yname='dw_mip_gap')
-plot_scatter(dw_stats, model_name=MODEL_NAME, xname='mip_objval', yname='dw_mip_gap')
-
-
-# %% What are the fraction of times?
-dw_time_cols = ["master_time", "master_mip_time", "subp_time", "dw_overhead_time"]
-frac_time = np.divide(
-    dw_stats[dw_time_cols].values,
-    dw_stats[dw_time_cols].sum(axis=1).values.reshape(-1, 1),
-)
-frac_time = pd.DataFrame(frac_time, columns=dw_time_cols)
-
-frac_time_dict = frac_time.mean(axis=0).to_dict()
-
-fig, ax = plt.subplots(figsize=(6, 5))
-ax.pie(
-    frac_time_dict.values(),
-    labels=frac_time_dict.keys(),
-    autopct="%1.0f%%",
-)
-ax.set_title(f"Breakdown of runtime: {MODEL_NAME}-{DWSTOP}", fontweight="bold")
-ax.set_xticks([])
-ax.set_yticks([])
-plt.show()
-
-# %% Plot the optimality gap
-context = 'mva_vars'
-# Compare the optimality gaps. Highlight there are periods where DW works well
-optgap_columns = ["dwmip_mip_gap", "dw_mip_gap"]
-optgap_column_labels = ["DW (MIP)", "DW"]
-colors = ["#1b9e77", "#d95f02", "#7570b3", "#e7298a"]
-
-fig, ax = plt.subplots(figsize=(8, 5))
-
-for col, lab, color in zip(optgap_columns, optgap_column_labels, colors):
-    ax.plot(
-        dw_stats[col],
-        # color = color,
-        alpha=0.9,
-        linewidth=1,
-        label=lab,
-    )
-ax.set_xlabel("Day")
-ax.set_ylabel("MIP GAP (%)")
-
-
-# Plot contextual information
-ax2 = ax.twinx()
-ax2.plot(
-    dw_stats[context], linewidth=1, linestyle="dotted", color="black", label=context
-)
-ax2.set_ylabel(context)
-
-fig.legend()
-plt.show()
-
-
-# %% Plot the computation time
-opt_time_columns = ["dw_mip_time", "mip_gurobi_time", "lp_gurobi_time"]
-opt_time_column_labels = ["DW (MIP)", "Gurobi-MIP", "Gurobi-LP"]
-colors = ["#1b9e77", "#d95f02", "#7570b3", "#e7298a"]
-
-fig, ax = plt.subplots(figsize=(8, 5))
-
-for col, lab, color in zip(opt_time_columns, opt_time_column_labels, colors):
-    ax.plot(
-        dw_stats[col],
-        # color = color,
-        alpha=0.9,
-        linewidth=1,
-        label=lab,
-    )
-ax.set_xlabel("Day")
-ax.set_ylabel("Optimization time (s)")
-
-
-# Plot the fraction of dispatch from thermal units
-ax2 = ax.twinx()
-ax2.plot(
-    dw_stats[context], linewidth=1, linestyle="dotted", color="black", label=context
-)
-ax2.set_ylabel(context)
-
-fig.legend()
-plt.show()
-
-
-# %% What happens during those periods? Plot against share of hydro
-
-T = 24
-node_variables = pd.read_csv(
-    os.path.join(get_output_dir(), f"{MODEL_NAME}_node_variables.csv")
-)
-
-system_input = SystemInput(T=T, formulation="kirchhoff", model_name=MODEL_NAME)
-
-output_processor = OutputProcessor()
-output_processor.load(
-    df=node_variables, system_input=system_input, model_name=MODEL_NAME
-)
-
-visualizer = Visualizer(model_name=MODEL_NAME, ctime=output_processor.ctime)
-visualizer.plot_fuelmix_area(
-    dispatch=output_processor.get_daily_dispatch(),
-    demand=output_processor.get_daily_demand(),
-    to_save=False,
+slowest_dw_stats = slow_dw_stats[slow_dw_stats["set_rmpgap"] == 0.0001].reset_index(
+    drop=True
 )
 
 
-# %% Plot fuel mix during specific periods
-
-# idx_start, idx_end = 133, 136
-# visualizer.plot_fuelmix_area(
-#     dispatch=output_processor.get_daily_dispatch().iloc[idx_start:idx_end],
-#     demand=output_processor.get_daily_demand().iloc[idx_start:idx_end],
-#     to_save=False,
-# )
-
-
-# %% Create a master dataframe of stats across dw_gap values
-dw_criteria_stats = pd.DataFrame()
-
-dwgap_pattern = r"\d+_\d+_\w+_([0-9].*)_False_dwstats.csv"
-folder_name = os.path.join(get_temp_dir(), "dw_stats")
-filesets = [file for file in os.listdir(folder_name) if ("csv" in file) & ('False' in file)]
-
+fast_dw_stats = pd.DataFrame()
 for file in filesets:
-    subset = pd.read_csv(os.path.join(folder_name, file))
-    subset["dwmip_mip_gap"] = calc_percent_change(
-        subset["dw_mip_objval"], subset["mip_objval"]
-    )
-    # Add the criterion label
-    dw_gap = re.match(dwgap_pattern, file).group(1)
-    subset["dw_gap"] = dw_gap
-    subset["dw_gap"] = subset["dw_gap"].astype("category")
-    dw_criteria_stats = pd.concat([dw_criteria_stats, subset], axis=0)
+    df = pd.read_csv(os.path.join(folder_name, file))
+    fast_dw_stats = pd.concat([fast_dw_stats, df], axis=0)
+del df
+fast_dw_stats["dw_gap"] = calc_percent_change(
+    fast_dw_stats["dw_mip_objval"], fast_dw_stats["true_objval"]
+)
+
+stats = pd.concat([fast_dw_stats, slow_dw_stats], axis=0)
+
+# set_rmpgap is in fraction and not in percentage
+stats["dw_gap"] = calc_percent_change(stats["dw_mip_objval"], stats["true_objval"])
+stats["log10_dw_total_time"] = np.log10(stats["dw_total_time"])
 
 
-# %% Boxplot of DWMIP-MIP OPT GAP
-fig, ax = plt.subplots()
-sns.boxplot(x="dw_gap", y="dwmip_mip_gap", data=dw_criteria_stats, ax=ax)
-ax.set_ylabel("DW-MIP vs MIP Obj.Val Gap (%)")
-ax.set_xlabel("Pct. Difference: primal/dual objective values")
-plt.show()
+# %% Plot the solution quality as boxplots
+g = sns.FacetGrid(stats, row="set_rmpgap", col="set_dwimprove", margin_titles=True)
+g.map(
+    sns.barplot,
+    "model_name",
+    "dw_gap",
+    linewidth=2.5,
+)
+
+# %% Compare Opt.time
+g = sns.FacetGrid(stats, row="set_rmpgap", col="set_dwimprove", margin_titles=True)
+g.map(
+    sns.boxplot,
+    "model_name",
+    "log10_dw_total_time",
+)
+
+# %% Print stats
+stats_grouped = stats.groupby(["model_name", "set_rmpgap", "set_dwimprove"]).mean()
+
+print("Mean dw_total_time")
+print(stats_grouped["dw_total_time"])
+
+print("Mean DW GAP(%)")
+print(stats_grouped["dw_gap"])
 
 
-# %% Boxplot of Optimization time (s)
-fig, ax = plt.subplots()
-sns.boxplot(x="dw_gap", y="dw_time", data=dw_criteria_stats, ax=ax)
-ax.set_ylabel("Optimization time (s)")
-ax.set_xlabel("Pct. Difference: primal/dual objective values")
-plt.show()
+# %% Plot time series of the best case of DW against MIP Gurobi
+thailand_true = pd.read_csv(
+    os.path.join(get_temp_dir(), "true_values", "thailand_24.csv"), header=0
+)
 
-
-# %% Analysis
-print(f'{"Total DWMIP opt_time:":<40} {dw_stats.dw_mip_time.sum().round(2)} s')
-print(f'{"Total MIP Gurobi opt_time:":<40} {dw_stats.mip_gurobi_time.sum().round(2)} s')
-print(f'{"Total LP Gurobi opt_time:":<40} {dw_stats.lp_gurobi_time.sum().round(2)} s')
-
-# Can DW be quicker than MIP?
-dw_quicker_mip = [
-    (dw_time < mip_time)
-    for dw_time, mip_time in zip(dw_stats.dw_mip_time, dw_stats.mip_gurobi_time)
+thailand_dw = stats[
+    (stats["model_name"] == "thailand")
+    & (stats["set_rmpgap"] == 10)
+    & (stats["set_dwimprove"] == 10)
 ]
-print(f"# instances DW is quicker than MIP Gurobi: {sum(dw_quicker_mip)}")
+
+fig, ax = plt.subplots()
+ax.plot(thailand_true["mip_opt_time"], label="MIP", alpha=0.5, linewidth=1)
+ax.plot(thailand_dw["master_time"], label="DW Master", alpha=0.5, linewidth=1)
+ax.plot(thailand_dw["subp_time"], label="DW Subproblems", alpha=0.5, linewidth=1)
+ax.plot(
+    thailand_dw["master_mip_time"], label="DW Discretization", alpha=0.5, linewidth=1
+)
+ax.set_xlabel("Day")
+ax.set_ylabel("Opt.time (s)")
+ax.set_title("Thailand")
+plt.legend()
+plt.show()
+
+# %%
+fig, ax = plt.subplots()
+ax.semilogy(thailand_true["mip_opt_time"], label="MIP", alpha=0.5, linewidth=1)
+ax.semilogy(thailand_dw["master_time"], label="DW Master", alpha=0.5, linewidth=1)
+ax.semilogy(thailand_dw["subp_time"], label="DW Subproblems", alpha=0.5, linewidth=1)
+ax.semilogy(
+    thailand_dw["master_mip_time"], label="DW Discretization", alpha=0.5, linewidth=1
+)
+ax.set_xlabel("Day")
+ax.set_ylabel("Log10 Opt.time (s)")
+ax.set_title("Thailand")
+plt.legend()
+plt.show()
+
+# %% Plot the speed-comparison of the fast DW
+fast_dw_stats["xSpeedup"] = (
+    fast_dw_stats["mip_gurobi_time"] / fast_dw_stats["dw_total_time"]
+)
+g = sns.FacetGrid(
+    fast_dw_stats, row="set_rmpgap", col="set_dwimprove", margin_titles=True
+)
+g.map(
+    sns.barplot,
+    "model_name",
+    "xSpeedup",
+    linewidth=2.5,
+    label="xSpeedup",
+)
+for ax in g.axes.flatten():
+    ax.axhline(1, ls="--", color="k", label=["1.0x"])
+
+# %%
+thailand_dw["xSpeedup"] = thailand_dw["mip_gurobi_time"] / thailand_dw["dw_total_time"]
+
+fig, ax = plt.subplots()
+ax.plot(thailand_dw["xSpeedup"], linewidth=1, label=["Speed-up"])
+ax.set_xlabel("Day")
+ax.set_ylabel("xSpeedup")
+ax.set_title("Thailand | DW speed-up")
+ax.axhline(1, ls="--", color="k", label=["1.0x"])
+ax.set_ylim(0, 7)
+
+# Bar plot of Gap on the secondary axis
+ax2 = ax.twinx()
+ax2.bar(
+    thailand_dw.index, thailand_dw["dw_gap"], alpha=0.25, color="r", label="DW Gap(%)"
+)
+ax2.set_ylabel("DW Gap(%)")
+ax2.set_ylim(0, 100)
+
+fig.legend()
+plt.show()
+
+
+# %%
+
+sel_country = "thailand"
+temp_df = stats[stats["model_name"] == sel_country]
+
+# Drop the columns that are not needed
+cols2drop = [
+    "mip_gurobi_time",
+    "mip_objval",
+    "wall_clock_mip_gurobi",
+    "lp_gurobi_time",
+    "lp_objval",
+    "wall_clock_lp_gurobi",
+]
+
+temp_df = temp_df.drop(columns=cols2drop)
+
+temp_df.to_csv(os.path.join(get_temp_dir(), f"{sel_country}_dw_stats.csv"), index=False)
+
+# %%
