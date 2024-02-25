@@ -156,6 +156,8 @@ def run_dw_experiment(
         timer_mip = datetime.now()
 
         mip_model = gp.read(path_mps)
+        mip_model.setParam("MIPGap", set_mipgap)
+
         mip_model.optimize()
         mip_objval = mip_model.objval
         mip_gurobi_time = mip_model.runtime
