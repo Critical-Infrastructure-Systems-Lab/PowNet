@@ -21,7 +21,7 @@ from pypolp.parser import parse_mps_dec
 from pownet.folder_sys import get_temp_dir, get_output_dir
 
 MODEL_NAME = "dummy_trade"
-PARSE_INSTANCE = True  # Save the instance after
+PARSE_INSTANCE = False  # Save the instance after
 
 
 SAVE_RESULT = False
@@ -80,12 +80,18 @@ timer_dw = (dt.datetime.now() - timer_dw).total_seconds()
 master_time, subproblem_time = dw_model.get_stats(mode="runtime")
 
 
-# Reoptimize the master problem using binary weights
+'''# Reoptimize the master problem using binary weights
 timer_dw_binary = dt.datetime.now()
 dw_model.reoptimize_with_binary_weights()
 dw_objval_mip, dw_solution_mip = dw_model.get_solution(record)
-timer_dw_binary = (dt.datetime.now() - timer_dw_binary).total_seconds()
+timer_dw_binary = (dt.datetime.now() - timer_dw_binary).total_seconds()'''
 
+
+# Reoptimize the master problem using rounded weights
+timer_dw_binary = dt.datetime.now()
+dw_model.reoptimize_with_rounded_weights()
+dw_objval_mip, dw_solution_mip = dw_model.get_solution(record)
+timer_dw_binary = (dt.datetime.now() - timer_dw_binary).total_seconds()
 
 # %% Solving as MIP
 print("\n=== Running experiment: Solve MIP with Gurobi ===\n")
