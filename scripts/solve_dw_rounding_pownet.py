@@ -127,32 +127,41 @@ def run_dw_experiment(
         dw_itercount = dw_model.dw_iter
 
         # ----- Reoptimize DW to recover integer solution
-        dw_model.reoptimize_with_rounded_weights()
-        dw_mip_objval, dw_solution_mip = dw_model.get_solution(record)
-        master_mip_time = dw_model.master_problem.model.runtime
-
-        #  Verify subproblems produce integer solutions
-        dw_solution_mip = dw_solution_mip.reset_index(names="name")
-        non_bin_variables = get_non_binary_from_df(
-            df=dw_solution_mip,
-            target_varnames=["status", "start", "shut"],
-        )
-        dw_is_int = len(non_bin_variables) == 0
-        if not dw_is_int:
-            fname = f"dw_nonbin_{model_name}_{k}.csv"
-            print(f"DW-PowNet: Saving {fname}...")
-            non_bin_variables.to_csv(os.path.join(output_dir, fname), index=False)
-            raise ValueError("DW-PowNet: Subproblems do not produce integer solutions.")
-
-        # ----- Solve as MIP with Gurobi
-        # Set the MIPGap competitively to the rounding objective value
-        # Assume k represents the same instance
         true_objval = true_objvals.loc[k, "mip_objval"]
-        set_mipgap = calculate_set_mipgap(dw_mip_objval, true_objval)
-        # Compare to Gurobi getting less than 50% of the optimal solution
-        if set_mipgap > 1:
+        try:
+            dw_model.reoptimize_with_rounded_weights()
+            dw_mip_objval, dw_solution_mip = dw_model.get_solution(record)
+            print("Reoptimized with rounded weights is INFEASIBLE.")
+            #  Verify subproblems produce integer solutions
+            dw_solution_mip = dw_solution_mip.reset_index(names="name")
+            non_bin_variables = get_non_binary_from_df(
+                df=dw_solution_mip,
+                target_varnames=["status", "start", "shut"],
+            )
+            dw_is_int = len(non_bin_variables) == 0
+            if not dw_is_int:
+                fname = f"dw_nonbin_{model_name}_{k}.csv"
+                print(f"DW-PowNet: Saving {fname}...")
+                non_bin_variables.to_csv(os.path.join(output_dir, fname), index=False)
+                raise ValueError(
+                    "DW-PowNet: Subproblems do not produce integer solutions."
+                )
+
+            # Set the MIPGap competitively to the rounding objective value
+            # Assume k represents the same instance
+            set_mipgap = calculate_set_mipgap(dw_mip_objval, true_objval)
+            # Compare to Gurobi getting less than 50% of the optimal solution
+            if set_mipgap > 1:
+                set_mipgap = 0.50
+
+        except:
+            dw_mip_objval = None
+            dw_solution_mip = None
+            master_mip_time = 0
+            dw_is_int = False
             set_mipgap = 0.50
 
+        # ----- Solve as MIP with Gurobi
         timer_mip = datetime.now()
 
         mip_model = gp.read(path_mps)
