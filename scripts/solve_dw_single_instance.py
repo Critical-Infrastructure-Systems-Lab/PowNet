@@ -20,16 +20,16 @@ from pypolp.optim import GurobipyOptimizer
 from pypolp.parser import parse_mps_dec
 from pownet.folder_sys import get_temp_dir, get_output_dir
 
-MODEL_NAME = "dummy_trade"
-PARSE_INSTANCE = False  # Save the instance after
+MODEL_NAME = "laos"
+PARSE_INSTANCE = True  # Save the instance after
 
 
 SAVE_RESULT = False
 DW_BOXPLOTS = False
 SAVE_FIGURE = False
 
-RMPGAP = 10  # in percent
-DW_IMPROVE = None  # 1.0 # in percent
+RMPGAP = 50  # in percent
+DW_IMPROVE = 100  # 1.0 # in percent
 
 # Create a timestamp to save files
 c_time = dt.datetime.now().strftime("%Y%m%d_%H%M")
@@ -37,7 +37,7 @@ c_time = dt.datetime.now().strftime("%Y%m%d_%H%M")
 # Locate the mps and dec files
 instance_folder = os.path.join(get_output_dir(), f"{MODEL_NAME}_24_instances")
 path_dec = os.path.join(instance_folder, f"{MODEL_NAME}.dec")
-path_mps = os.path.join(instance_folder, f"{MODEL_NAME}_0.mps")
+path_mps = os.path.join(instance_folder, f"{MODEL_NAME}_93.mps")
 
 
 # %% Parse MPS and DEC files
@@ -80,18 +80,24 @@ timer_dw = (dt.datetime.now() - timer_dw).total_seconds()
 master_time, subproblem_time = dw_model.get_stats(mode="runtime")
 
 
-'''# Reoptimize the master problem using binary weights
+# Reoptimize the master problem using binary weights
 timer_dw_binary = dt.datetime.now()
 dw_model.reoptimize_with_binary_weights()
 dw_objval_mip, dw_solution_mip = dw_model.get_solution(record)
-timer_dw_binary = (dt.datetime.now() - timer_dw_binary).total_seconds()'''
-
-
-# Reoptimize the master problem using rounded weights
-timer_dw_binary = dt.datetime.now()
-dw_model.reoptimize_with_rounded_weights()
-dw_objval_mip, dw_solution_mip = dw_model.get_solution(record)
 timer_dw_binary = (dt.datetime.now() - timer_dw_binary).total_seconds()
+
+
+# # Reoptimize the master problem using rounded weights
+# timer_dw_binary = dt.datetime.now()
+# try:
+#     dw_model.reoptimize_with_rounded_weights()
+#     dw_objval_mip, dw_solution_mip = dw_model.get_solution(record)
+#     print("Reoptimized with rounded weights is INFEASIBLE.")
+# except:
+#     dw_objval_mip = None
+#     dw_solution_mip = None
+
+# timer_dw_binary = (dt.datetime.now() - timer_dw_binary).total_seconds()
 
 # %% Solving as MIP
 print("\n=== Running experiment: Solve MIP with Gurobi ===\n")
