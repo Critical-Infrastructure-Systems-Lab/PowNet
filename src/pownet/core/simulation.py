@@ -1,6 +1,8 @@
 import pickle
 import os
 
+import highspy
+
 from pownet.core.builder import ModelBuilder
 from pownet.core.input import SystemInput
 from pownet.core.record import SystemRecord
@@ -17,8 +19,11 @@ class Simulator:
         self,
         system_input: SystemInput,
         write_model: bool = False,
+        use_gurobi: bool = True,
     ) -> None:
+
         self.model = None
+        self.use_gurobi = use_gurobi
 
         self.system_input = system_input
         self.T = self.system_input.T
@@ -73,47 +78,51 @@ class Simulator:
                     os.makedirs(dirname)
                 self.model.write(os.path.join(dirname, f"{self.model_name}_{k}.mps"))
 
-            # TODO: Revise this section when using a non-Gurobi solver
-            # Replace the Gurobi model with a non_gurobi model
-            self.model.optimize()
+            # Solve the model with either Gurobi or HiGHs
+            if self.use_gurobi:
+                self.model.optimize()
+
+            else:
+                # Export the instance to MPS and solve with HiGHs
+                mps_file = "temp_instance_for_HiGHs.mps"
+                self.model.write(mps_file)
+
+                self.model = highspy.Highs()
+                self.model.readModel(mps_file)
+                self.model.run()
+
+                # Delete the MPS file
+                os.remove(mps_file)
 
             # In case when the model is infeasible, we generate an output file
             # to troubleshoot the problem. The model should always be feasible.
-            if self.model.status == 3:
-                print(f"PowNet: Iteration: {k} is infeasible.")
-                self.model.computeIIS()
-                c_time = get_current_time()
-                ilp_file = os.path.join(
-                    get_output_dir(),
-                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.ilp",
-                )
-                self.model.write(ilp_file)
-
-                mps_file = os.path.join(
-                    get_output_dir(),
-                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.mps",
-                )
-                self.model.write(mps_file)
-
-                # Need to learn about the initial conditions as well
-                with open(
-                    os.path.join(
+            if self.use_gurobi:
+                if self.model.status == 3:
+                    print(f"PowNet: Iteration: {k} is infeasible.")
+                    self.model.computeIIS()
+                    c_time = get_current_time()
+                    ilp_file = os.path.join(
                         get_output_dir(),
-                        f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.pkl",
-                    ),
-                    "wb",
-                ) as f:
-                    pickle.dump(system_record, f)
-
-                break
-
-            # Save the solution file to warmstart the next instance
-            if is_warmstart():
-                self.model.write(
-                    os.path.join(
-                        get_output_dir(), f"{self.model_name}_{self.T}_{k}.sol"
+                        f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.ilp",
                     )
-                )
+                    self.model.write(ilp_file)
+
+                    mps_file = os.path.join(
+                        get_output_dir(),
+                        f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.mps",
+                    )
+                    self.model.write(mps_file)
+
+                    # Need to learn about the initial conditions as well
+                    with open(
+                        os.path.join(
+                            get_output_dir(),
+                            f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.pkl",
+                        ),
+                        "wb",
+                    ) as f:
+                        pickle.dump(system_record, f)
+                    break
 
             # Need k to increment the hours field
             system_record.keep(self.model, k)
