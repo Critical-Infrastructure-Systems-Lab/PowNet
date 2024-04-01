@@ -45,7 +45,9 @@ class ModelBuilder:
         self.p = None
         self.pbar = None
 
-        self.prnw = None  # renewables
+        self.phydro = None
+        self.psolar = None
+        self.pwind = None
         self.pimp = None  # import
 
         self.spin = None  # unit-specific spinning reserve
@@ -112,10 +114,22 @@ class ModelBuilder:
             for unit_g in self.inputs.thermal_units
         }
 
-        rnw_coeffs = {
-            (rnw_unit, t): self.inputs.fuelprice.loc[t + self.k * self.T, rnw_unit]
+        hydro_coeffs = {
+            (hydro_unit, t): self.inputs.fuelprice.loc[t + self.k * self.T, hydro_unit]
             for t in self.timesteps
-            for rnw_unit in self.inputs.rnw_units
+            for hydro_unit in self.inputs.hydro_units
+        }
+
+        solar_coeffs = {
+            (solar_unit, t): self.inputs.fuelprice.loc[t + self.k * self.T, solar_unit]
+            for t in self.timesteps
+            for solar_unit in self.inputs.solar_units
+        }
+
+        wind_coeffs = {
+            (wind_unit, t): self.inputs.fuelprice.loc[t + self.k * self.T, wind_unit]
+            for t in self.timesteps
+            for wind_unit in self.inputs.wind_units
         }
 
         import_coeffs = {
@@ -130,7 +144,11 @@ class ModelBuilder:
         operation_expr = self.dispatch.prod(opex_coeffs)
         fixed_expr = self.u.prod(fixed_coeffs)
         startup_expr = self.v.prod(startup_coeffs)
-        rnw_expr = self.prnw.prod(rnw_coeffs)
+
+        hydro_expr = self.phydro.prod(hydro_coeffs)
+        solar_expr = self.psolar.prod(solar_coeffs)
+        wind_expr = self.pwind.prod(wind_coeffs)
+
         import_expr = self.pimp.prod(import_coeffs)
 
         # The cost of shortfall is the slack variable (s_pos) needed to meet demand
@@ -148,7 +166,9 @@ class ModelBuilder:
                 operation_expr
                 + fixed_expr
                 + startup_expr
-                + rnw_expr
+                + hydro_expr
+                + solar_expr
+                + wind_expr
                 + import_expr
                 + shortfall_expr
                 + spin_reserve_penalty_expr
@@ -164,7 +184,8 @@ class ModelBuilder:
         self.model.addConstrs(
             (
                 self.u[unit_g, 1]
-                - self.initial_u[unit_g, self.T]  # Last hour of the previous iteration
+                # Last hour of the previous iteration
+                - self.initial_u[unit_g, self.T]
                 == self.v[unit_g, 1] - self.w[unit_g, 1]
                 for unit_g in self.inputs.thermal_units
             ),
@@ -201,7 +222,8 @@ class ModelBuilder:
         """
         self.model.addConstrs(
             (
-                self.pbar[unit_g, t] == self.p[unit_g, t] + self.spin[unit_g, t]
+                self.pbar[unit_g, t] == self.p[unit_g, t] +
+                self.spin[unit_g, t]
                 for unit_g in self.inputs.thermal_units
                 for t in self.timesteps
             ),
@@ -224,7 +246,8 @@ class ModelBuilder:
         )
         self.model.addConstrs(
             (
-                self.pbar[unit_g, t] + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
+                self.pbar[unit_g, t] +
+                self.inputs.min_cap[unit_g] * self.u[unit_g, t]
                 <= self.inputs.max_cap[unit_g][t] * self.u[unit_g, t]
                 for unit_g in self.inputs.thermal_units
                 for t in self.timesteps
@@ -349,7 +372,8 @@ class ModelBuilder:
                     / self.inputs.RU[unit_g]
                 )
 
-                KSD_t = min(time_RD, self.inputs.TU[unit_g] - 1, self.T - t - 1)
+                KSD_t = min(
+                    time_RD, self.inputs.TU[unit_g] - 1, self.T - t - 1)
 
                 # Omit adding inequalities if KSD <= 0 because
                 # c_trajec_up_bound dominates.
@@ -383,7 +407,8 @@ class ModelBuilder:
                     (
                         self.p[unit_g, t]
                         <= (
-                            self.inputs.max_cap[unit_g][t] - self.inputs.min_cap[unit_g]
+                            self.inputs.max_cap[unit_g][t] -
+                            self.inputs.min_cap[unit_g]
                         )
                         * self.u[unit_g, t]
                         - sum_1
@@ -434,7 +459,8 @@ class ModelBuilder:
                             self.pbar[unit_g, t]
                             + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
                             <= self.inputs.max_cap[unit_g][t] * self.u[unit_g, t]
-                            - (self.inputs.max_cap[unit_g][t] - self.inputs.SD[unit_g])
+                            - (self.inputs.max_cap[unit_g]
+                               [t] - self.inputs.SD[unit_g])
                             * self.w[unit_g, t + 1]
                             - sum_term
                         ),
@@ -660,7 +686,8 @@ class ModelBuilder:
         """
         cycle_incidence = pd.DataFrame(
             0,
-            index=pd.MultiIndex.from_tuples(self.inputs.arcs, names=["source", "sink"]),
+            index=pd.MultiIndex.from_tuples(
+                self.inputs.arcs, names=["source", "sink"]),
             columns=self.inputs.cycle_map.keys(),
         )
 
@@ -684,7 +711,8 @@ class ModelBuilder:
                 else:
                     cycle_incidence.loc[(flow[1], flow[0]), cycle_id] = -1
                     cycle_susceptance = pd.concat(
-                        [cycle_susceptance, self.inputs.suscept[(flow[1], flow[0])]],
+                        [cycle_susceptance,
+                            self.inputs.suscept[(flow[1], flow[0])]],
                         axis=1,
                     )
 
@@ -720,10 +748,20 @@ class ModelBuilder:
                     thermal_gen = 0
 
                 # If n has renewables, then it can generate energy
-                if node in self.inputs.rnw_units:
-                    re_gen = self.prnw[node, t] * line_efficiency
+                if node in self.inputs.hydro_units:
+                    hydro_gen = self.phydro[node, t] * line_efficiency
                 else:
-                    re_gen = 0
+                    hydro_gen = 0
+
+                if node in self.inputs.solar_units:
+                    solar_gen = self.psolar[node, t] * line_efficiency
+                else:
+                    solar_gen = 0
+
+                if node in self.inputs.wind_units:
+                    wind_gen = self.pwind[node, t] * line_efficiency
+                else:
+                    wind_gen = 0
 
                 # If n is an import node, then it can generate energy
                 if node in self.inputs.nodes_import:
@@ -733,7 +771,8 @@ class ModelBuilder:
 
                 # Get the demand of node n at time t
                 if node in self.inputs.nodes_w_demand:
-                    demand_n_t = self.inputs.demand.loc[t + self.T * self.k, node]
+                    demand_n_t = self.inputs.demand.loc[t +
+                                                        self.T * self.k, node]
                     mismatch = self.s_pos[node, t] - self.s_neg[node, t]
                 else:
                     demand_n_t = 0
@@ -750,7 +789,7 @@ class ModelBuilder:
                 # Given the above terms, we can specify the energy balance
                 self.model.addConstr(
                     (
-                        thermal_gen + re_gen + imp_gen + arc_flow + mismatch
+                        thermal_gen + hydro_gen + solar_gen + wind_gen + imp_gen + arc_flow + mismatch
                         == demand_n_t
                     ),
                     name="flowBal" + f"[{node},{t}]",
@@ -827,17 +866,43 @@ class ModelBuilder:
         )
 
         # The dispatch from renewables is in absolute term. Unit: MW
-        self.prnw = self.model.addVars(
-            self.inputs.rnw_units,
+        self.phydro = self.model.addVars(
+            self.inputs.hydro_units,
             self.timesteps,
             lb=0,
             ub={
-                (rnw_unit, t): self.inputs.rnw_cap.loc[t + self.T * self.k, rnw_unit]
+                (hydro_unit, t): self.inputs.hydro_cap.loc[t + self.T * self.k, hydro_unit]
                 for t in self.timesteps
-                for rnw_unit in self.inputs.rnw_cap.columns
+                for hydro_unit in self.inputs.hydro_cap.columns
             },
             vtype=GRB.CONTINUOUS,
-            name="prnw",
+            name="phydro",
+        )
+
+        self.psolar = self.model.addVars(
+            self.inputs.solar_units,
+            self.timesteps,
+            lb=0,
+            ub={
+                (solar_unit, t): self.inputs.solar_cap.loc[t + self.T * self.k, solar_unit]
+                for t in self.timesteps
+                for solar_unit in self.inputs.solar_cap.columns
+            },
+            vtype=GRB.CONTINUOUS,
+            name="psolar",
+        )
+
+        self.pwind = self.model.addVars(
+            self.inputs.wind_units,
+            self.timesteps,
+            lb=0,
+            ub={
+                (wind_unit, t): self.inputs.wind_cap.loc[t + self.T * self.k, wind_unit]
+                for t in self.timesteps
+                for wind_unit in self.inputs.wind_cap.columns
+            },
+            vtype=GRB.CONTINUOUS,
+            name="pwind",
         )
 
         # The import from neighboring system in absolute term. Unit: MW
@@ -1042,7 +1107,8 @@ class ModelBuilder:
         """
         # TODO: Consider updating the model instead of creating a new one
         # Update cost coeffs, constraints, RHS
-        self.model = self.build(k, init_conds, mip_gap=mip_gap, timelimit=timelimit)
+        self.model = self.build(
+            k, init_conds, mip_gap=mip_gap, timelimit=timelimit)
 
         # Use the solution from the previous solve
         if is_warmstart():

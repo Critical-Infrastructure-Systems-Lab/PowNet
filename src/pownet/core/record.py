@@ -18,6 +18,7 @@ def write_df(
     df: pd.DataFrame,
     output_name: str,
     model_name: str,
+    T: int,
 ) -> None:
     """Write a dataframe to the output folder."""
     df.to_csv(
@@ -130,7 +131,8 @@ class SystemRecord:
 
         # Create a col of variable types for filtering
         pat_vartype = r"(\w+)\["
-        results[["vartype"]] = results["varname"].str.extract(pat_vartype, expand=True)
+        results[["vartype"]] = results["varname"].str.extract(
+            pat_vartype, expand=True)
 
         # Some variables are not in the (node, t) format.
         # These are system-level variables
@@ -198,7 +200,8 @@ class SystemRecord:
 
         # Currently there is only the system-wider reserve
         cur_var_syswide = increment_hour(cur_var_syswide, T=self.T, k=k)
-        self.var_syswide = pd.concat([self.var_syswide, cur_var_syswide], axis=0)
+        self.var_syswide = pd.concat(
+            [self.var_syswide, cur_var_syswide], axis=0)
 
         # Need to calculate the minimum time on/off
         self.current_min_on = get_init_min_on(
@@ -249,11 +252,11 @@ class SystemRecord:
 
     def to_csv(self) -> None:
         write_df(
-            self.var_node_t, output_name="node_variables", model_name=self.model_name
+            self.var_node_t, output_name="node_variables", model_name=self.model_name, T=self.T
         )
         write_df(
-            self.var_flow, output_name="flow_variables", model_name=self.model_name
+            self.var_flow, output_name="flow_variables", model_name=self.model_name, T=self.T
         )
         write_df(
-            self.var_syswide, output_name="system_variables", model_name=self.model_name
+            self.var_syswide, output_name="system_variables", model_name=self.model_name, T=self.T
         )
