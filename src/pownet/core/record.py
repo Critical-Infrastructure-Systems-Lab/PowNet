@@ -1,5 +1,6 @@
 import datetime
 import os
+import re
 
 import gurobipy as gp
 import pandas as pd
@@ -260,3 +261,25 @@ class SystemRecord:
         write_df(
             self.var_syswide, output_name="system_variables", model_name=self.model_name, T=self.T
         )
+
+    @staticmethod
+    def get_hydro_from_model(model: gp.Model) -> dict:
+        ''' The output of the hydro dispatch is a dictionary of the form
+        {
+            "reservoir1": {t1: value1, t2: value2, ...},
+            "reservoir2": {t1: value1, t2: value2, ...},
+        }
+        '''
+        hydro_dispatch = {}
+        # Variables are named as "phydro[reservoir,t]"
+        pattern = r"phydro\[(\w+),(\d+)\]"
+        for v in model.getVars():
+            varname = v.varName
+            match = re.match(pattern, varname)
+            if match:
+                reservoir, t = match.groups()
+                t = int(t)
+                if reservoir not in hydro_dispatch:
+                    hydro_dispatch[reservoir] = {}
+                hydro_dispatch[reservoir][t] = v.X
+        return hydro_dispatch

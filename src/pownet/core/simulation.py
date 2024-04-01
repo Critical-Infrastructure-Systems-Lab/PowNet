@@ -26,6 +26,37 @@ class Simulator:
         self.model_name = system_input.model_name
         self.write_model = write_model
 
+    def _check_infeasibility(self, k) -> bool:
+        '''
+        Check if the model is infeasible. If it is, generate an output file.'''
+        is_infeasible = self.model.status == 3
+        if is_infeasible == 3:
+            print(f"PowNet: Iteration: {k} is infeasible.")
+            self.model.computeIIS()
+            c_time = get_current_time()
+            ilp_file = os.path.join(
+                get_output_dir(),
+                f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.ilp",
+            )
+            self.model.write(ilp_file)
+
+            mps_file = os.path.join(
+                get_output_dir(),
+                f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.mps",
+            )
+            self.model.write(mps_file)
+
+            # Need to learn about the initial conditions as well
+            with open(
+                os.path.join(
+                    get_output_dir(),
+                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.pkl",
+                ),
+                "wb",
+            ) as f:
+                pickle.dump(system_record, f)
+        return is_infeasible
+
     def run(
         self, steps: int, mip_gap: float = None, timelimit: float = None
     ) -> SystemRecord:
@@ -71,40 +102,15 @@ class Simulator:
                 )
                 if not os.path.exists(dirname):
                     os.makedirs(dirname)
-                self.model.write(os.path.join(dirname, f"{self.model_name}_{k}.mps"))
+                self.model.write(os.path.join(
+                    dirname, f"{self.model_name}_{k}.mps"))
 
-            # TODO: Revise this section when using a non-Gurobi solver
-            # Replace the Gurobi model with a non_gurobi model
+            # Once the model has been optimized, first check if it is infeasible.
+            # After that, we can reoperate the reservoirs
             self.model.optimize()
-
             # In case when the model is infeasible, we generate an output file
-            # to troubleshoot the problem. The model should always be feasible.
-            if self.model.status == 3:
-                print(f"PowNet: Iteration: {k} is infeasible.")
-                self.model.computeIIS()
-                c_time = get_current_time()
-                ilp_file = os.path.join(
-                    get_output_dir(),
-                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.ilp",
-                )
-                self.model.write(ilp_file)
-
-                mps_file = os.path.join(
-                    get_output_dir(),
-                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.mps",
-                )
-                self.model.write(mps_file)
-
-                # Need to learn about the initial conditions as well
-                with open(
-                    os.path.join(
-                        get_output_dir(),
-                        f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.pkl",
-                    ),
-                    "wb",
-                ) as f:
-                    pickle.dump(system_record, f)
-
+            # and exit the simulation. The model should always be feasible.
+            if self._check_infeasibility(k):
                 break
 
             # Save the solution file to warmstart the next instance
@@ -115,7 +121,18 @@ class Simulator:
                     )
                 )
 
-            # Need k to increment the hours field
+            '''
+            TODO: Reoperate the reservoirs
+            1. Get hydropower dispatch from the model
+            2. Check if the hydropower was fully used per Koh et al. (2022)
+            '''
+            # ---- Begin reoperation of the reservoirs
+            hydro_dispatch = system_record.get_hydro_from_model(
+                self.model)
+
+            # The model has been solved to optimality, so we can record the solution.
+            # We need k to increment the hours field when building an instance of
+            # the next timestep.
             system_record.keep(self.model, k)
             init_conds = system_record.get_init_conds()
 
