@@ -80,11 +80,7 @@ class OutputProcessor:
         self.dates.index += 1
 
         # -- Extract information from PowNet's node variables
-        self.fuelmap = (
-            system_input.fuelmap[["name", "fuel_type"]]
-            .set_index("name")
-            .to_dict()["fuel_type"]
-        )
+        self.fuelmap = system_input.fuelmap
 
         # Generation from thermal units
         self.thermal_dispatch = df[df["vartype"] == "dispatch"]
@@ -95,7 +91,10 @@ class OutputProcessor:
         )
 
         # Generation from renewables
-        self.rnw_dispatch = df[df["vartype"] == "prnw"]
+        mask = mask = (df["vartype"] == "phydro") | (
+            df["vartype"] == "psolar") | (df["vartype"] == "pwind")
+        self.rnw_dispatch = df.loc[mask]
+
         # self.rnw_dispatch = self.rnw_dispatch.rename(columns={'value':'dispatch'})
         self.rnw_dispatch = self.rnw_dispatch.reset_index(drop=True)
         self.rnw_dispatch["fuel_type"] = self.rnw_dispatch.apply(
@@ -153,7 +152,8 @@ class OutputProcessor:
         self.monthly_dispatch = self.total_dispatch.copy()
         self.monthly_dispatch["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_dispatch = self.monthly_dispatch.groupby("month").sum()
-        self.monthly_dispatch.index = self.monthly_dispatch.index.strftime("%b")
+        self.monthly_dispatch.index = self.monthly_dispatch.index.strftime(
+            "%b")
 
         # Sum across 24 hours to get the daily dispatch.
         self.daily_dispatch = self.total_dispatch.copy()
@@ -165,7 +165,8 @@ class OutputProcessor:
         self.total_demand = system_input.demand.sum(axis=1)
 
         # Sum across each month to get the monthly demand
-        self.monthly_demand = self.total_demand[: self.total_timesteps].to_frame()
+        self.monthly_demand = self.total_demand[: self.total_timesteps].to_frame(
+        )
         self.monthly_demand.columns = ["demand"]
         self.monthly_demand["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_demand = self.monthly_demand.groupby("month").sum()
@@ -318,7 +319,8 @@ class Visualizer:
             fig, ax1 = plt.subplots(figsize=(8, 5))
             ax2 = ax1.twinx()
 
-            ax1.step(df1["hour"], df1["value"], where="mid", color="b", label="Power")
+            ax1.step(df1["hour"], df1["value"],
+                     where="mid", color="b", label="Power")
             # If ymax is too low, then we cannot see the blue line
             ax1.set_ylim(bottom=0, top=full_max_cap[unit_g] * 1.05)
             ax1.tick_params(axis="x", labelrotation=45)
