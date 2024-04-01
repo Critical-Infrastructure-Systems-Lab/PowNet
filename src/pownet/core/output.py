@@ -94,8 +94,6 @@ class OutputProcessor:
         mask = mask = (df["vartype"] == "phydro") | (
             df["vartype"] == "psolar") | (df["vartype"] == "pwind")
         self.rnw_dispatch = df.loc[mask]
-
-        # self.rnw_dispatch = self.rnw_dispatch.rename(columns={'value':'dispatch'})
         self.rnw_dispatch = self.rnw_dispatch.reset_index(drop=True)
         self.rnw_dispatch["fuel_type"] = self.rnw_dispatch.apply(
             lambda x: self.fuelmap[x["node"]], axis=1
