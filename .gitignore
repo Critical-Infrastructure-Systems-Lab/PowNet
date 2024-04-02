@@ -102,3 +102,21 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+# Ignore testing script
+src/scratch.py
+
+# Ignore irrelevant files
+*.pyc
+*.pptx
+temp/*
+
+# Ignore outputs
+outputs/*
+
+# Ignore user inputs
+user_inputs/*
+
+# Ignore subfolders in the analysis folder
+src/analysis/decom_files/*
+src/analysis/results/*
+scripts/scratch.py
