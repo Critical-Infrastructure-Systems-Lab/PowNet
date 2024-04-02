@@ -33,11 +33,21 @@ Instructions on how to run and customize the model are presented below.
 ...
 
 ## Support and maintenance 
-* ..
-* For questions and feedback related to PowNet, please contact @phumthep, @HishamEldardiry, or @stefano-galelli.
+For questions and feedback related to PowNet, please contact Phumthep Bunnak (<pb585@cornell.edu>) or Stefano Galelli (<galelli@cornell.edu>).
 
 ## Glossary 
 ...
+
+## Input data
+<!-- We will need to put these datasets on Zenodo -->
+Input data are available for the following power fleets:
+* Cambodia (2016) 
+* Laos (2016)
+* Thailand (2016)
+<!-- @Phumthep, shall we add the toy case study? -->
+<!-- Add when available -->
+<!-- * Peninsular Malaysia -->
+<!-- * Singapore -->
 
 ## License
 PowNet is released under the MIT license. 
