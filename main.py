@@ -10,14 +10,12 @@ from pownet.folder_sys import get_output_dir, delete_all_gurobi_solutions
 
 def main():
     # ------- User defined inputs
-    MODEL_NAME = "laos"
-    use_gurobi = False
-
+    MODEL_NAME = 'dummy_trade'
     # The default simulation horizon T is 24 hours
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 5
+    STEPS = 2
 
     # Decide whether to save results
     SAVE_RESULT = False
@@ -33,9 +31,13 @@ def main():
     # The user should create their own model in the model_library folder
     time_start = datetime.now()
 
-    system_input = SystemInput(T=T, formulation="kirchhoff", model_name=MODEL_NAME)
+    system_input = SystemInput(
+        T=T,
+        formulation='kirchhoff',
+        model_name=MODEL_NAME
+    )
 
-    simulator = Simulator(system_input=system_input, use_gurobi=use_gurobi)
+    simulator = Simulator(system_input=system_input)
 
     record = simulator.run(steps=STEPS)
 
@@ -56,7 +58,8 @@ def main():
         df=node_variables, system_input=system_input, model_name=MODEL_NAME
     )
 
-    visualizer = Visualizer(model_name=MODEL_NAME, ctime=output_processor.ctime)
+    visualizer = Visualizer(model_name=MODEL_NAME,
+                            ctime=output_processor.ctime)
     visualizer.plot_fuelmix_area(
         dispatch=output_processor.get_total_dispatch(),
         demand=output_processor.get_total_demand(),
@@ -77,5 +80,5 @@ def main():
         delete_all_gurobi_solutions()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

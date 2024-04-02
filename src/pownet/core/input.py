@@ -20,17 +20,9 @@ class SystemInput:
         formulation: str,
         model_name: str,
         price: str = "fuel",
-        aggregated_generator: bool = False,
         reverse_flow: bool = False,
     ) -> None:
-        """
-        Read the user inputs that define the power system over one year.
 
-        Returns
-        -------
-        None
-
-        """
         self.T: int = T
         self.formulation: str = formulation
         self.model_name: str = model_name
@@ -41,35 +33,6 @@ class SystemInput:
         self.year: int = pd.read_csv(
             os.path.join(self.model_dir, "demand_export.csv"), header=0
         )["year"].iloc[0]
-
-        self.demand: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "demand_export.csv"), header=0
-        ).drop(DATE_COLS, axis=1, errors="ignore")
-        self.demand.index += 1
-
-        self.derating: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "pownet_derate_factor.csv"), header=0
-        ).drop(DATE_COLS, axis=1, errors="ignore")
-        self.derating.index += 1
-
-        self.fuelmap: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "fuel_map.csv"), header=0
-        )
-
-        if aggregated_generator:
-            self.node_generator_map: pd.DataFrame = pd.read_csv(
-                os.path.join(self.model_dir, "fuel_map.csv"), header=0
-            )
-
-        self.fuelprice: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "fuel_price.csv"), header=0
-        ).drop(DATE_COLS, axis=1, errors="ignore")
-        self.fuelprice.index += 1
-
-        self.rnw_cap: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "renewable.csv"), header=0
-        ).drop(DATE_COLS, axis=1, errors="ignore")
-        self.rnw_cap.index += 1
 
         self.thermal_units: list = pd.read_csv(
             os.path.join(self.model_dir, "unit_param.csv"),
@@ -96,6 +59,57 @@ class SystemInput:
             usecols=["name", "heat_rate"],
         )
 
+        # Read timeseries data
+        # The index of timeseries starts at 1
+        self.demand: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, "demand_export.csv"), header=0
+        ).drop(DATE_COLS, axis=1, errors="ignore")
+        self.demand.index += 1
+
+        self.derating: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, "pownet_derate_factor.csv"), header=0
+        ).drop(DATE_COLS, axis=1, errors="ignore")
+        self.derating.index += 1
+
+        self.fuelprice: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, "fuel_price.csv"), header=0
+        ).drop(DATE_COLS, axis=1, errors="ignore")
+        self.fuelprice.index += 1
+
+        # Read timeseries data for renewables
+        hydro_fn = os.path.join(self.model_dir, "hydro.csv")
+        if os.path.exists(hydro_fn):
+            self.hydro_cap: pd.DataFrame = pd.read_csv(hydro_fn, header=0).drop(
+                DATE_COLS, axis=1, errors="ignore"
+            )
+            self.hydro_cap.index += 1
+            self.hydro_units: list = self.hydro_cap.columns.tolist()
+        else:
+            self.hydro_cap = pd.DataFrame()
+            self.hydro_units = []
+
+        solar_fn = os.path.join(self.model_dir, "solar.csv")
+        if os.path.exists(solar_fn):
+            self.solar_cap: pd.DataFrame = pd.read_csv(solar_fn, header=0).drop(
+                DATE_COLS, axis=1, errors="ignore"
+            )
+            self.solar_cap.index += 1
+            self.solar_units: list = self.solar_cap.columns.tolist()
+        else:
+            self.solar_cap = pd.DataFrame()
+            self.solar_units = []
+
+        wind_fn = os.path.join(self.model_dir, "wind.csv")
+        if os.path.exists(wind_fn):
+            self.wind_cap: pd.DataFrame = pd.read_csv(wind_fn, header=0).drop(
+                DATE_COLS, axis=1, errors="ignore"
+            )
+            self.wind_cap.index += 1
+            self.wind_units: list = self.wind_cap.columns.tolist()
+        else:
+            self.wind_cap = pd.DataFrame()
+            self.wind_units = []
+
         # Import nodes are treated similary to a renewable but with higher cost
         fn_import = os.path.join(self.model_dir, "import.csv")
         if os.path.exists(fn_import):
@@ -103,11 +117,39 @@ class SystemInput:
                 DATE_COLS, axis=1, errors="ignore"
             )
             self.p_import.index += 1
+            self.nodes_import: list = self.p_import.columns.tolist()
+        else:
+            self.p_import = pd.DataFrame()
+            self.nodes_import = []
 
         # System nodes
         self.nodes_w_demand: list = self.demand.columns.tolist()
-        self.rnw_units: list = self.rnw_cap.columns.tolist()
-        self.nodes_import: list = self.p_import.columns.tolist()
+
+        # Map units to their fuel type beginning with thermal units,
+        # then hydro, solar, wind, import, and demand nodes
+        self.fuelmap = pd.read_csv(
+            os.path.join(self.model_dir, "unit_param.csv"),
+            header=0,
+            usecols=["name", "fuel_type"],
+        ).set_index("name").to_dict()['fuel_type']
+
+        self.fuelmap.update(
+            {node: "hydro" for node in self.hydro_units}
+        )
+        self.fuelmap.update(
+            {node: "solar" for node in self.solar_units}
+        )
+        self.fuelmap.update(
+            {node: "wind" for node in self.wind_units}
+        )
+        self.fuelmap.update(
+            {node: "import" for node in self.nodes_import}
+        )
+
+        self.fuelmap.update(
+            {node: "slack" for node in self.nodes_w_demand}
+        )
+
         # A node does not need to be connected. In this case,
         # we are concerned about unconnected nodes with demand.
         self.nodes: set = (
