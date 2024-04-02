@@ -1,0 +1,12 @@
+﻿name,color,co2_emission
+coal,#636363,
+gas,#08519c,
+hydro,#7bccc4,
+solar,#fdbb84,
+wind,#deebf7,
+oil,#252525,
+biomass,#33a02c,
+wsth,#d95f0e,
+import,#54278f,
+shortfall,#fa9fb5,
+curtailment,#f768a1,
