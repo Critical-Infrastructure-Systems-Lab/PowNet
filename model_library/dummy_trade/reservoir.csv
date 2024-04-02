@@ -1,0 +1,2 @@
+name,runoff_coeff,basin_area,max_storage,min_level,max_level,max_head,min_day,max_day,release,max_generation,cascade_level
+pHydro,0.48,105000000,30000000,500,540,271,150,310,40,18,1
