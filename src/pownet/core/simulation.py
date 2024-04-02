@@ -31,6 +31,37 @@ class Simulator:
         self.model_name = system_input.model_name
         self.write_model = write_model
 
+    def _check_infeasibility(self, k) -> bool:
+        '''
+        Check if the model is infeasible. If it is, generate an output file.'''
+        is_infeasible = self.model.status == 3
+        if is_infeasible == 3:
+            print(f"PowNet: Iteration: {k} is infeasible.")
+            self.model.computeIIS()
+            c_time = get_current_time()
+            ilp_file = os.path.join(
+                get_output_dir(),
+                f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.ilp",
+            )
+            self.model.write(ilp_file)
+
+            mps_file = os.path.join(
+                get_output_dir(),
+                f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.mps",
+            )
+            self.model.write(mps_file)
+
+            # Need to learn about the initial conditions as well
+            with open(
+                os.path.join(
+                    get_output_dir(),
+                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.pkl",
+                ),
+                "wb",
+            ) as f:
+                pickle.dump(system_record, f)
+        return is_infeasible
+
     def run(
         self, steps: int, mip_gap: float = None, timelimit: float = None
     ) -> SystemRecord:
@@ -76,7 +107,8 @@ class Simulator:
                 )
                 if not os.path.exists(dirname):
                     os.makedirs(dirname)
-                self.model.write(os.path.join(dirname, f"{self.model_name}_{k}.mps"))
+                self.model.write(os.path.join(
+                    dirname, f"{self.model_name}_{k}.mps"))
 
             # Solve the model with either Gurobi or HiGHs
             if self.use_gurobi:
