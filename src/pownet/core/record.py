@@ -2,6 +2,7 @@ import datetime
 import os
 
 import gurobipy as gp
+import highspy
 import pandas as pd
 import numpy as np
 
@@ -122,11 +123,37 @@ class SystemRecord:
         self.current_min_on = None
         self.current_min_off = None
 
-    def keep(self, model: gp.Model, k: int) -> None:
+    def _get_sol_from_gurobi(self, gp_model) -> pd.DataFrame:
         # Extract the variables from the model to process them
-        results = pd.DataFrame(
-            {"varname": model.getAttr("varname"), "value": model.getAttr("X")}
+        return pd.DataFrame(
+            {"varname": gp_model.getAttr("varname"), "value": gp_model.getAttr("X")}
         )
+
+    def _get_sol_from_highs(self, highs_model: highspy.highs.Highs) -> pd.DataFrame:
+        # Extract the variables from the model to process them
+        # Check the solution
+        return pd.DataFrame(
+            {
+                "varname": [
+                    highs_model.getColName(i)[1]
+                    for i in range(
+                        highs_model.getNumCol()
+                    )  # getColName returns a tuple
+                ],
+                "value": highs_model.getSolution().col_value,
+            }
+        )
+
+    def keep(
+        self,
+        model: gp.Model | highspy.highs.Highs,
+        k: int,
+    ) -> None:
+
+        if isinstance(model, gp.Model):
+            results = self._get_sol_from_gurobi(model)
+        elif isinstance(model, highspy.highs.Highs):
+            results = self._get_sol_from_highs(model)
 
         # Create a col of variable types for filtering
         pat_vartype = r"(\w+)\["
@@ -209,10 +236,16 @@ class SystemRecord:
         )
 
         # Save the model runtime
-        if k == 0:
-            self.runtimes = [model.runtime]
-        else:
-            self.runtimes.append(model.runtime)
+        if isinstance(model, gp.Model):
+            if k == 0:
+                self.runtimes = [model.runtime]
+            else:
+                self.runtimes.append(model.runtime)
+        elif isinstance(model, highspy.highs.Highs):
+            if k == 0:
+                self.runtimes = [model.getRunTime()]
+            else:
+                self.runtimes.append(model.getRunTime())
 
     def get_init_conds(self) -> dict[str, dict]:
         return {
