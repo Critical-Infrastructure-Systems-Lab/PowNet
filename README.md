@@ -33,8 +33,7 @@ Instructions on how to run and customize the model are presented below.
 ...
 
 ## Support and maintenance 
-* ..
-* For questions and feedback related to PowNet, please contact Phumthep Bunnak (<pb585@cornell.edu>) or Stefano Galelli (<galelli@cornell.edu>).
+For questions and feedback related to PowNet, please contact Phumthep Bunnak (<pb585@cornell.edu>) or Stefano Galelli (<galelli@cornell.edu>).
 
 ## Glossary 
 ...
