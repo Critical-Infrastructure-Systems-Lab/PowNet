@@ -37,7 +37,10 @@ def main():
         model_name=MODEL_NAME
     )
 
-    simulator = Simulator(system_input=system_input)
+    simulator = Simulator(
+        system_input=system_input,
+        use_gurobi=False
+        )
 
     record = simulator.run(steps=STEPS)
 
