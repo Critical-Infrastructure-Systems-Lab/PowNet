@@ -35,6 +35,9 @@ class ModelBuilder:
         else:
             self.formulation = inputs.formulation
 
+        # Hydropower formulation
+        self.hydro_timestep: str = inputs.hydro_timestep
+
         # reverse_flow is not implemented yet
         self.reverse_flow = reverse_flow
         if reverse_flow:
@@ -835,6 +838,34 @@ class ModelBuilder:
             name="reserveReq",
         )
 
+    def _c_hydro_limit_hourly(self):
+        ''' Hydro generation must be less than the maximum capacity of the hydro unit.
+        '''
+        self.model.addConstrs(
+            (
+                self.phydro[hydro_unit, t]
+                <= self.inputs.hydro_cap.loc[t + self.T * self.k, hydro_unit]
+                for t in self.timesteps
+                for hydro_unit in self.inputs.hydro_units
+            ),
+            name='hydroLimit_hr'
+        )
+
+    def _c_hydro_limit_daily(self):
+        # The sum of the hydro generation in a day must be less than the maximum capacity.
+        # PowNet can decide the dispatch at each hour when given the amount of hydro energy available.
+        self.model.addConstrs(
+            (
+                gp.quicksum(self.phydro[hydro_unit, t] for t in self.timesteps)
+                <= gp.quicksum(
+                    self.inputs.hydro_cap.loc[(
+                        self.k * self.T)/24 + 1: (self.k * self.T)/24 + self.T/24, hydro_unit]
+                )
+                for hydro_unit in self.inputs.hydro_units
+            ),
+            name='hydroLimit_day'
+        )
+
     def _add_variables(self) -> None:
         """The lower and upper bounds of variables are defined here instead
         of defining them as constraints.
@@ -870,11 +901,6 @@ class ModelBuilder:
             self.inputs.hydro_units,
             self.timesteps,
             lb=0,
-            ub={
-                (hydro_unit, t): self.inputs.hydro_cap.loc[t + self.T * self.k, hydro_unit]
-                for t in self.timesteps
-                for hydro_unit in self.inputs.hydro_cap.columns
-            },
             vtype=GRB.CONTINUOUS,
             name="phydro",
         )
@@ -1052,10 +1078,16 @@ class ModelBuilder:
         elif self.formulation == "kirchhoff":
             self._c_kirchhoff_voltage()
 
-        self._c_flow_balance()
+        # There are two ways to enforce the hydro limit.
+        if self.hydro_timestep == "hourly":
+            self._c_hydro_limit_hourly()
+        else:
+            self._c_hydro_limit_daily()
 
+        self._c_flow_balance()
         self._c_reserve_req()
 
+        # Update the model just in case we want to check model structure
         self.model.update()
 
     def build(
