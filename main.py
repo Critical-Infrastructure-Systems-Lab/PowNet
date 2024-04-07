@@ -10,16 +10,16 @@ from pownet.folder_sys import get_output_dir, delete_all_gurobi_solutions
 
 def main():
     # ------- User defined inputs
-    MODEL_NAME = 'dummy_trade'
+    MODEL_NAME = 'dummy_hydro'
     # The default simulation horizon T is 24 hours
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 2
+    STEPS = 5
 
     # Decide whether to save results
-    SAVE_RESULT = False
-    SAVE_PLOT = False
+    SAVE_RESULT = True
+    SAVE_PLOT = True
 
     #############################
     output_dir = get_output_dir()

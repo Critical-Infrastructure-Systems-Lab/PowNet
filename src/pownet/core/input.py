@@ -77,16 +77,34 @@ class SystemInput:
         self.fuelprice.index += 1
 
         # Read timeseries data for renewables
-        hydro_fn = os.path.join(self.model_dir, "hydro.csv")
+        if os.path.exists(os.path.join(self.model_dir, "pownet_hydropower.csv")):
+            hydro_fn = os.path.join(self.model_dir, "pownet_hydropower.csv")
+        else:
+            hydro_fn = os.path.join(self.model_dir, "hydro.csv")
+
         if os.path.exists(hydro_fn):
+            # Hydropower capacity
             self.hydro_cap: pd.DataFrame = pd.read_csv(hydro_fn, header=0).drop(
                 DATE_COLS, axis=1, errors="ignore"
             )
             self.hydro_cap.index += 1
+
+            # Hydropower can be given at hourly or daily resolution
+            if len(self.hydro_cap) == 8760:
+                self.hydro_timestep = 'hourly'
+            elif len(self.hydro_cap) == 365:
+                self.hydro_timestep = 'daily'
+            else:
+                raise ValueError(
+                    "Hydropower timeseries must be either 8760 or 365.")
+
+            # Reservoirs are treated as units
             self.hydro_units: list = self.hydro_cap.columns.tolist()
+
         else:
             self.hydro_cap = pd.DataFrame()
             self.hydro_units = []
+            self.hydro_timestep = 'hourly'
 
         solar_fn = os.path.join(self.model_dir, "solar.csv")
         if os.path.exists(solar_fn):
