@@ -5,6 +5,7 @@ from pownet.config import is_warmstart
 from pownet.core.input import SystemInput
 from pownet.core.simulation import Simulator
 from pownet.core.output import OutputProcessor, Visualizer
+from pownet.reservoir.reservoir import ReservoirOperator
 from pownet.folder_sys import get_output_dir, delete_all_gurobi_solutions
 
 
@@ -28,16 +29,16 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # The user should create their own model in the model_library folder
+    # A user should create their own model in the model_library folder
     time_start = datetime.now()
 
-    system_input = SystemInput(
-        T=T,
-        formulation='kirchhoff',
-        model_name=MODEL_NAME
-    )
+    # Simulate reservoir operation based on provided rule curve to get pownet_hydropower.csv
+    res_operator = ReservoirOperator(MODEL_NAME, num_days=365)
+    res_operator.simulate()
+    res_operator.get_hydropower()
+    res_operator.export_hydropower_csv(timestep="hourly")
 
-    simulator = Simulator(system_input=system_input)
+    simulator = Simulator(model_name=MODEL_NAME, T=T)
 
     record = simulator.run(steps=STEPS)
 
@@ -53,6 +54,7 @@ def main():
 
     node_variables = record.get_node_variables()
 
+    system_input = simulator.get_system_input()
     output_processor = OutputProcessor()
     output_processor.load(
         df=node_variables, system_input=system_input, model_name=MODEL_NAME

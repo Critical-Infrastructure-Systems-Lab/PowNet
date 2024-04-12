@@ -6,6 +6,9 @@ import numpy as np
 
 from pownet.folder_sys import get_model_dir
 
+# Mute gurobi outputs
+gp.setParam("OutputFlag", 0)
+
 
 def adjust_hydropeaking(
     release: float, release_t0: float, max_release: float, min_release: float

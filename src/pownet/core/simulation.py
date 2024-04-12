@@ -1,6 +1,8 @@
 import pickle
 import os
+import re
 
+import pandas as pd
 import highspy
 
 from pownet.core.builder import ModelBuilder
@@ -10,26 +12,48 @@ from pownet.processing.functions import (
     create_init_condition,
     get_current_time,
 )
-from pownet.config import is_warmstart
 from pownet.folder_sys import get_output_dir
+
+
+def get_hydro_dispatch(model, k):
+    hydropower_dispatch = []
+    pattern = 'phydro\[(\w+),(\d+)\]'
+    for v in model.getVars():
+        if re.match(pattern, v.varName):
+            reservoir = re.search(pattern, v.varName).group(1)
+            hour = int(re.search(pattern, v.varName).group(2))
+            hydropower_dispatch.append(
+                (reservoir, hour+hour*k, v.x)
+            )
+    df = pd.DataFrame(hydropower_dispatch, columns=[
+                      'reservoir', 'hour', 'dispatch'])
+    # Pivot to have the hour as the index and reservoir as the columns
+    df = df.pivot(index='hour', columns='reservoir', values='dispatch')
+    return df
 
 
 class Simulator:
     def __init__(
         self,
-        system_input: SystemInput,
+        model_name: str,
+        T: int,
         write_model: bool = False,
         use_gurobi: bool = True,
     ) -> None:
 
-        self.model = None
+        self.model_name = model_name
+        self.T = T
+        self.write_model = write_model
         self.use_gurobi = use_gurobi
 
-        self.system_input = system_input
-        self.T = self.system_input.T
+        # Extract model parameters from the model library directory
+        self.system_input = SystemInput(
+            T=T,
+            formulation='kirchhoff',
+            model_name=model_name
+        )
 
-        self.model_name = system_input.model_name
-        self.write_model = write_model
+        self.model = None
 
     def _check_infeasibility(self, k) -> bool:
         '''
@@ -63,7 +87,11 @@ class Simulator:
         return is_infeasible
 
     def run(
-        self, steps: int, mip_gap: float = None, timelimit: float = None
+        self,
+        steps: int,
+        mip_gap: float = None,
+        timelimit: float = None,
+        reoperate: bool = False,
     ) -> SystemRecord:
         # Initialize objects
         system_record = SystemRecord(self.system_input)
@@ -156,8 +184,15 @@ class Simulator:
                         pickle.dump(system_record, f)
                     break
 
+            # Reoperate reservoirs
+            # Extract hydropower dispatch from the model
+            hydropower_dispatch = get_hydro_dispatch(self.model, k)
+
             # Need k to increment the hours field
             system_record.keep(self.model, k)
             init_conds = system_record.get_init_conds()
 
         return system_record
+
+    def get_system_input(self):
+        return self.system_input
