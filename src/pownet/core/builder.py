@@ -1152,3 +1152,12 @@ class ModelBuilder:
             os.remove(previous_solution_file)
 
         return self.model
+
+    def get_hydro_capacity(self) -> pd.DataFrame:
+        if self.hydro_timestep == 'daily':
+            return self.inputs.hydro_cap.loc[self.T * self.k + 1: self.T * self.k + self.T]
+        else:
+            return self.inputs.hydro_cap.loc[self.T * self.k + 1: self.T * self.k + self.T]
+
+    def update_hydro_capacity(self, new_hydro_capacity: pd.DataFrame) -> None:
+        pass

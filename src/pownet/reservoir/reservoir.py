@@ -6,9 +6,6 @@ import numpy as np
 
 from pownet.folder_sys import get_model_dir
 
-# Mute gurobi outputs
-gp.setParam("OutputFlag", 0)
-
 
 def adjust_hydropeaking(
     release: float, release_t0: float, max_release: float, min_release: float
@@ -48,6 +45,10 @@ class Reservoir:
         self.model_name = model_name
         self.name = reservoir_name
         self.num_days = num_days
+
+        # Either hourly or daily, which is specified when
+        # exporting hydropower as .CSV
+        self.hydro_timestep: str = None
 
         reservoir_params = (
             pd.read_csv(
@@ -242,6 +243,9 @@ class Reservoir:
         Also need to minimize the amount of spill.
         """
         model = gp.Model("reservoir")
+
+        model.setParam("OutputFlag", 0)
+
         # Create the decision variables
         # Gurobipy indexing starts at 1
         releases = model.addVars(
@@ -598,6 +602,9 @@ class ReservoirOperator:
     def export_hydropower_csv(self, timestep: str) -> None:
         csv_name = f"pownet_hydropower.csv"
         input_folder = os.path.join(get_model_dir(), self.model_name, csv_name)
+
+        self.hydro_timestep = timestep
+
         if timestep == "daily":
             self.hydropower.to_csv(input_folder, index=False)
             return
@@ -612,6 +619,13 @@ class ReservoirOperator:
         else:
             raise ValueError("Unknown timestep")
 
+    def reoperate(
+            self,
+            daily_dispatch: pd.DataFrame,
+    ) -> pd.DataFrame:
+        new_hydropower = pd.DataFrame()
+        return new_hydropower
+
 
 if __name__ == "__main__":
     # Test the Reservoir class
@@ -622,4 +636,4 @@ if __name__ == "__main__":
     res_operator.simulate()
     res_operator.get_hydropower()
     hydropower = res_operator.get_hydropower()
-    res_operator.export_hydropower_csv(timestep="hourly")
+    res_operator.export_hydropower_csv(timestep="daily")

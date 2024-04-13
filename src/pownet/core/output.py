@@ -66,7 +66,10 @@ class OutputProcessor:
         self.unit_status: pd.DataFrame = None
 
     def load(
-        self, df: pd.DataFrame, system_input: SystemInput, model_name: str
+        self,
+        df: pd.DataFrame,
+        system_input: SystemInput,
+        model_name: str,
     ) -> None:
         """Process node-specific variables from PowNet."""
         self.model_name = model_name
@@ -91,8 +94,11 @@ class OutputProcessor:
         )
 
         # Generation from renewables
-        mask = mask = (df["vartype"] == "phydro") | (
-            df["vartype"] == "psolar") | (df["vartype"] == "pwind")
+        mask = (
+            (df["vartype"] == "phydro")
+            | (df["vartype"] == "psolar")
+            | (df["vartype"] == "pwind")
+        )
         self.rnw_dispatch = df.loc[mask]
         self.rnw_dispatch = self.rnw_dispatch.reset_index(drop=True)
         self.rnw_dispatch["fuel_type"] = self.rnw_dispatch.apply(
@@ -150,28 +156,26 @@ class OutputProcessor:
         self.monthly_dispatch = self.total_dispatch.copy()
         self.monthly_dispatch["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_dispatch = self.monthly_dispatch.groupby("month").sum()
-        self.monthly_dispatch.index = self.monthly_dispatch.index.strftime(
-            "%b")
+        self.monthly_dispatch.index = self.monthly_dispatch.index.strftime("%b")
 
         # Sum across 24 hours to get the daily dispatch.
         self.daily_dispatch = self.total_dispatch.copy()
         self.daily_dispatch = self.daily_dispatch.groupby(
-            self.daily_dispatch.index // 24
-        ).mean()
+            (self.daily_dispatch.index - 1) // 24
+        ).sum()
 
         # Demand is an input to the simulation
         self.total_demand = system_input.demand.sum(axis=1)
 
         # Sum across each month to get the monthly demand
-        self.monthly_demand = self.total_demand[: self.total_timesteps].to_frame(
-        )
+        self.monthly_demand = self.total_demand[: self.total_timesteps].to_frame()
         self.monthly_demand.columns = ["demand"]
         self.monthly_demand["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_demand = self.monthly_demand.groupby("month").sum()
         self.monthly_demand.index = self.monthly_demand.index.strftime("%b")
 
         self.daily_demand = self.total_demand.groupby(
-            self.total_demand.index // 24
+            (self.total_demand.index - 1) // 24
         ).sum()
 
         # Need unit statuses for plotting their activities
@@ -200,6 +204,26 @@ class OutputProcessor:
 
     def get_unit_status(self) -> pd.DataFrame:
         return self.unit_status
+
+    def load_from_csv(
+        self,
+        filename: pd.DataFrame,
+        system_input: SystemInput,
+        model_name: str,
+    ) -> None:
+        """Load the PowNet output from a CSV file."""
+        df = pd.read_csv(filename, header=0)
+        self.load(df=df, system_input=system_input, model_name=model_name)
+
+    def get_daily_hydro_disptch(self) -> pd.DataFrame:
+        """Return the daily hydro generation."""
+        hydro = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "hydro"]
+        # Pivot the table to have names as columns and each row the value at each hour
+        hydro = hydro.pivot_table(index="hour", columns="node", values="value")
+        # Sum across each hour to get the daily hydro generation
+        # Plus 1 because the index starts with 1
+        hydro = hydro.groupby((hydro.index - 1) // 24).sum()
+        return hydro
 
 
 class Visualizer:
@@ -317,8 +341,7 @@ class Visualizer:
             fig, ax1 = plt.subplots(figsize=(8, 5))
             ax2 = ax1.twinx()
 
-            ax1.step(df1["hour"], df1["value"],
-                     where="mid", color="b", label="Power")
+            ax1.step(df1["hour"], df1["value"], where="mid", color="b", label="Power")
             # If ymax is too low, then we cannot see the blue line
             ax1.set_ylim(bottom=0, top=full_max_cap[unit_g] * 1.05)
             ax1.tick_params(axis="x", labelrotation=45)
