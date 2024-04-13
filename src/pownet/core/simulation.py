@@ -7,7 +7,8 @@ import highspy
 
 from pownet.core.builder import ModelBuilder
 from pownet.core.input import SystemInput
-from pownet.core.record import SystemRecord
+from pownet.core.record import SystemRecord, get_hydro_from_model, convert_to_daily_hydro
+from pownet.reservoir.reservoir import ReservoirOperator
 from pownet.processing.functions import (
     create_init_condition,
     get_current_time,
@@ -15,36 +16,29 @@ from pownet.processing.functions import (
 from pownet.folder_sys import get_output_dir
 
 
-def get_hydro_dispatch(model, k):
-    hydropower_dispatch = []
-    pattern = 'phydro\[(\w+),(\d+)\]'
-    for v in model.getVars():
-        if re.match(pattern, v.varName):
-            reservoir = re.search(pattern, v.varName).group(1)
-            hour = int(re.search(pattern, v.varName).group(2))
-            hydropower_dispatch.append(
-                (reservoir, hour+hour*k, v.x)
-            )
-    df = pd.DataFrame(hydropower_dispatch, columns=[
-                      'reservoir', 'hour', 'dispatch'])
-    # Pivot to have the hour as the index and reservoir as the columns
-    df = df.pivot(index='hour', columns='reservoir', values='dispatch')
-    return df
-
-
 class Simulator:
     def __init__(
         self,
         model_name: str,
         T: int,
+        hydro_timestep: str = 'hourly',
         write_model: bool = False,
         use_gurobi: bool = True,
     ) -> None:
 
         self.model_name = model_name
         self.T = T
+        self.hydro_timestep = hydro_timestep
         self.write_model = write_model
         self.use_gurobi = use_gurobi
+
+        # Simulate reservoir operation based on provided rule curve to get pownet_hydropower.csv
+        self.reservoir_operator = ReservoirOperator(model_name, num_days=365)
+        self.reservoir_operator.simulate()
+        self.reservoir_operator.get_hydropower()
+        self.reservoir_operator.export_hydropower_csv(
+            timestep=hydro_timestep
+        )
 
         # Extract model parameters from the model library directory
         self.system_input = SystemInput(
@@ -186,7 +180,16 @@ class Simulator:
 
             # Reoperate reservoirs
             # Extract hydropower dispatch from the model
-            hydropower_dispatch = get_hydro_dispatch(self.model, k)
+            hydro_dispatch, start_day, end_day = get_hydro_from_model(
+                self.model, k)
+            # Convert to daily dispatch
+            hydro_dispatch = convert_to_daily_hydro(
+                hydro_dispatch, start_day, end_day)
+            # new_hydropower_capacity = self.reservoir_operator.reoperate(
+            #     daily_dispatch=hydro_dispatch,
+            #     timestep=self.hydro_timestep
+            # )
+            # builder.update_hydro_capacity(new_hydropower_capacity)
 
             # Need k to increment the hours field
             system_record.keep(self.model, k)

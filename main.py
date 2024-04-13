@@ -1,11 +1,8 @@
 from datetime import datetime
 import os
 
-from pownet.config import is_warmstart
-from pownet.core.input import SystemInput
 from pownet.core.simulation import Simulator
 from pownet.core.output import OutputProcessor, Visualizer
-from pownet.reservoir.reservoir import ReservoirOperator
 from pownet.folder_sys import get_output_dir, delete_all_gurobi_solutions
 
 
@@ -16,7 +13,7 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 5
+    STEPS = 365
 
     # Decide whether to save results
     SAVE_RESULT = True
@@ -32,13 +29,11 @@ def main():
     # A user should create their own model in the model_library folder
     time_start = datetime.now()
 
-    # Simulate reservoir operation based on provided rule curve to get pownet_hydropower.csv
-    res_operator = ReservoirOperator(MODEL_NAME, num_days=365)
-    res_operator.simulate()
-    res_operator.get_hydropower()
-    res_operator.export_hydropower_csv(timestep="hourly")
-
-    simulator = Simulator(model_name=MODEL_NAME, T=T)
+    simulator = Simulator(
+        model_name=MODEL_NAME,
+        T=T,
+        hydro_timestep='hourly',
+    )
 
     record = simulator.run(steps=STEPS)
 
@@ -77,9 +72,6 @@ def main():
             full_max_cap=system_input.full_max_cap,
             to_save=SAVE_PLOT,
         )
-    # Delete the last solution file when warmstarting
-    if is_warmstart():
-        delete_all_gurobi_solutions()
 
 
 if __name__ == '__main__':

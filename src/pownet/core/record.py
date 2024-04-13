@@ -101,6 +101,42 @@ def get_init_min_off(
     return init_min_off
 
 
+def get_hydro_from_model(model: gp.Model, k: int):
+    hydropower_dispatch = []
+    pattern = 'phydro\[(\w+),(\d+)\]'
+    for v in model.getVars():
+        if re.match(pattern, v.varName):
+            reservoir = re.search(pattern, v.varName).group(1)
+            hour = int(re.search(pattern, v.varName).group(2))
+            hydropower_dispatch.append(
+                (reservoir, hour, v.x)
+            )
+    df = pd.DataFrame(hydropower_dispatch, columns=[
+                      'reservoir', 'hour', 'dispatch'])
+    # Pivot to have the hour as the index and reservoir as the columns
+    df = df.pivot(index='hour', columns='reservoir', values='dispatch')
+    df.index = df.index + k*24
+    start_day = df.index[0] // 24
+    end_day = df.index[-1] // 24
+    return df, start_day, end_day
+
+
+def get_hydro_from_df(df: pd.DataFrame):
+    df = df[df['vartype'] == 'phydro']
+    df = df.set_index(['hour', 'node'])
+    df = df['value'].unstack().reset_index()
+    df = df.pivot(index='hour', columns='node', values='value')
+    start_day = df.index[0] // 24
+    end_day = df.index[-1] // 24
+    return df, start_day, end_day
+
+
+def convert_to_daily_hydro(df: pd.DataFrame, start_day: int, end_day: int) -> pd.DataFrame:
+    daily_hydro = df.groupby((df.index-1) // 24).sum()
+    daily_hydro.index = range(start_day, end_day)
+    return daily_hydro
+
+
 class SystemRecord:
     def __init__(self, system_input: SystemInput) -> None:
         self.T: int = system_input.T
@@ -128,7 +164,8 @@ class SystemRecord:
     def _get_sol_from_gurobi(self, gp_model) -> pd.DataFrame:
         # Extract the variables from the model to process them
         return pd.DataFrame(
-            {"varname": gp_model.getAttr("varname"), "value": gp_model.getAttr("X")}
+            {"varname": gp_model.getAttr(
+                "varname"), "value": gp_model.getAttr("X")}
         )
 
     def _get_sol_from_highs(self, highs_model: highspy.highs.Highs) -> pd.DataFrame:
@@ -294,6 +331,17 @@ class SystemRecord:
         write_df(
             self.var_syswide, output_name="system_variables", model_name=self.model_name, T=self.T
         )
+
+    def get_hydro_dispatch(self) -> pd.DataFrame:
+        df = self.var_node_t[self.var_node_t['vartype'] == 'phydro']
+        df = df[['node', 'hour', 'value']]
+        df = df.rename(columns={'node': 'reservoir', 'value': 'dispatch'})
+        # Columns: reservoir, hour, v.x
+        df = df.pivot(index='hour', columns='reservoir', values='dispatch')
+        start_day = df.index[0] // 24
+        end_day = df.index[-1] // 24
+        df = convert_to_daily_hydro(df, start_day, end_day)
+        return df
 
     @staticmethod
     def get_hydro_from_model(model: gp.Model) -> dict:
