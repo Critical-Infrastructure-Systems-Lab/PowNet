@@ -215,7 +215,7 @@ class OutputProcessor:
         df = pd.read_csv(filename, header=0)
         self.load(df=df, system_input=system_input, model_name=model_name)
 
-    def get_daily_hydro_disptch(self) -> pd.DataFrame:
+    def get_daily_hydro_dispatch(self) -> pd.DataFrame:
         """Return the daily hydro generation."""
         hydro = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "hydro"]
         # Pivot the table to have names as columns and each row the value at each hour
