@@ -269,8 +269,39 @@ class OutputProcessor:
         wind = self._convert_rnw_to_monthly(wind)
         return wind
 
-    def get_co2_emissions(self) -> pd.DataFrame:
-        """Return the CO2 emissions for each hour."""
+    def get_daily_thermal_dispatch(self) -> pd.DataFrame:
+        """Return the daily thermal generation."""
+        thermal = self.thermal_dispatch.pivot_table(
+            index="hour", columns="fuel_type", values="value", aggfunc="sum"
+        )
+        thermal["day"] = (thermal.index - 1) // 24
+        thermal = thermal.groupby("day").sum()
+        return thermal
+
+    def get_monthly_thermal_dispatch(self) -> pd.DataFrame:
+        """Return the monthly thermal generation."""
+        thermal = self.thermal_dispatch.pivot_table(
+            index="hour", columns="fuel_type", values="value", aggfunc="sum"
+        )
+        thermal["month"] = self.dates["date"].dt.to_period("M")
+        thermal = thermal.groupby("month").sum()
+        thermal.index = thermal.index.strftime("%b")
+        return thermal
+
+    def get_co2_emission(self, time_interval: str) -> pd.DataFrame:
+        """Return the CO2 emissions for timestep.
+        From Chowdhury, Dang, Nguyen, Koh, & Galelli. (2021).
+
+        coal: 1.04 Mton/MWh
+        gas:  0.47 Mton/MWh
+        oil : 0.73 Mton/MWh
+
+        From https://www.eia.gov/environment/emissions/co2_vol_mass.php:
+        wsth: 49.89 kg/MMBtu
+              = 49.89 kg/MMBtu * 3.412 MMBtu/MWh * 1 Mton/1000 kg = 0.170
+
+
+        """
         co2_map = {
             "coal": 1.04,
             "gas": 0.47,
@@ -278,9 +309,50 @@ class OutputProcessor:
             "import": 0.0,
             "shortfall": 0.0,
             "curtailment": 0.0,
+            "biomass": 0.0,
+            "wsth": 0.170,
+            "slack": 0.0,
         }
 
+        if time_interval == "monthly":
+            df = self.get_monthly_thermal_dispatch()
+        elif time_interval == "daily":
+            df = self.get_daily_thermal_dispatch()
+        else:
+            raise ValueError("Time interval must be either 'monthly' or 'daily'.")
+
+        co2_emissions = pd.DataFrame()
+        for fuel in df.columns:
+            co2_emissions[fuel] = df[fuel] * co2_map[fuel]
+
         return co2_emissions
+
+    def get_fuel_cost(self, time_interval: str) -> pd.DataFrame:
+        """Return the system cost for each timestep."""
+        cost_map = {
+            "coal": 5,
+            "gas": 5.85,
+            "oil": 8,
+            "import": 10,
+            "shortfall": 1000,
+            "curtailment": 1000,
+            "biomass": 3.02,
+            "wsth": 3.02,
+            "slack": 1000,
+        }
+
+        if time_interval == "monthly":
+            df = self.get_monthly_thermal_dispatch()
+        elif time_interval == "daily":
+            df = self.get_daily_thermal_dispatch()
+        else:
+            raise ValueError("Time interval must be either 'monthly' or 'daily'.")
+
+        system_cost = pd.DataFrame()
+        for fuel in df.columns:
+            system_cost[fuel] = df[fuel] * cost_map[fuel]
+
+        return system_cost
 
 
 class Visualizer:
