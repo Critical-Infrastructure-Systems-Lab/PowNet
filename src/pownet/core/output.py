@@ -215,15 +215,72 @@ class OutputProcessor:
         df = pd.read_csv(filename, header=0)
         self.load(df=df, system_input=system_input, model_name=model_name)
 
+    def _convert_rnw_to_daily(self, rnw: pd.DataFrame) -> pd.DataFrame:
+        """Convert the hourly renewable generation to daily."""
+        # Pivot the table to have names as columns and each row the value at each hour
+        rnw = rnw.pivot_table(index="hour", columns="node", values="value")
+        # Sum across each hour to get the daily hydro generation
+        # Plus 1 because the index starts with 1
+        rnw = rnw.groupby((rnw.index - 1) // 24).sum()
+        rnw.index.name = "day"
+        return rnw
+
     def get_daily_hydro_dispatch(self) -> pd.DataFrame:
         """Return the daily hydro generation."""
         hydro = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "hydro"]
-        # Pivot the table to have names as columns and each row the value at each hour
-        hydro = hydro.pivot_table(index="hour", columns="node", values="value")
-        # Sum across each hour to get the daily hydro generation
-        # Plus 1 because the index starts with 1
-        hydro = hydro.groupby((hydro.index - 1) // 24).sum()
+        hydro = self._convert_rnw_to_daily(hydro)
         return hydro
+
+    def get_daily_solar_dispatch(self) -> pd.DataFrame:
+        """Return the daily solar generation."""
+        solar = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "solar"]
+        solar = self._convert_rnw_to_daily(solar)
+        return solar
+
+    def get_daily_wind_dispatch(self) -> pd.DataFrame:
+        """Return the daily wind generation."""
+        wind = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "wind"]
+        wind = self._convert_rnw_to_daily(wind)
+        return wind
+
+    def _convert_rnw_to_monthly(self, rnw: pd.DataFrame) -> pd.DataFrame:
+        """Convert the daily renewable generation to monthly."""
+        rnw = rnw.pivot_table(index="hour", columns="node", values="value")
+        rnw["month"] = self.dates["date"].dt.to_period("M")
+        rnw = rnw.groupby("month").sum()
+        rnw.index = rnw.index.strftime("%b")
+        return rnw
+
+    def get_monthly_hydro_dispatch(self) -> pd.DataFrame:
+        """Return the monthly hydro generation."""
+        hydro = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "hydro"]
+        hydro = self._convert_rnw_to_monthly(hydro)
+        return hydro
+
+    def get_monthly_solar_dispatch(self) -> pd.DataFrame:
+        """Return the monthly solar generation."""
+        solar = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "solar"]
+        solar = self._convert_rnw_to_monthly(solar)
+        return solar
+
+    def get_monthly_wind_dispatch(self) -> pd.DataFrame:
+        """Return the monthly wind generation."""
+        wind = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "wind"]
+        wind = self._convert_rnw_to_monthly(wind)
+        return wind
+
+    def get_co2_emissions(self) -> pd.DataFrame:
+        """Return the CO2 emissions for each hour."""
+        co2_map = {
+            "coal": 1.04,
+            "gas": 0.47,
+            "oil": 0.73,
+            "import": 0.0,
+            "shortfall": 0.0,
+            "curtailment": 0.0,
+        }
+
+        return co2_emissions
 
 
 class Visualizer:
