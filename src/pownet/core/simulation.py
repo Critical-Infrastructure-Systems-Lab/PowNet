@@ -7,7 +7,11 @@ import highspy
 
 from pownet.core.builder import ModelBuilder
 from pownet.core.input import SystemInput
-from pownet.core.record import SystemRecord, get_hydro_from_model, convert_to_daily_hydro
+from pownet.core.record import (
+    SystemRecord,
+    get_hydro_from_model,
+    convert_to_daily_hydro,
+)
 from pownet.reservoir.reservoir import ReservoirOperator
 from pownet.processing.functions import (
     create_init_condition,
@@ -21,9 +25,10 @@ class Simulator:
         self,
         model_name: str,
         T: int,
-        hydro_timestep: str = 'hourly',
+        hydro_timestep: str = "hourly",
         write_model: bool = False,
         use_gurobi: bool = True,
+        to_reoperate: bool = False,
     ) -> None:
 
         self.model_name = model_name
@@ -31,27 +36,25 @@ class Simulator:
         self.hydro_timestep = hydro_timestep
         self.write_model = write_model
         self.use_gurobi = use_gurobi
+        self.to_reoperate = to_reoperate
 
         # Simulate reservoir operation based on provided rule curve to get pownet_hydropower.csv
-        self.reservoir_operator = ReservoirOperator(model_name, num_days=365)
-        self.reservoir_operator.simulate()
-        self.reservoir_operator.get_hydropower()
-        self.reservoir_operator.export_hydropower_csv(
-            timestep=hydro_timestep
-        )
+        if self.to_reoperate:
+            self.reservoir_operator = ReservoirOperator(model_name, num_days=365)
+            self.reservoir_operator.simulate()
+            self.reservoir_operator.get_hydropower()
+            self.reservoir_operator.export_hydropower_csv(timestep=hydro_timestep)
 
         # Extract model parameters from the model library directory
         self.system_input = SystemInput(
-            T=T,
-            formulation='kirchhoff',
-            model_name=model_name
+            T=T, formulation="kirchhoff", model_name=model_name
         )
 
         self.model = None
 
     def _check_infeasibility(self, k) -> bool:
-        '''
-        Check if the model is infeasible. If it is, generate an output file.'''
+        """
+        Check if the model is infeasible. If it is, generate an output file."""
         is_infeasible = self.model.status == 3
         if is_infeasible == 3:
             print(f"PowNet: Iteration: {k} is infeasible.")
@@ -85,7 +88,6 @@ class Simulator:
         steps: int,
         mip_gap: float = None,
         timelimit: float = None,
-        reoperate: bool = False,
     ) -> SystemRecord:
         # Initialize objects
         system_record = SystemRecord(self.system_input)
@@ -129,8 +131,7 @@ class Simulator:
                 )
                 if not os.path.exists(dirname):
                     os.makedirs(dirname)
-                self.model.write(os.path.join(
-                    dirname, f"{self.model_name}_{k}.mps"))
+                self.model.write(os.path.join(dirname, f"{self.model_name}_{k}.mps"))
 
             # Solve the model with either Gurobi or HiGHs
             if self.use_gurobi:
@@ -179,17 +180,54 @@ class Simulator:
                     break
 
             # Reoperate reservoirs
-            # Extract hydropower dispatch from the model
-            hydro_dispatch, start_day, end_day = get_hydro_from_model(
-                self.model, k)
-            # Convert to daily dispatch
-            hydro_dispatch = convert_to_daily_hydro(
-                hydro_dispatch, start_day, end_day)
-            # new_hydropower_capacity = self.reservoir_operator.reoperate(
-            #     daily_dispatch=hydro_dispatch,
-            #     timestep=self.hydro_timestep
-            # )
-            # builder.update_hydro_capacity(new_hydropower_capacity)
+            reop_converge = False
+            reop_k = 0
+            # If we are at the first timestep, then we do not reoperate
+            while not reop_converge and self.to_reoperate:
+                print(f"\nReservoirs reoperation iteration {reop_k}")
+                # PowNet returns the hydropower dispatch in hourly resolution
+                hydro_dispatch, start_day, end_day = get_hydro_from_model(self.model, k)
+                # Convert to daily dispatch
+                hydro_dispatch = convert_to_daily_hydro(
+                    hydro_dispatch, start_day, end_day
+                )
+                # Use PowNet to reoperate the reservoirs
+                new_hydro_capacity = self.reservoir_operator.reoperate_basins(
+                    pownet_dispatch=hydro_dispatch
+                )
+                for res in new_hydro_capacity.columns:
+                    print(
+                        f"{res}: {round(new_hydro_capacity[res].sum(),2)} vs {round(hydro_dispatch[res].sum(),2)}",
+                    )
+
+                # Terminate the loop if the reservoirs have converged when difference is less than 1MW-day
+                max_deviation = (new_hydro_capacity - hydro_dispatch).abs().max()
+                # The tolerance for convergence should be 5% of the largest hydro capacity
+                reop_tol = 0.05 * new_hydro_capacity.max()
+                if (max_deviation <= reop_tol[max_deviation.index]).all():
+                    reop_converge = True
+                    print(
+                        f"PowNet: Day {k} - Reservoirs converged at iteration {reop_k}"
+                    )
+                    break
+
+                # To reoptimize PowNet with the new hydropower capacity,
+                # update the builder class
+                builder.update_hydro_capacity(new_hydro_capacity)
+                self.model = builder.update(
+                    k=k,
+                    init_conds=init_conds,
+                    mip_gap=mip_gap,
+                    timelimit=timelimit,
+                )
+                self.model.optimize()
+
+                reop_k += 1
+
+                # Reoptimize pownet with the new hydropower capacity
+                # builder.update_hydro_capacity(new_hydro_capacity)
+
+                # If the change is hydro_dispatch is less than 1e-6, we proceed to the next timestep
 
             # Need k to increment the hours field
             system_record.keep(self.model, k)

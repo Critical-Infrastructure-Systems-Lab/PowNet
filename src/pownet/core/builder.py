@@ -1166,4 +1166,24 @@ class ModelBuilder:
             ]
 
     def update_hydro_capacity(self, new_hydro_capacity: pd.DataFrame) -> None:
-        pass
+        if self.hydro_timestep == "hourly":
+            # Divid new_hydro_capacity evenly across the day
+            hourly_hydro_capacity = new_hydro_capacity / 24
+            # Repeat the hourly hydro capacity for the entire day
+            hourly_hydro_capacity = pd.concat(
+                [hourly_hydro_capacity] * 24, ignore_index=True
+            )
+            # Indexing of timeseries for model building starts at 1
+            hourly_hydro_capacity.index += 1
+
+            start_idx = self.T * self.k + 1
+            end_idx = self.T * self.k + self.T
+            self.inputs.hydro_cap.loc[
+                start_idx:end_idx, hourly_hydro_capacity.columns
+            ] = hourly_hydro_capacity.values
+
+        elif self.hydro_timestep == "daily":
+            day = new_hydro_capacity.index
+            self.inputs.hydro_cap.loc[day, new_hydro_capacity.columns] = (
+                new_hydro_capacity.values
+            )

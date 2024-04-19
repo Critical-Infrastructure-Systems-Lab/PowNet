@@ -82,29 +82,22 @@ class SystemInput:
         else:
             hydro_fn = os.path.join(self.model_dir, "hydro.csv")
 
-        if os.path.exists(hydro_fn):
-            # Hydropower capacity
-            self.hydro_cap: pd.DataFrame = pd.read_csv(hydro_fn, header=0).drop(
-                DATE_COLS, axis=1, errors="ignore"
-            )
-            self.hydro_cap.index += 1
+        # Hydropower capacity
+        self.hydro_cap: pd.DataFrame = pd.read_csv(hydro_fn, header=0).drop(
+            DATE_COLS, axis=1, errors="ignore"
+        )
+        self.hydro_cap.index += 1
 
-            # Hydropower can be given at hourly or daily resolution
-            if len(self.hydro_cap) == 8760:
-                self.hydro_timestep = 'hourly'
-            elif len(self.hydro_cap) == 365:
-                self.hydro_timestep = 'daily'
-            else:
-                raise ValueError(
-                    "Hydropower timeseries must be either 8760 or 365.")
-
-            # Reservoirs are treated as units
-            self.hydro_units: list = self.hydro_cap.columns.tolist()
-
+        # Hydropower can be given at hourly or daily resolution
+        if len(self.hydro_cap) == 8760:
+            self.hydro_timestep = "hourly"
+        elif len(self.hydro_cap) == 365:
+            self.hydro_timestep = "daily"
         else:
-            self.hydro_cap = pd.DataFrame()
-            self.hydro_units = []
-            self.hydro_timestep = 'hourly'
+            raise ValueError("Hydropower timeseries must be either 8760 or 365.")
+
+        # Reservoirs are treated as units
+        self.hydro_units: list = self.hydro_cap.columns.tolist()
 
         solar_fn = os.path.join(self.model_dir, "solar.csv")
         if os.path.exists(solar_fn):
@@ -145,28 +138,22 @@ class SystemInput:
 
         # Map units to their fuel type beginning with thermal units,
         # then hydro, solar, wind, import, and demand nodes
-        self.fuelmap = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            usecols=["name", "fuel_type"],
-        ).set_index("name").to_dict()['fuel_type']
-
-        self.fuelmap.update(
-            {node: "hydro" for node in self.hydro_units}
-        )
-        self.fuelmap.update(
-            {node: "solar" for node in self.solar_units}
-        )
-        self.fuelmap.update(
-            {node: "wind" for node in self.wind_units}
-        )
-        self.fuelmap.update(
-            {node: "import" for node in self.nodes_import}
+        self.fuelmap = (
+            pd.read_csv(
+                os.path.join(self.model_dir, "unit_param.csv"),
+                header=0,
+                usecols=["name", "fuel_type"],
+            )
+            .set_index("name")
+            .to_dict()["fuel_type"]
         )
 
-        self.fuelmap.update(
-            {node: "slack" for node in self.nodes_w_demand}
-        )
+        self.fuelmap.update({node: "hydro" for node in self.hydro_units})
+        self.fuelmap.update({node: "solar" for node in self.solar_units})
+        self.fuelmap.update({node: "wind" for node in self.wind_units})
+        self.fuelmap.update({node: "import" for node in self.nodes_import})
+
+        self.fuelmap.update({node: "slack" for node in self.nodes_w_demand})
 
         # A node does not need to be connected. In this case,
         # we are concerned about unconnected nodes with demand.

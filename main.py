@@ -13,7 +13,7 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 5
+    STEPS = 365
 
     # Decide whether to save results
     SAVE_RESULT = True
@@ -33,6 +33,7 @@ def main():
         model_name=MODEL_NAME,
         T=T,
         hydro_timestep="hourly",
+        to_reoperate=True,
     )
 
     record = simulator.run(steps=STEPS)
