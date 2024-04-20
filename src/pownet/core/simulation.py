@@ -212,7 +212,6 @@ class Simulator:
                         print(
                             f"PowNet: Day {k+1} - Reservoirs converged at iteration {reop_k}"
                         )
-                        break
 
                     # To reoptimize PowNet with the new hydropower capacity,
                     # update the builder class
