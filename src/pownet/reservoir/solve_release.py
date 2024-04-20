@@ -1,46 +1,5 @@
 """
-This script uses the Gurobi solver to solve for release when reoperation
-encounters Case 2a: If dispatch is less than the original hydroenergy, 
-then set release to dispatch to save water.
-
-We need to solve the following optimization problem to find release_t:
-
-min         abs(DISPATCH_t - hydroenergy_t)
-s.t.
-
-1. Calculate hydroenergy_t
-    hydroenergy_t = TURBINE_FACTOR * DENSITY * g * head_t * release_t
-    
-        where
-                DENSITY = 998  # kg/m3
-                g = 9.81  # m/s2
-
-2. Hydrautic head (d_t) is a function of storage level 
-head_t = MAX_HEAD - (MAX_LEVEL - ( level_t + LEVEL_t0 ) / 2)
-
-3. level_t is a function of storage
-level_t = storage_t / STORAGE_MAX * (MAX_LEVEL - MIN_LEVEL) + MIN_LEVEL
-
-4. Definition of storage
-storage_t = STORAGE_t0 + INFLOW_t - release_t - spill_t
-
-5. Definition of spill
-spill_t = max(0, INFLOW_t + STORAGE_t0 - STORAGE_MAX - release_t)
-Rearrange to
-spill_t = max(0, spill_bar)
-
-6. Definition of spill_bar
-spill_bar = INFLOW_t + STORAGE_t0 - STORAGE_MAX - release_t
-
-
-
-Note that we need to rearrange the objective function to make it linear.
-min     z
-
-s.t.
-
-        -z <= DISPATCH_t - hydroenergy_t <= z
-
+This script uses the Gurobi solver to solve for release.
 """
 
 import gurobipy as gp
@@ -66,6 +25,43 @@ def solve_release_from_dispatch(
     For each timestep, solve for release_t when reoperation requires
     matching release from the reservoir to the amount of hydroenergy
     needed by PowNet.
+
+    min         abs(DISPATCH_t - hydroenergy_t)
+    s.t.
+
+    1. Calculate hydroenergy_t
+        hydroenergy_t = TURBINE_FACTOR * DENSITY * g * head_t * release_t
+
+            where
+                    DENSITY = 998  # kg/m3
+                    g = 9.81  # m/s2
+
+    2. Hydrautic head (d_t) is a function of storage level
+    head_t = MAX_HEAD - (MAX_LEVEL - ( level_t + LEVEL_t0 ) / 2)
+
+    3. level_t is a function of storage
+    level_t = storage_t / STORAGE_MAX * (MAX_LEVEL - MIN_LEVEL) + MIN_LEVEL
+
+    4. Definition of storage
+    storage_t = STORAGE_t0 + INFLOW_t - release_t - spill_t
+
+    5. Definition of spill
+    spill_t = max(0, INFLOW_t + STORAGE_t0 - STORAGE_MAX - release_t)
+    Rearrange to
+    spill_t = max(0, spill_bar)
+
+    6. Definition of spill_bar
+    spill_bar = INFLOW_t + STORAGE_t0 - STORAGE_MAX - release_t
+
+
+
+    Note that we need to rearrange the objective function to make it linear.
+    min     z
+
+    s.t.
+
+            -z <= DISPATCH_t - hydroenergy_t <= z
+
     """
     # Create a new model
     model = gp.Model(f"match_dispatch_{res_name}")
@@ -174,7 +170,7 @@ def solve_release_from_storage(
     target_storage: pd.Series,
     min_flow: pd.Series,
     total_inflow: pd.Series,
-) -> tuple[pd.Series, pd.Series, pd.Series]:
+) -> tuple[pd.Series, pd.Series, pd.Series, float]:
     """Build an optimization problem to find the optimal release from the reservoir.
     The objective is to minimize the storage deviation from the target storage with L1 norm.
 
@@ -189,14 +185,13 @@ def solve_release_from_storage(
 
     CONSTRAINTS:
 
-
     """
     model = gp.Model(f"release_from_storage_{reservoir_name}")
     model.setParam("OutputFlag", 0)
 
     # Indexing starts from 1 and ends at 364
     start_day = 1
-    end_day = 365  # Python indexing is exclusive
+    end_day = 365 + 1  # Python indexing is exclusive
 
     # Create the decision variables
     release_vars = model.addVars(
@@ -279,11 +274,8 @@ def solve_release_from_storage(
     model.addConstrs(
         (
             spill_bar[day]
-            == total_inflow.iloc[day]
-            + storage_vars[day - 1]
-            - max_storage
-            - release_vars[day]
-            for day in range(start_day + 1, end_day)
+            == total_inflow[day] + storage_vars[day] - max_storage - release_vars[day]
+            for day in range(start_day, end_day)
         ),
         name="c_define_spill_bar",
     )
@@ -293,7 +285,7 @@ def solve_release_from_storage(
         (
             storage_vars[day]
             == storage_vars[day - 1]
-            + total_inflow.iloc[day]
+            + total_inflow[day]
             - release_vars[day]
             - spill_vars[day]
             for day in range(start_day + 1, end_day)
@@ -301,22 +293,12 @@ def solve_release_from_storage(
         name="c_storage",
     )
 
-    # # Define initial spill_bar
-    # self.model.addConstr(
-    #     spill_bar[start_day]
-    #     == self.total_inflow.iloc[start_day]
-    #     + self.storage_vars[start_day]
-    #     - self.max_storage
-    #     - self.release_vars[start_day],
-    #     name="c_initial_spill_bar",
-    # )
-
     # Define the initial condition for the storage
     model.addConstr(
         (
             storage_vars[start_day]
             == target_storage[start_day]
-            + total_inflow.iloc[start_day]
+            + total_inflow[start_day]
             - release_vars[start_day]
             - spill_vars[start_day]
         ),
@@ -349,8 +331,13 @@ def solve_release_from_storage(
         name="storage",
         index=range(start_day, end_day),
     )
+    opt_sbar = pd.Series(
+        [sbar[day].X for day in range(start_day, end_day)],
+        name="sbar",
+        index=range(start_day, end_day),
+    )
 
-    return opt_release, opt_spill, opt_storage
+    return opt_release, opt_spill, opt_storage, model.objVal
 
 
 if __name__ == "__main__":

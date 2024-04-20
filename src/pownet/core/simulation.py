@@ -180,54 +180,51 @@ class Simulator:
                     break
 
             # Reoperate reservoirs
-            reop_converge = False
-            reop_k = 0
-            # If we are at the first timestep, then we do not reoperate
-            while not reop_converge and self.to_reoperate:
-                print(f"\nReservoirs reoperation iteration {reop_k}")
-                # PowNet returns the hydropower dispatch in hourly resolution
-                hydro_dispatch, start_day, end_day = get_hydro_from_model(self.model, k)
-                # Convert to daily dispatch
-                hydro_dispatch = convert_to_daily_hydro(
-                    hydro_dispatch, start_day, end_day
-                )
-                # Use PowNet to reoperate the reservoirs
-                new_hydro_capacity = self.reservoir_operator.reoperate_basins(
-                    pownet_dispatch=hydro_dispatch
-                )
-                for res in new_hydro_capacity.columns:
-                    print(
-                        f"{res}: {round(new_hydro_capacity[res].sum(),2)} vs {round(hydro_dispatch[res].sum(),2)}",
+            if self.to_reoperate:
+                reop_converge = False
+                reop_k = 0
+                # If we are at the first timestep, then we do not reoperate
+                while not reop_converge:
+                    print(f"\nReservoirs reoperation iteration {reop_k}")
+                    # PowNet returns the hydropower dispatch in hourly resolution
+                    hydro_dispatch, start_day, end_day = get_hydro_from_model(
+                        self.model, k
                     )
-
-                # Terminate the loop if the reservoirs have converged when difference is less than 1MW-day
-                max_deviation = (new_hydro_capacity - hydro_dispatch).abs().max()
-                # The tolerance for convergence should be 5% of the largest hydro capacity
-                reop_tol = 0.05 * new_hydro_capacity.max()
-                if (max_deviation <= reop_tol[max_deviation.index]).all():
-                    reop_converge = True
-                    print(
-                        f"PowNet: Day {k} - Reservoirs converged at iteration {reop_k}"
+                    # Convert to daily dispatch
+                    hydro_dispatch = convert_to_daily_hydro(
+                        hydro_dispatch, start_day, end_day
                     )
-                    break
+                    # Use PowNet to reoperate the reservoirs
+                    new_hydro_capacity = self.reservoir_operator.reoperate_basins(
+                        pownet_dispatch=hydro_dispatch
+                    )
+                    for res in new_hydro_capacity.columns:
+                        print(
+                            f"{res}: {round(new_hydro_capacity[res].sum(),2)} vs {round(hydro_dispatch[res].sum(),2)}",
+                        )
 
-                # To reoptimize PowNet with the new hydropower capacity,
-                # update the builder class
-                builder.update_hydro_capacity(new_hydro_capacity)
-                self.model = builder.update(
-                    k=k,
-                    init_conds=init_conds,
-                    mip_gap=mip_gap,
-                    timelimit=timelimit,
-                )
-                self.model.optimize()
+                    # Terminate the loop if the reservoirs have converged when difference is less than 1MW-day
+                    max_deviation = (new_hydro_capacity - hydro_dispatch).abs().max()
+                    # The tolerance for convergence should be 5% of the largest hydro capacity
+                    reop_tol = 0.05 * new_hydro_capacity.max()
+                    if (max_deviation <= reop_tol[max_deviation.index]).all():
+                        reop_converge = True
+                        print(
+                            f"PowNet: Day {k+1} - Reservoirs converged at iteration {reop_k}"
+                        )
+                        break
 
-                reop_k += 1
-
-                # Reoptimize pownet with the new hydropower capacity
-                # builder.update_hydro_capacity(new_hydro_capacity)
-
-                # If the change is hydro_dispatch is less than 1e-6, we proceed to the next timestep
+                    # To reoptimize PowNet with the new hydropower capacity,
+                    # update the builder class
+                    builder.update_hydro_capacity(new_hydro_capacity)
+                    self.model = builder.update(
+                        k=k,
+                        init_conds=init_conds,
+                        mip_gap=mip_gap,
+                        timelimit=timelimit,
+                    )
+                    self.model.optimize()
+                    reop_k += 1
 
             # Need k to increment the hours field
             system_record.keep(self.model, k)

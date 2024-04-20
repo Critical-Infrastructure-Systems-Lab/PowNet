@@ -101,38 +101,44 @@ def get_init_min_off(
     return init_min_off
 
 
-def get_hydro_from_model(model: gp.Model, k: int):
+def get_hydro_from_model(model: gp.Model, k: int) -> tuple[pd.DataFrame, int, int]:
+    """Extract the hydro dispatch from the model. The model is assumed to have
+    variables named as "phydro[reservoir,t]". The function returns a dataframe
+    with the columns: reservoir, hour, dispatch. The hour is incremented by the
+    simulation period, and the dataframe is pivoted such that the reservoirs are
+    the columns and the hours are the index. The function also returns the start
+    and end day of the hydro dispatch.
+    """
     hydropower_dispatch = []
-    pattern = 'phydro\[(\w+),(\d+)\]'
+    pattern = "phydro\[(\w+),(\d+)\]"
     for v in model.getVars():
         if re.match(pattern, v.varName):
             reservoir = re.search(pattern, v.varName).group(1)
             hour = int(re.search(pattern, v.varName).group(2))
-            hydropower_dispatch.append(
-                (reservoir, hour, v.x)
-            )
-    df = pd.DataFrame(hydropower_dispatch, columns=[
-                      'reservoir', 'hour', 'dispatch'])
+            hydropower_dispatch.append((reservoir, hour, v.x))
+    df = pd.DataFrame(hydropower_dispatch, columns=["reservoir", "hour", "dispatch"])
     # Pivot to have the hour as the index and reservoir as the columns
-    df = df.pivot(index='hour', columns='reservoir', values='dispatch')
-    df.index = df.index + k*24
-    start_day = df.index[0] // 24
-    end_day = df.index[-1] // 24
+    df = df.pivot(index="hour", columns="reservoir", values="dispatch")
+    df.index = df.index + k * 24
+    start_day = df.index[0] // 24 + 1
+    end_day = df.index[-1] // 24 + 1
     return df, start_day, end_day
 
 
 def get_hydro_from_df(df: pd.DataFrame):
-    df = df[df['vartype'] == 'phydro']
-    df = df.set_index(['hour', 'node'])
-    df = df['value'].unstack().reset_index()
-    df = df.pivot(index='hour', columns='node', values='value')
+    df = df[df["vartype"] == "phydro"]
+    df = df.set_index(["hour", "node"])
+    df = df["value"].unstack().reset_index()
+    df = df.pivot(index="hour", columns="node", values="value")
     start_day = df.index[0] // 24
     end_day = df.index[-1] // 24
     return df, start_day, end_day
 
 
-def convert_to_daily_hydro(df: pd.DataFrame, start_day: int, end_day: int) -> pd.DataFrame:
-    daily_hydro = df.groupby((df.index-1) // 24).sum()
+def convert_to_daily_hydro(
+    df: pd.DataFrame, start_day: int, end_day: int
+) -> pd.DataFrame:
+    daily_hydro = df.groupby((df.index - 1) // 24).sum()
     daily_hydro.index = range(start_day, end_day)
     return daily_hydro
 
@@ -164,8 +170,7 @@ class SystemRecord:
     def _get_sol_from_gurobi(self, gp_model) -> pd.DataFrame:
         # Extract the variables from the model to process them
         return pd.DataFrame(
-            {"varname": gp_model.getAttr(
-                "varname"), "value": gp_model.getAttr("X")}
+            {"varname": gp_model.getAttr("varname"), "value": gp_model.getAttr("X")}
         )
 
     def _get_sol_from_highs(self, highs_model: highspy.highs.Highs) -> pd.DataFrame:
@@ -196,8 +201,7 @@ class SystemRecord:
 
         # Create a col of variable types for filtering
         pat_vartype = r"(\w+)\["
-        results[["vartype"]] = results["varname"].str.extract(
-            pat_vartype, expand=True)
+        results[["vartype"]] = results["varname"].str.extract(pat_vartype, expand=True)
 
         # Some variables are not in the (node, t) format.
         # These are system-level variables
@@ -265,8 +269,7 @@ class SystemRecord:
 
         # Currently there is only the system-wider reserve
         cur_var_syswide = increment_hour(cur_var_syswide, T=self.T, k=k)
-        self.var_syswide = pd.concat(
-            [self.var_syswide, cur_var_syswide], axis=0)
+        self.var_syswide = pd.concat([self.var_syswide, cur_var_syswide], axis=0)
 
         # Need to calculate the minimum time on/off
         self.current_min_on = get_init_min_on(
@@ -323,21 +326,30 @@ class SystemRecord:
 
     def to_csv(self) -> None:
         write_df(
-            self.var_node_t, output_name="node_variables", model_name=self.model_name, T=self.T
+            self.var_node_t,
+            output_name="node_variables",
+            model_name=self.model_name,
+            T=self.T,
         )
         write_df(
-            self.var_flow, output_name="flow_variables", model_name=self.model_name, T=self.T
+            self.var_flow,
+            output_name="flow_variables",
+            model_name=self.model_name,
+            T=self.T,
         )
         write_df(
-            self.var_syswide, output_name="system_variables", model_name=self.model_name, T=self.T
+            self.var_syswide,
+            output_name="system_variables",
+            model_name=self.model_name,
+            T=self.T,
         )
 
     def get_hydro_dispatch(self) -> pd.DataFrame:
-        df = self.var_node_t[self.var_node_t['vartype'] == 'phydro']
-        df = df[['node', 'hour', 'value']]
-        df = df.rename(columns={'node': 'reservoir', 'value': 'dispatch'})
+        df = self.var_node_t[self.var_node_t["vartype"] == "phydro"]
+        df = df[["node", "hour", "value"]]
+        df = df.rename(columns={"node": "reservoir", "value": "dispatch"})
         # Columns: reservoir, hour, v.x
-        df = df.pivot(index='hour', columns='reservoir', values='dispatch')
+        df = df.pivot(index="hour", columns="reservoir", values="dispatch")
         start_day = df.index[0] // 24
         end_day = df.index[-1] // 24
         df = convert_to_daily_hydro(df, start_day, end_day)
@@ -345,12 +357,12 @@ class SystemRecord:
 
     @staticmethod
     def get_hydro_from_model(model: gp.Model) -> dict:
-        ''' The output of the hydro dispatch is a dictionary of the form
+        """The output of the hydro dispatch is a dictionary of the form
         {
             "reservoir1": {t1: value1, t2: value2, ...},
             "reservoir2": {t1: value1, t2: value2, ...},
         }
-        '''
+        """
         hydro_dispatch = {}
         # Variables are named as "phydro[reservoir,t]"
         pattern = r"phydro\[(\w+),(\d+)\]"
