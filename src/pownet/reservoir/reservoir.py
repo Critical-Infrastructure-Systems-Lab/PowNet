@@ -26,6 +26,9 @@ def adjust_hydropeaking(
 
     * t0 denotes the previous day or timestep.
 
+
+    * t0 denotes the previous day or timestep.
+
     """
     # Calculate the difference between the current and previous release
     diff_release = release - release_t0
@@ -45,6 +48,7 @@ def adjust_hydropeaking(
 
 
 class Reservoir:
+    """This class simulates a reservoir."""
     """This class simulates a reservoir."""
 
     def __init__(
@@ -306,6 +310,10 @@ class Reservoir:
         density = 998  # kg/m3
         g = 9.81  # m/s2
 
+        # Define constants
+        density = 998  # kg/m3
+        g = 9.81  # m/s2
+
         # The head (d) is adjusted to max_head
         # by scaling water level with respect to max_level.
         head = self.max_head - (self.max_level - mid_level)
@@ -321,6 +329,7 @@ class Reservoir:
         # Any unused water is not routed through the turbine.
         hydropower = np.minimum(hydropower, self.max_generation)
 
+
         # Convert to MW-day (energy)
         hydroenergy = hydropower * 24
 
@@ -329,6 +338,7 @@ class Reservoir:
     def reoperate(
         self,
         pownet_dispatch: pd.DataFrame,
+        upstream_flow: pd.Series,
         upstream_flow: pd.Series,
     ) -> pd.DataFrame:
         """Reoperate the reservoir based on the daily dispatch of the power system model.
@@ -380,6 +390,8 @@ class Reservoir:
             # can be different from calculated with the formula
             opt_hydroenergy_t = None
 
+            # Must consider output from reservoirs located upstream in the basin
+            total_inflow_t = self.inflow.loc[day] + upstream_flow.loc[day]
             # Must consider output from reservoirs located upstream in the basin
             total_inflow_t = self.inflow.loc[day] + upstream_flow.loc[day]
 
@@ -499,6 +511,7 @@ class Reservoir:
                     z_t,
                     opt_hydropower,
                 ) = solve_release_from_dispatch(
+                ) = solve_release_from_dispatch(
                     dispatch=dispatch_t,
                     turbine_factor=self.turbine_factor,
                     max_head=self.max_head,
@@ -567,6 +580,10 @@ class Basin:
         This class is a collection of Reservoirs on a basin.
         """
 
+        """
+        This class is a collection of Reservoirs on a basin.
+        """
+
         self.model_name: str = model_name
         self.basin: str = basin
         self.num_days: int = num_days
@@ -575,6 +592,7 @@ class Basin:
         res_df = pd.read_csv(
             os.path.join(get_model_dir(), self.model_name, "reservoir.csv")
         )
+        # Filter reservoirs by basin
         # Filter reservoirs by basin
         res_df = res_df[res_df["basin"] == self.basin]
         self.reservoir_names = res_df["name"].tolist()
@@ -637,9 +655,12 @@ class Basin:
         input_folder = os.path.join(get_model_dir(), self.model_name, csv_name)
         if timestep == "daily":
             self.basin_hydropower.to_csv(input_folder, index=False)
+            self.basin_hydropower.to_csv(input_folder, index=False)
             return
         elif timestep == "hourly":
             # Repeat the hydropower values for each hour of the day
+            df = self.basin_hydropower.loc[
+                self.basin_hydropower.index.repeat(24)
             df = self.basin_hydropower.loc[
                 self.basin_hydropower.index.repeat(24)
             ].reset_index(drop=True)
@@ -652,11 +673,15 @@ class Basin:
             raise ValueError("Unknown timestep")
 
     def get_basin_hydropower(self, timestep) -> pd.DataFrame:
+    def get_basin_hydropower(self, timestep) -> pd.DataFrame:
         """Return a dataframe of hydropower by each reservoir."""
         if timestep == "daily":
             return self.basin_hydropower
+            return self.basin_hydropower
         elif timestep == "hourly":
             # Repeat the hydropower values for each hour of the day
+            df = self.basin_hydropower.loc[
+                self.basin_hydropower.index.repeat(24)
             df = self.basin_hydropower.loc[
                 self.basin_hydropower.index.repeat(24)
             ].reset_index(drop=True)
@@ -703,6 +728,7 @@ class ReservoirOperator:
         for basin in self.basins:
             basin.initialize()
             self.hydropower = pd.concat(
+                [self.hydropower, basin.get_basin_hydropower(timestep="daily")],
                 [self.hydropower, basin.get_basin_hydropower(timestep="daily")],
                 axis=1,
             )
