@@ -186,6 +186,7 @@ class Simulator:
                 # If we are at the first timestep, then we do not reoperate
                 while not reop_converge:
                     print(f"\nReservoirs reoperation iteration {reop_k}")
+                    print("New Capacity vs. Current Dispatch")
                     # PowNet returns the hydropower dispatch in hourly resolution
                     hydro_dispatch, start_day, end_day = get_hydro_from_model(
                         self.model, k
@@ -211,6 +212,11 @@ class Simulator:
                         reop_converge = True
                         print(
                             f"PowNet: Day {k+1} - Reservoirs converged at iteration {reop_k}"
+                        )
+
+                    if reop_k > 100:
+                        raise ValueError(
+                            "Reservoirs reoperation did not converge after 100 iterations"
                         )
 
                     # To reoptimize PowNet with the new hydropower capacity,
