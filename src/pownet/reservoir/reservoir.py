@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from pownet.folder_sys import get_model_dir
-from pownet.reservoir.solve_release import gp_solve_release
+from pownet.reservoir.solve_release import solve_release_from_dispatch
 
 
 def adjust_hydropeaking(
@@ -17,6 +17,9 @@ def adjust_hydropeaking(
     Adjust the release to consider hydropeaking and minimum environmental flow.
     The change in release is limited to 15% of the maximum release.
     Also, the release cannot be lower than the minimum release or higher than the maximum release.
+
+    * t0 denotes the previous day or timestep.
+
     """
     # Calculate the difference between the current and previous release
     diff_release = release - release_t0
@@ -36,7 +39,7 @@ def adjust_hydropeaking(
 
 
 class Reservoir:
-    """This class simulates the operation of a reservoir."""
+    """This class simulates a reservoir."""
 
     def __init__(
         self,
@@ -81,7 +84,11 @@ class Reservoir:
 
         # Timeseries data
         self.inflow: pd.Series = None  # in m3/day
-        self.upstream_flow: pd.Series = None  # in m3/day
+
+        # Upstream flow is in m3/day. Each column represents cascase level
+        self.upstream_flow: pd.DataFrame = None
+
+        # Total inflow is the sum of the inflow and upstream flow
         self.total_inflow: pd.Series = None  # in m3/day
         self.mean_annual_flow: pd.Series = None  # in m3/day
 
@@ -95,19 +102,16 @@ class Reservoir:
         self.min_flow: float = None  # in m3/day
         self.hydroenergy: pd.Series = None  # in MW-day
         self.hydropower: pd.Series = None  # in MW
-        self.reoperated_days: pd.Series = None
 
         # These policies are calculated based on the min_day and max_day
         self.target_level: list[float] = None  # in meters
         self.target_storage: list[float] = None  # in m3
-        self.target_release: list[float] = None  # in m3/day
 
+        # Gurobi-related attributes
         self.model: gp.model = None
         self.release_vars: gp.tupledict[str, gp.Var] = None
         self.storage_vars: gp.tupledict[str, gp.Var] = None
         self.spill_vars: gp.tupledict[str, gp.Var] = None
-
-        self.start_day: int = None  # Initial day of optimization
 
         # Reoperation values
         self.reop_storage: pd.Series = None
@@ -190,16 +194,6 @@ class Reservoir:
         inflow: float,
         mean_annual_flow: float,
     ) -> float:
-        """Minimum environmental flow is a relative value based on the mean annual flow and the inflow."""
-        # Also need to ensure that the minimum environmental flow is less than the maximum release
-        if inflow <= 0.4 * mean_annual_flow:
-            return min(0.6 * inflow, self.max_release)
-        elif inflow > 0.8 * mean_annual_flow:
-            return min(0.3 * inflow, self.max_release)
-        else:
-            return min(0.45 * inflow, self.max_release)
-
-    def calc_min_flow(self) -> None:
         """The minimum environmental flow a relative value based on
         the mean annual flow and the inflow.
         There are three cases:
@@ -212,32 +206,20 @@ class Reservoir:
 
         3) Otherwise, the minimum flow is 45% of the inflow.
         """
+        # Also need to ensure that the minimum environmental flow is less than the maximum release
+        if inflow <= 0.4 * mean_annual_flow:
+            return min(0.6 * inflow, self.max_release)
+        elif inflow > 0.8 * mean_annual_flow:
+            return min(0.3 * inflow, self.max_release)
+        else:
+            return min(0.45 * inflow, self.max_release)
+
+    def calc_min_flow(self) -> None:
+        """Find the minimum environmental flow for each day."""
         self.min_flow = pd.Series(np.nan, index=self.inflow.index)
         for day in range(self.num_days):
             self.min_flow[day] = self._calc_min_environmental_flow(
                 self.inflow[day], self.mean_annual_flow[day]
-            )
-
-    def calc_target_release_from_target_volume(self) -> None:
-        """Calculate the daily release from the reservoir from self.target_volumes.
-        The release is in m3/day.
-        """
-        # The first day was already assumed to have the largest release possible because
-        # we begin with a full reservoir.
-        self.target_release = [self.max_release]
-        for day in range(1, self.num_days):
-            # The release should be a positive term,
-            # so we switch the order of the subtraction.
-            target_release = self.target_storage[day - 1] - self.target_storage[day]
-
-            # Adjust the release to consider hydropeaking
-            self.target_release.append(
-                adjust_hydropeaking(
-                    release=target_release,
-                    release_t0=self.target_release[day - 1],
-                    max_release=self.max_release,
-                    min_release=self.min_flow[day],
-                )
             )
 
     def calc_targets(self) -> None:
@@ -246,8 +228,6 @@ class Reservoir:
         self.calc_min_flow()
         # Calculate the target storage and level
         self.calc_target_storage()
-        # Calculate the target release
-        self.calc_target_release_from_target_volume()
 
     def build_model(self, start_day: int) -> None:
         """Build an optimization problem to find the optimal release from the reservoir.
@@ -467,15 +447,16 @@ class Reservoir:
         flow_rate in m3/s
 
         """
+        # Define constants
+        density = 998  # kg/m3
+        g = 9.81  # m/s2
+
         # The head (d) is adjusted to max_head
         # by scaling water level with respect to max_level.
         d = self.calc_head_from_mid_level(mid_level)
 
         # The formula requires m3/s not m3/day
         flow_rate = release / (24 * 3600)
-
-        density = 998  # kg/m3
-        g = 9.81  # m/s2
 
         # Calculate the hydropower in Watts
         hydropower = self.turbine_factor * density * g * d * flow_rate
@@ -484,6 +465,7 @@ class Reservoir:
         # A turbine is limited by its maximum capacity.
         # Any unused water is not routed through the turbine.
         hydropower = np.minimum(hydropower, self.max_generation)
+
         # Convert to MW-day (energy)
         hydroenergy = hydropower * 24
 
@@ -503,6 +485,7 @@ class Reservoir:
     def reoperate(
         self,
         pownet_dispatch: pd.DataFrame,
+        upstream_flow: pd.Series,
     ) -> pd.DataFrame:
         """Reoperate the reservoir based on the daily dispatch of the power system model.
         There are four cases:
@@ -553,9 +536,8 @@ class Reservoir:
             # can be different from calculated with the formula
             opt_hydroenergy_t = None
 
-            # TODO: Update upstream flow from reoperation too
-            # Total inflow already considers upstream flow
-            total_inflow_t = self.total_inflow.loc[day]
+            # Must consider output from reservoirs located upstream in the basin
+            total_inflow_t = self.inflow.loc[day] + upstream_flow.loc[day]
 
             storage_t0 = self.reop_storage.loc[day - 1]
             level_t0 = self.calc_level_from_storage(storage_t0)
@@ -672,7 +654,7 @@ class Reservoir:
                     opt_hydroenergy_t,
                     z_t,
                     opt_hydropower,
-                ) = gp_solve_release(
+                ) = solve_release_from_dispatch(
                     dispatch=dispatch_t,
                     turbine_factor=self.turbine_factor,
                     max_head=self.max_head,
@@ -737,24 +719,32 @@ class Basin:
         basin: str,
         num_days: int,
     ) -> None:
-        """This class is a collection of Reservoirs on a basin."""
+        """
+        This class is a collection of Reservoirs on a basin.
+        """
+
         self.model_name: str = model_name
         self.basin: str = basin
         self.num_days: int = num_days
 
+        # List of reservoir names in the basin
         self.reservoirs: list[Reservoir] = []
-        # Map cascade level to its reservoir {cascade_lvl: reservoir_name}
-        self.map_cascade: dict[int, str] = None
+
+        # Map cascade level to its list of reservoir names {cascade_lvl: [name1, name2]}
+        self.map_cascade: dict[int, list[str]] = None
+
+        # Largest cascade level in the basin
         self.max_cascade: int = None
 
         # Hydropower from each reservoir in the basin
-        self.cascade_hydropower: pd.DataFrame = None
+        self.basin_hydropower: pd.DataFrame = None
 
     def initialize(self) -> None:
+        # User must specify reservoirs and their parameters in a CSV file
         res_df = pd.read_csv(
             os.path.join(get_model_dir(), self.model_name, "reservoir.csv")
         )
-        # Filter the reservoirs by the basin
+        # Filter reservoirs by basin
         res_df = res_df[res_df["basin"] == self.basin]
 
         self.reservoir_names = res_df["name"].tolist()
@@ -763,31 +753,39 @@ class Basin:
         if self.basin not in res_df.basin.unique():
             raise ValueError("Basin not found. Check basin name.")
 
-        # Cascade level starts from 0, or the first reservoir
+        # Map cascade level to its list of reservoirs
+        # will help track outflows from upstream reservoirs
         sub_df = res_df[["cascade_level", "name"]]
-        self.map_cascade = {}
-        for row in sub_df.itertuples():
-            # First check that there is only one reservoir per cascade level
-            if row.cascade_level in self.map_cascade:
-                raise ValueError("Duplicated cascade level. Check reservoir.csv")
-            self.map_cascade[row.cascade_level] = row.name
+        self.map_cascade = sub_df.groupby("cascade_level")["name"].apply(list).to_dict()
 
-        self.cascade_hydropower = pd.DataFrame()
-        upstream_flow = pd.Series(np.zeros(self.num_days))
+        # Initialize hydropower dataframe with columns as reservoirs
+        self.basin_hydropower = pd.DataFrame()
+
+        # Initialize the upstream flow for each cascade level
+        # Each column represents outflow from reservoirs at the previous cascade level
+        upstream_flow = pd.DataFrame(
+            0, columns=range(self.max_cascade + 1), index=range(self.num_days)
+        )
+
         for cas_lvl in range(self.max_cascade + 1):
-            res_name = self.map_cascade[cas_lvl]
-            # Simulate
-            res = Reservoir(
-                model_name=self.model_name,
-                reservoir_name=res_name,
-                num_days=self.num_days,
-            )
-            upstream_flow = upstream_flow
-            res.initialize(upstream_flow=upstream_flow)
-            res.simulate()
-            self.cascade_hydropower[res.name] = res.hydroenergy
-            # Update the upstream flow for the next cascade level
-            upstream_flow = upstream_flow + res.release + res.spill
+            res_names = self.map_cascade[cas_lvl]
+            for res_name in res_names:
+                res = Reservoir(
+                    model_name=self.model_name,
+                    reservoir_name=res_name,
+                    num_days=self.num_days,
+                )
+                res.initialize(upstream_flow=upstream_flow.loc[:, cas_lvl])
+                res.simulate()
+                # Update upstream flow for the next cascade level
+                upstream_flow.loc[:, cas_lvl] += res.release + res.spill
+
+                # Hydroenergy is in MW-day
+                self.basin_hydropower[res.name] = res.hydroenergy
+
+            # The outflow from this reservoir is the inflow
+            # to the downstream. Hence, add 1 to the cascade level.
+            upstream_flow.loc[:, cas_lvl + 1] += res.release + res.spill
 
             self.reservoirs.append(res)
 
@@ -798,12 +796,12 @@ class Basin:
         csv_name = f"pownet_hydropower.csv"
         input_folder = os.path.join(get_model_dir(), self.model_name, csv_name)
         if timestep == "daily":
-            self.cascade_hydropower.to_csv(input_folder, index=False)
+            self.basin_hydropower.to_csv(input_folder, index=False)
             return
         elif timestep == "hourly":
             # Repeat the hydropower values for each hour of the day
-            df = self.cascade_hydropower.loc[
-                self.cascade_hydropower.index.repeat(24)
+            df = self.basin_hydropower.loc[
+                self.basin_hydropower.index.repeat(24)
             ].reset_index(drop=True)
 
             # Divide the hydropower by 24 to get the hourly values
@@ -813,14 +811,14 @@ class Basin:
         else:
             raise ValueError("Unknown timestep")
 
-    def get_cascade_hydropower(self, timestep) -> pd.DataFrame:
+    def get_basin_hydropower(self, timestep) -> pd.DataFrame:
         """Return a dataframe of hydropower by each reservoir."""
         if timestep == "daily":
-            return self.cascade_hydropower
+            return self.basin_hydropower
         elif timestep == "hourly":
             # Repeat the hydropower values for each hour of the day
-            df = self.cascade_hydropower.loc[
-                self.cascade_hydropower.index.repeat(24)
+            df = self.basin_hydropower.loc[
+                self.basin_hydropower.index.repeat(24)
             ].reset_index(drop=True)
             df = df / 24
             return df
@@ -860,7 +858,7 @@ class ReservoirOperator:
         for basin in self.basins:
             basin.initialize()
             self.hydropower = pd.concat(
-                [self.hydropower, basin.get_cascade_hydropower(timestep="daily")],
+                [self.hydropower, basin.get_basin_hydropower(timestep="daily")],
                 axis=1,
             )
 
@@ -922,25 +920,33 @@ class ReservoirOperator:
         """Reoperate the reservoirs based on the daily dispatch of the power system model.
         Note that we don't reoperate on the first day of the simulation period.
         """
+        # Get a list of all reservoirs
         reservoirs = []
         for basin in self.basins:
             for res in basin.reservoirs:
                 reservoirs.append(res.name)
-        new_hydroenergy = pd.DataFrame(
-            np.nan, index=pownet_dispatch.index, columns=reservoirs
-        )
 
         days = pownet_dispatch.index.to_list()
+        new_hydroenergy = pd.DataFrame(np.nan, index=days, columns=reservoirs)
+
         for basin in self.basins:
+            upstream_flow = pd.DataFrame(
+                np.zeros, index=days, columns=range(basin.max_cascade + 1)
+            )
             for res in basin.reservoirs:
                 res_dispatch = pownet_dispatch[res.name]
-                res_hydroenergy = res.reoperate(res_dispatch)
+                res_hydroenergy = res.reoperate(res_dispatch, upstream_flow)
                 if isinstance(res_hydroenergy, float):
                     new_hydroenergy.loc[days, res.name] = res_hydroenergy
                 elif isinstance(res_hydroenergy, pd.Series):
                     new_hydroenergy.loc[days, res.name] = res_hydroenergy.values
                 else:
                     raise ValueError(f"Unknown type {type(res_hydroenergy)}")
+
+                upstream_flow.loc[:, res.cascade_level + 1] = (
+                    res.reop_release[days] + res.reop_spill[days]
+                )
+
         return new_hydroenergy
 
 
