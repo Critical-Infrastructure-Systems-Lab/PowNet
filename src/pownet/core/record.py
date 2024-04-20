@@ -167,6 +167,8 @@ class SystemRecord:
         self.current_min_on = None
         self.current_min_off = None
 
+        self.objvals = []
+
     def _get_sol_from_gurobi(self, gp_model) -> pd.DataFrame:
         # Extract the variables from the model to process them
         return pd.DataFrame(
@@ -188,6 +190,10 @@ class SystemRecord:
             }
         )
 
+    def _get_objval_from_highs(self, highs_model: highspy.highs.Highs) -> float:
+        info = highs_model.getInfo()
+        return info.objective_function_value
+
     def keep(
         self,
         model: gp.Model | highspy.highs.Highs,
@@ -196,8 +202,10 @@ class SystemRecord:
 
         if isinstance(model, gp.Model):
             results = self._get_sol_from_gurobi(model)
+            self.objvals.append(model.objVal)
         elif isinstance(model, highspy.highs.Highs):
             results = self._get_sol_from_highs(model)
+            self.objvals.append(self._get_objval_from_highs(model))
 
         # Create a col of variable types for filtering
         pat_vartype = r"(\w+)\["
@@ -340,6 +348,13 @@ class SystemRecord:
         write_df(
             self.var_syswide,
             output_name="system_variables",
+            model_name=self.model_name,
+            T=self.T,
+        )
+        objvals = pd.DataFrame({"objval": self.objvals})
+        write_df(
+            objvals,
+            output_name="objvals",
             model_name=self.model_name,
             T=self.T,
         )
