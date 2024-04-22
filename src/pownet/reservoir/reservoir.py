@@ -147,6 +147,7 @@ class Reservoir:
         self.target_storage: pd.Series = None  # in m3
 
         # Reoperation values
+        self.reop_upstream: pd.Series = None
         self.reop_storage: pd.Series = None
         self.reop_release: pd.Series = None
         self.reop_spill: pd.Series = None
@@ -362,6 +363,7 @@ class Reservoir:
 
         In this function, t-1 is denoted as t0; t is denoted as t; t+1 is denoted as t1.
         """
+        self.reop_upstream = upstream_flow
         # days start from 1 to 365
         days = pownet_dispatch.index.to_list()
         # We do not reoperate on the first day (or first timestep) because the release is fixed on the first day.
@@ -864,6 +866,8 @@ class ReservoirOperator:
             for res in reservoirs:
                 df = pd.DataFrame(
                     {
+                        "inflow": res.inflow,
+                        "upstream_flow": res.upstream_flow,
                         "storage": res.storage,
                         "release": res.release,
                         "spill": res.spill,
@@ -879,6 +883,8 @@ class ReservoirOperator:
                 if res.reop_storage is not None:
                     reop_df = pd.DataFrame(
                         {
+                            "inflow": res.inflow,
+                            "upstream_flow": res.upstream_flow,
                             "storage": res.reop_storage,
                             "release": res.reop_release,
                             "spill": res.reop_spill,
@@ -898,4 +904,4 @@ if __name__ == "__main__":
     # Test the ReservoirOperator class
     res_operator = ReservoirOperator(model_name, num_days=365)
     res_operator.simulate()
-    res_operator.get_plots()
+    res_operator.export_hydropower_csv(timestep="daily")

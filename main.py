@@ -19,6 +19,8 @@ def main():
     SAVE_RESULT = True
     SAVE_PLOT = False
 
+    to_reoperate = False
+
     #############################
     output_dir = get_output_dir()
 
@@ -32,8 +34,7 @@ def main():
     simulator = Simulator(
         model_name=MODEL_NAME,
         T=T,
-        hydro_timestep="hourly",
-        to_reoperate=True,
+        to_reoperate=to_reoperate,
     )
 
     record = simulator.run(steps=STEPS)
@@ -47,6 +48,10 @@ def main():
         f"PowNet: Total time (s) = {round((datetime.now() - time_start).total_seconds(), 2)}"
     )
     print(f"PowNet: Opt.time (s) = {round(sum(record.runtimes), 2)}")
+
+    # Export reservoir outputs as csv
+    if to_reoperate:
+        simulator.export_reservoir_outputs()
 
     node_variables = record.get_node_variables()
 
