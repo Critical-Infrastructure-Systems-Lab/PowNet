@@ -1,8 +1,10 @@
+from datetime import datetime
 import pickle
 import os
 import re
 
 import pandas as pd
+import gurobipy as gp
 import highspy
 
 from pownet.core.builder import ModelBuilder
@@ -49,7 +51,12 @@ class Simulator:
             T=T, formulation="kirchhoff", model_name=model_name
         )
 
-        self.model = None
+        self.model: gp.Model = None
+
+        # Statistics
+        self.runtimes: float = []  # Total runtime of each instance
+        self.reop_iter: int = []  # Number of reoperation iterations
+        self.reop_opt_time: float = 0  # Total runtime of reoperation
 
     def _check_infeasibility(self, k) -> bool:
         """
@@ -106,6 +113,7 @@ class Simulator:
             # Create a gurobipy model for each simulation period
             print("\n\n\n============")
             print(f"PowNet: Simulate step {k+1}\n\n")
+            k_timer = datetime.now()
 
             if k == 0:
                 self.model = builder.build(
@@ -186,6 +194,9 @@ class Simulator:
             system_record.keep(self.model, k)
             init_conds = system_record.get_init_conds()
 
+            # Record the runtime
+            self.runtimes.append((datetime.now() - k_timer).total_seconds())
+
         return system_record
 
     def reoperate(
@@ -238,10 +249,36 @@ class Simulator:
                 timelimit=timelimit,
             )
             self.model.optimize()
+
+            # Keep track of optimization time oand reoperation iterations
+            self.reop_opt_time += self.model.runtime
             reop_k += 1
+
+        # Record the number of iterations after convergence
+        self.reop_iter.append(reop_k)
 
     def get_system_input(self):
         return self.system_input
 
     def export_reservoir_outputs(self):
         return self.reservoir_operator.export_reservoir_outputs()
+
+    def export_reop_iter(self):
+        ctime = datetime.now().strftime("%Y%m%d_%H%M")
+        df = pd.Series(self.reop_iter)
+        df.to_csv(
+            os.path.join(
+                get_output_dir(),
+                f"{ctime}_{self.model_name}_{self.T}_reop_iters.csv",
+            )
+        )
+
+    def export_runtimes(self):
+        ctime = datetime.now().strftime("%Y%m%d_%H%M")
+        df = pd.Series(self.runtimes)
+        df.to_csv(
+            os.path.join(
+                get_output_dir(),
+                f"{ctime}_{self.model_name}_{self.T}_runtimes.csv",
+            )
+        )
