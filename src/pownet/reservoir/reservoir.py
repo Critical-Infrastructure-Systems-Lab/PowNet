@@ -169,6 +169,7 @@ class Reservoir:
                 target_storage=self.target_storage,
                 min_flow=self.min_flow,
                 total_inflow=self.total_inflow,
+                resname = self.name
             )
         )
         self.level = self.calc_level_from_storage(self.storage)
@@ -825,10 +826,10 @@ class ReservoirOperator:
                 res for res_lists in basin.reservoirs.values() for res in res_lists
             ]
             for res in reservoirs:
-                fig, ax = plt.subplots()
-                ax.plot(res.release, label="Release (m3/day)")
+                fig, ax = plt.subplots(figsize=(13,7), layout='constrained', dpi=350)
                 ax.plot(res.total_inflow, label="Inflow (m3/day)")
-                ax.plot(res.spill, label="Spill (m3/day)", linestyle="dotted")
+                ax.plot(res.release, label="Release (m3/day)")
+                ax.plot(res.spill, label="Spill (m3/day)", linestyle="dotted", linewidth=2)
                 ax.plot(
                     res.release + res.spill,
                     label="Outflow (m3/day)",
@@ -849,7 +850,7 @@ class ReservoirOperator:
                     alpha=0.5,
                 )
                 ax2.set_ylabel("Storage (m3)")
-                fig.legend()
+                fig.legend(loc='outside right upper')
                 plt.show()
 
     def export_reservoir_outputs(self):
@@ -904,4 +905,5 @@ if __name__ == "__main__":
     # Test the ReservoirOperator class
     res_operator = ReservoirOperator(model_name, num_days=365)
     res_operator.simulate()
-    res_operator.export_hydropower_csv(timestep="daily")
+    res_operator.export_hydropower_csv(timestep="hourly")
+    res_operator.get_plots()
