@@ -13,7 +13,7 @@ def solve_release_from_storage(
     target_storage: pd.Series,
     min_flow: pd.Series,
     total_inflow: pd.Series,
-    res_name: str,
+    resname: str,
 ) -> tuple[pd.Series, pd.Series, pd.Series, float]:
     """Build an optimization problem to find the optimal release from the reservoir.
     The objective is to minimize the storage deviation from the target storage with L1 norm.

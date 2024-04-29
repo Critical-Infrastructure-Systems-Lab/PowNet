@@ -14,11 +14,10 @@ def main():
     # STEPS = math.floor(8760/T)
     STEPS = 365
 
-    # Decide whether to save results
-    SAVE_RESULT = True
-    SAVE_PLOT = False
-
     to_reoperate = False
+    reop_timestep = "daily"
+
+    save_result = True
 
     #############################
     output_dir = get_output_dir()
@@ -34,13 +33,13 @@ def main():
         model_name=MODEL_NAME,
         T=T,
         to_reoperate=to_reoperate,
-        reop_timestep="hourly",
+        reop_timestep=reop_timestep,
     )
 
     record = simulator.run(steps=STEPS)
 
-    # if SAVE_RESULT:
-    #     record.to_csv()
+    if save_result:
+        record.to_csv()
 
     print("\n\n====")
     print(f"PowNet: Solved {MODEL_NAME}")
@@ -54,8 +53,8 @@ def main():
     print(f"PowNet: Opt.time (s) = {round(sum(record.runtimes), 2)}")
 
     # Export reservoir outputs as csv
-    # if to_reoperate:
-    #     simulator.export_reservoir_outputs()
+    if to_reoperate:
+        simulator.export_reservoir_outputs()
 
     if to_reoperate:
         simulator.export_reop_iter()

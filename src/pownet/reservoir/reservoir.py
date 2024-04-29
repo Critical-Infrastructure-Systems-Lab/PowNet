@@ -169,7 +169,7 @@ class Reservoir:
                 target_storage=self.target_storage,
                 min_flow=self.min_flow,
                 total_inflow=self.total_inflow,
-                resname = self.name
+                resname=self.name,
             )
         )
         self.level = self.calc_level_from_storage(self.storage)
@@ -492,7 +492,7 @@ class Reservoir:
                 self.reop_hydroenergy.loc[day] = max_hydroenergy_t
                 return pownet_dispatch
 
-            # Case 3: If dispatch (from previous guess) is greater than max hydroenergy,
+            # Case 3: If dispatch is greater than max hydroenergy,
             # then the reservoir can only give the maximum release.
             elif dispatch_t > max_hydroenergy_t:
                 release_t = max_release_t
@@ -826,10 +826,12 @@ class ReservoirOperator:
                 res for res_lists in basin.reservoirs.values() for res in res_lists
             ]
             for res in reservoirs:
-                fig, ax = plt.subplots(figsize=(13,7), layout='constrained', dpi=350)
+                fig, ax = plt.subplots(figsize=(13, 7), layout="constrained", dpi=350)
                 ax.plot(res.total_inflow, label="Inflow (m3/day)")
                 ax.plot(res.release, label="Release (m3/day)")
-                ax.plot(res.spill, label="Spill (m3/day)", linestyle="dotted", linewidth=2)
+                ax.plot(
+                    res.spill, label="Spill (m3/day)", linestyle="dotted", linewidth=2
+                )
                 ax.plot(
                     res.release + res.spill,
                     label="Outflow (m3/day)",
@@ -850,7 +852,7 @@ class ReservoirOperator:
                     alpha=0.5,
                 )
                 ax2.set_ylabel("Storage (m3)")
-                fig.legend(loc='outside right upper')
+                fig.legend(loc="outside right upper")
                 plt.show()
 
     def export_reservoir_outputs(self):
