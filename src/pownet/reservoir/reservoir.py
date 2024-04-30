@@ -140,7 +140,6 @@ class Reservoir:
         self.spill: pd.Series = None  # in m3/day
         self.min_flow: float = None  # in m3/day
         self.hydroenergy: pd.Series = None  # in MW-day
-        self.hydropower: pd.Series = None  # in MW
 
         # These policies are calculated based on the min_day and max_day
         self.target_level: pd.Series = None  # in meters
@@ -152,7 +151,6 @@ class Reservoir:
         self.reop_release: pd.Series = None
         self.reop_spill: pd.Series = None
         self.reop_level: pd.Series = None
-        self.reop_mid_level: pd.Series = None
 
     def initialize(self) -> None:
         """Simulate the operation of the reservoir."""
@@ -172,10 +170,15 @@ class Reservoir:
                 resname=self.name,
             )
         )
-        self.level = self.calc_level_from_storage(self.storage)
-        self.mid_level = self.calc_mid_level_from_level(self.level)
-        self.hydropower, self.hydroenergy = self.calc_hydropower_from_mid_level(
-            release=self.release, mid_level=self.mid_level
+        self.level = self._calc_level_from_storage(self.storage)
+
+        self.mid_level = (self.level + self.level.shift(1)) / 2
+        # Assume the mid_level of the first day is the target level of the first day
+        self.mid_level[1] = self.target_level[1]
+
+        self.hydroenergy = self._calc_hydroenergy(
+            release=self.release,
+            mid_level=self.mid_level,
         )
 
     def _calc_min_environmental_flow(
@@ -264,28 +267,21 @@ class Reservoir:
             self.target_storage, index=range(1, self.num_days + 1)
         )
 
-    def calc_level_from_storage(self, storage: pd.Series) -> pd.Series:
+    def _calc_level_from_storage(self, storage: pd.Series) -> pd.Series:
         """Calculate the water level of the reservoir from the storage.
         The water level is calculated as a percentage of the maximum storage.
         """
-        level = (
+        return (
             storage / self.max_storage * (self.max_level - self.min_level)
             + self.min_level
         )
-        return level
 
-    def calc_mid_level_from_level(self, level: pd.Series) -> pd.Series:
-        """Mid-level is the average of the level of the current day and the next day."""
-        # Calculate the change in water level between t and t-1
-        mid_level = (level + level.shift(1)) / 2
-        # Assume the mid_level of the first day is the target level of the first day
-        mid_level[1] = self.target_level[1]
-        return mid_level
-
-    def calc_hydropower_from_mid_level(
-        self, release: pd.Series, mid_level: pd.Series
-    ) -> tuple[pd.Series, pd.Series]:
-        """Calculate the mean hydropower of each day from the change in water level.
+    def _calc_hydroenergy(
+        self,
+        release: pd.Series,
+        mid_level: pd.Series,
+    ) -> pd.Series:
+        """Calculate hydroenergy from release and mid-level
         To get the energy, we need to multiply the mean hydropower by
         the number of hours in a day.
 
@@ -296,9 +292,6 @@ class Reservoir:
 
         To determine the water height above turbine (or head), let h(t) is the water level at time t
         h(t) = storage/max_storage * (max_level - min_level) + min_level
-
-        Rachel's implementation:
-        head = max_head - (max_level - ( h(t) + h(t-1) ) / 2)
 
         let mid_level = ( h(t) + h(t-1) ) / 2
         head = max_head - (max_level - mid_level)
@@ -322,55 +315,51 @@ class Reservoir:
         # A turbine is limited by its maximum capacity.
         # Any unused water is not routed through the turbine.
         hydropower = np.minimum(hydropower, self.max_generation)
-
         # Convert to MW-day (energy)
         hydroenergy = hydropower * 24
-        return hydropower, hydroenergy
+
+        return hydroenergy
 
     def reoperate(
-        self,
-        pownet_dispatch: pd.DataFrame,
-        upstream_flow: pd.Series,
+        self, pownet_dispatch: pd.DataFrame, upstream_flow: pd.Series
     ) -> pd.DataFrame:
         """Reoperate the reservoir based on the daily dispatch of the power system model.
-        There are four cases:
+        There are seven cases to consider:
 
-        Case 1: If the reservoir has been reoperated and hydroenergy is binding, then
-        the reservoir should release more water.
-
-        Case 2: If dispatch is equal to the maximum hydroenergy, then no need to reoperate.
-        The reservoir cannot release more water than the maximum release.
-
-        Case 3: If dispatch (from previous guess) is greater than max hydroenergy,
-        then the reservoir can only give the maximum release.
-
-        Case 4: If dispatch is equal to the minimum hydroenergy, then no need to reoperate.
-        The reservoir cannot release less water than the minimum environmental flow.
-
-        Case 5: If dispatch is less than the minimum hydroenergy, then no need to reoperate.
-        This is similar to Case 2. However, we need to separate this case because
-        comparing equality needs to consider numerical stability.
-        Set the reoperated hydroenergy to the minimum hydroenergy because the reservoir
-        does not need to dispatch all energy from minimum release.
-
-        Case 6: If dispatch is between min_hydroenergy and max_hydroenergy,
-        then find the exact release using an optimization algorithm.
-
-        Case 7: If dispatch is equal to the previous guess (reop) from reoperation,
+        1) If dispatch is equal to the previous guess from reoperation,
         then terminate.
 
-        Case 8: If dispatch is less than the previous guess (reop),
-        then the reservoir should save water.
+        2) If dispatch is equal to min hydroenergy,
+        set release to min release.
+
+        3) If dispatch is equal to max hydroenergy,
+        set release to max release.
+
+        4) If dispatch is less than min hydroenergy,
+        set release to min release.
+
+        5) If dispatch is greater than max hydroenergy,
+        set release to max release.
+
+        6) If dispatch is equal to hydropower from the rule curve,
+        set release to the maximum release.
+
+        7) If dispatch is between min_hydroenergy and max_hydroenergy,
+        then find the release using an optimization algorithm.
 
         In this function, t-1 is denoted as t0; t is denoted as t; t+1 is denoted as t1.
         """
+        # Upstream flow may change every reoperation iteration because
+        # reservoirs located upstream may reoperate.
         self.reop_upstream = upstream_flow
-        # days start from 1 to 365
+
+        # Day(s) in which to reoperate the reservoir
         days = pownet_dispatch.index.to_list()
+
         # We do not reoperate on the first day (or first timestep) because the release is fixed on the first day.
         # Instead of reoperation, just use the original values.
-        if 1 == days[0]:
-            # Use the first day/step to initialize the reop values
+        if days[0] == 1:
+            # Use this opportunity to initialize reoperation values
             self.reop_storage = pd.Series(np.nan, index=range(1, self.num_days + 1))
             self.reop_storage[1] = self.storage[1]
 
@@ -380,10 +369,8 @@ class Reservoir:
             self.reop_spill = pd.Series(np.nan, index=range(1, self.num_days + 1))
             self.reop_spill[1] = self.spill[1]
 
-            self.reop_level = self.calc_level_from_storage(self.reop_storage)
-
+            self.reop_level = self._calc_level_from_storage(self.reop_storage)
             self.reop_hydroenergy = pd.Series(np.nan, index=range(1, self.num_days + 1))
-
             return pownet_dispatch
 
         for day in days:
@@ -396,35 +383,32 @@ class Reservoir:
             previous_hydroenergy_rule_curve = self.hydroenergy.loc[day]
             previous_hydroenergy_reop = self.reop_hydroenergy.loc[day]
 
-            # solve_release optimization is not exact, so the hydroenergy
-            # can be different from calculated with the formula
-            opt_hydroenergy_t = None
-
-            # Must consider output from reservoirs located upstream in the basin
+            # Reoperation uses the total inflow for calculations
             total_inflow_t = self.inflow.loc[day] + upstream_flow.loc[day]
 
+            # Reservoir values from the previous timestep
             storage_t0 = self.reop_storage.loc[day - 1]
-            level_t0 = self.calc_level_from_storage(storage_t0)
+            level_t0 = self._calc_level_from_storage(storage_t0)
 
             ###################
             ##### Find hydropower from maximum and minimum releases
             ##### to compare with the dispatch
             ###################
+            # Change in release is limited to 15% of the maximum release
+            hydropeak_factor = 0.15
 
             ###### Maximum release
-            # Max release is 15% more than the original release or
-            # the maximum release, whichever is smaller.
-            hydropeak_factor = 0.15
             max_release_hydropeak_t = release_t0 + self.max_release * hydropeak_factor
+            # Release cannot be larger than the channel capacity
             max_release_t = min(self.max_release, max_release_hydropeak_t)
+
             # Release cannot be less than the minimum environmental flow
             max_release_t = max(self.min_flow.loc[day], max_release_t)
-            # Release cannot make the storage become negative
+
+            # Cannot release more than the amount of water in the reservoir
             if storage_t0 + total_inflow_t - max_release_t < 0:
                 max_release_t = storage_t0 + total_inflow_t
 
-            # TODO: Find a non-recurve approach to calculate the spill
-            # Possibly need to use another optimization model
             spill_from_max_release_t = max(
                 storage_t0 + total_inflow_t - self.max_storage - max_release_t,
                 0,
@@ -432,13 +416,13 @@ class Reservoir:
             storage_from_max_release_t = (
                 storage_t0 + total_inflow_t - max_release_t - spill_from_max_release_t
             )
-            level_from_max_release_t = self.calc_level_from_storage(
+            level_from_max_release_t = self._calc_level_from_storage(
                 storage_from_max_release_t
             )
 
             mid_level_from_max_release_t = (level_t0 + level_from_max_release_t) / 2
 
-            _, max_hydroenergy_t = self.calc_hydropower_from_mid_level(
+            max_hydroenergy_t = self._calc_hydroenergy(
                 max_release_t, mid_level_from_max_release_t
             )
 
@@ -451,8 +435,6 @@ class Reservoir:
             if storage_t0 + total_inflow_t - min_release_t < 0:
                 min_release_t = storage_t0 + total_inflow_t
 
-            # TODO: Find a non-recurve approach to calculate the spill
-            # Possibly need to use another optimization model
             spill_from_min_release_t = max(
                 storage_t0 + total_inflow_t - self.max_storage - min_release_t,
                 0,
@@ -460,45 +442,28 @@ class Reservoir:
             storage_from_min_release_t = (
                 storage_t0 + total_inflow_t - min_release_t - spill_from_min_release_t
             )
-            level_from_min_release_t = self.calc_level_from_storage(
+            level_from_min_release_t = self._calc_level_from_storage(
                 storage_from_min_release_t
             )
             mid_level_from_min_release_t = (level_t0 + level_from_min_release_t) / 2
-            _, min_hydroenergy_t = self.calc_hydropower_from_mid_level(
+            min_hydroenergy_t = self._calc_hydroenergy(
                 min_release_t, mid_level_from_min_release_t
             )
 
-            ###### Reoperation
+            ###################
+            ##### Cases to consider
+            ###################
 
             # Two values are equal when they are within 1 MW-day
             tolerance = 1
 
-            # Case 1: If the reservoir has been reoperated and hydroenergy is binding, then
-            # the reservoir should release more water.
-            if math.isclose(
-                dispatch_t,
-                previous_hydroenergy_rule_curve,
-                abs_tol=tolerance,
-            ):
-                release_t = max_release_t
-                spill_t = spill_from_max_release_t
-
-            # Case 2: If dispatch is equal to max hydroenergy, then terminate.
-            elif math.isclose(dispatch_t, max_hydroenergy_t, abs_tol=tolerance):
-                self.reop_release.loc[day] = max_release_t
-                self.reop_spill.loc[day] = spill_from_max_release_t
-                self.reop_storage[day] = storage_from_max_release_t
-                self.reop_level[day] = level_from_max_release_t
-                self.reop_hydroenergy.loc[day] = max_hydroenergy_t
+            # Case 1: If dispatch is equal to the previous guess from reoperation,
+            # then terminate.
+            if math.isclose(dispatch_t, previous_hydroenergy_reop, abs_tol=tolerance):
                 return pownet_dispatch
 
-            # Case 3: If dispatch is greater than max hydroenergy,
-            # then the reservoir can only give the maximum release.
-            elif dispatch_t > max_hydroenergy_t:
-                release_t = max_release_t
-                spill_t = spill_from_max_release_t
-
-            # Case 4: If dispatch is equal to min hydroenergy, then terminate
+            # Case 2: If dispatch is equal to min hydroenergy,
+            # set release to min release
             elif math.isclose(dispatch_t, min_hydroenergy_t, abs_tol=tolerance):
                 self.reop_release.loc[day] = min_release_t
                 self.reop_spill.loc[day] = spill_from_min_release_t
@@ -507,19 +472,54 @@ class Reservoir:
                 self.reop_hydroenergy.loc[day] = min_hydroenergy_t
                 return pownet_dispatch
 
-            # Case 5: If the dispatch is less than the min hydroenergy,
-            # set the release to min release.
+            # Case 3: If dispatch is equal to max hydroenergy,
+            # set release to max release.
+            elif math.isclose(dispatch_t, max_hydroenergy_t, abs_tol=tolerance):
+                self.reop_release.loc[day] = max_release_t
+                self.reop_spill.loc[day] = spill_from_max_release_t
+                self.reop_storage[day] = storage_from_max_release_t
+                self.reop_level[day] = level_from_max_release_t
+                self.reop_hydroenergy.loc[day] = max_hydroenergy_t
+                return pownet_dispatch
+
+            # Case 4: If dispatch is less than min hydroenergy,
+            # set release to min release.
             elif dispatch_t < min_hydroenergy_t:
                 self.reop_release.loc[day] = min_release_t
                 self.reop_spill.loc[day] = spill_from_min_release_t
                 self.reop_storage.loc[day] = storage_from_min_release_t
                 self.reop_level[day] = level_from_min_release_t
-                # Set the hydroenergy to the minimum hydroenergy
-                # to get convergence
                 self.reop_hydroenergy.loc[day] = min_hydroenergy_t
+                # Return the original dispatch to get convergence
+                # for the reoperation
                 return pownet_dispatch
 
-            # Case 6: If dispatch is between min_hydroenergy and max_hydroenergy,
+            # Case 5: If dispatch is greater than max hydroenergy,
+            # then the reservoir can only give the maximum release.
+            elif dispatch_t > max_hydroenergy_t:
+                self.reop_release.loc[day] = max_release_t
+                self.reop_spill.loc[day] = spill_from_max_release_t
+                self.reop_storage[day] = storage_from_max_release_t
+                self.reop_level[day] = level_from_max_release_t
+                self.reop_hydroenergy.loc[day] = max_hydroenergy_t
+                return max_hydroenergy_t
+
+            # Case 6: If dispatch is equal to hydropower from the rule curve
+            # (presumably this is the first iteration of reoperation),
+            # then set release to the maximum release.
+            elif math.isclose(
+                dispatch_t,
+                previous_hydroenergy_rule_curve,
+                abs_tol=tolerance,
+            ):
+                self.reop_release.loc[day] = max_release_t
+                self.reop_spill.loc[day] = spill_from_max_release_t
+                self.reop_storage[day] = storage_from_max_release_t
+                self.reop_level[day] = level_from_max_release_t
+                self.reop_hydroenergy.loc[day] = max_hydroenergy_t
+                return max_hydroenergy_t
+
+            # Case 7: If dispatch is between min_hydroenergy and max_hydroenergy,
             # then find the release using an optimization algorithm.
             elif min_hydroenergy_t < dispatch_t < max_hydroenergy_t:
                 (
@@ -546,67 +546,33 @@ class Reservoir:
                     res_name=self.name,
                 )
 
-            # Case 7: If dispatch is equal to the previous guess from reoperation,
-            # then terminate.
-            elif math.isclose(dispatch_t, previous_hydroenergy_reop, abs_tol=tolerance):
-                return pownet_dispatch
+                # The optimization might not produce the exact values
+                # Check that the values are close
+                storage_t = storage_t0 + total_inflow_t - release_t - spill_t
+                level_t = self._calc_level_from_storage(storage_t)
 
-            # Case 8: If dispatch is less than the previous guess,
-            # then the reservoir should save water.
-            elif dispatch_t < previous_hydroenergy_reop:
-                (
-                    release_t,
-                    spill_t,
-                    opt_storage,
-                    opt_level,
-                    opt_hydroenergy_t,
-                    z_t,
-                    opt_hydropower,
-                ) = solve_release_from_dispatch(
-                    dispatch=dispatch_t,
-                    turbine_factor=self.turbine_factor,
-                    max_head=self.max_head,
-                    max_level=self.max_level,
-                    min_level=self.min_level,
-                    level_t0=level_t0,
-                    storage_max=self.max_storage,
-                    storage_t0=storage_t0,
-                    inflow=total_inflow_t,
-                    min_release=min_release_t,
-                    max_release=max_release_t,
-                    max_generation=self.max_generation,
-                    res_name=self.name,
-                )
+                mid_level_t = (level_t + level_t0) / 2
+                hydroenergy_t = self._calc_hydroenergy(release_t, mid_level_t)
+
+                check1 = math.isclose(opt_storage, storage_t, rel_tol=0.05)
+                check2 = math.isclose(opt_level, level_t, rel_tol=0.05)
+                check3 = math.isclose(opt_hydroenergy_t, hydroenergy_t, rel_tol=0.05)
+                if not (check1 and check2 and check3):
+                    raise ValueError("Optimization did not produce the correct values.")
+
+                # Update the reoperation values
+                self.reop_release.loc[day] = release_t
+                self.reop_spill.loc[day] = spill_t
+                self.reop_storage.loc[day] = storage_t
+                self.reop_level[day] = level_t
+                self.reop_hydroenergy.loc[day] = hydroenergy_t
+                return hydroenergy_t
 
             # Catch other cases.
             else:
                 raise ValueError(
                     f"Unknown case: {dispatch_t} vs. {previous_hydroenergy_reop}"
                 )
-
-            # Calculate the storage and level from the release and spill
-            storage_t = storage_t0 + total_inflow_t - release_t - spill_t
-            level_t = self.calc_level_from_storage(storage_t)
-            mid_level_t = (level_t + level_t0) / 2
-
-            _, new_hydroenergy_t = self.calc_hydropower_from_mid_level(
-                release_t, mid_level_t
-            )
-
-            if opt_hydroenergy_t:
-                if abs(new_hydroenergy_t - opt_hydroenergy_t) / opt_hydroenergy_t < 0.3:
-                    new_hydroenergy_t = opt_hydroenergy_t
-                else:
-                    raise ValueError("Hydropower is not close to the optimized value.")
-
-            # Update the reoperation values
-            self.reop_release.loc[day] = release_t
-            self.reop_spill.loc[day] = spill_t
-            self.reop_storage.loc[day] = storage_t
-            self.reop_level[day] = level_t
-            self.reop_hydroenergy.loc[day] = new_hydroenergy_t
-
-        return new_hydroenergy_t
 
 
 class Basin:

@@ -239,11 +239,11 @@ def solve_release_from_dispatch(
     model.setParam("OutputFlag", 0)
 
     # Create variables
-    z = model.addVar(lb=0.0, name="z")
+    mismatch = model.addVar(lb=0.0, name="z")
     release = model.addVar(
         lb=min_release,
         ub=max_release,
-        name="release",
+        name="mismatch",
     )
 
     spill = model.addVar(lb=0.0, name="spill")
@@ -263,11 +263,11 @@ def solve_release_from_dispatch(
     hydroenergy = model.addVar(lb=0.0, name="hydroenergy")
 
     # Set objective
-    model.setObjective(z, gp.GRB.MINIMIZE)
+    model.setObjective(mismatch, gp.GRB.MINIMIZE)
 
     # Bounds of z
-    model.addConstr(-z <= dispatch - hydroenergy, name="c_zlb")
-    model.addConstr(z >= dispatch - hydroenergy, name="c_zub")
+    model.addConstr(-mismatch <= dispatch - hydroenergy, name="c_zlb")
+    model.addConstr(mismatch >= dispatch - hydroenergy, name="c_zub")
 
     # (1) Define hydropower. Note that we need to convert
     # inflow from m3/s to m3/day. Also,
@@ -334,9 +334,9 @@ def solve_release_from_dispatch(
     storage_t = storage.X
     level_t = level.X
     hydroenergy_t = hydroenergy.X
-    z_t = z.X
+    mismatch = mismatch.X
 
-    return release_t, spill_t, storage_t, level_t, hydroenergy_t, z_t, hydropower.X
+    return release_t, spill_t, storage_t, level_t, hydroenergy_t, mismatch, hydropower.X
 
 
 if __name__ == "__main__":
