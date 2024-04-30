@@ -119,6 +119,7 @@ def get_hydro_from_model(model: gp.Model, k: int) -> tuple[pd.DataFrame, int, in
     df = pd.DataFrame(hydropower_dispatch, columns=["reservoir", "hour", "dispatch"])
     # Pivot to have the hour as the index and reservoir as the columns
     df = df.pivot(index="hour", columns="reservoir", values="dispatch")
+    # Update the index to reflect the hour index in a year
     df.index = df.index + k * 24
     start_day = df.index[0] // 24 + 1
     end_day = df.index[-1] // 24 + 1

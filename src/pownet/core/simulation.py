@@ -209,24 +209,23 @@ class Simulator:
     ):
         reop_converge = False
         reop_k = 0
-        # If we are at the first timestep, then we do not reoperate
         while not reop_converge:
             print(f"\nReservoirs reoperation iteration {reop_k}")
             print("New Capacity vs. Current Dispatch")
-            # PowNet returns the hydropower dispatch in hourly resolution
+
+            # PowNet returns the hydropower dispatch in hourly resolution across the simulation horizon
             hydro_dispatch, start_day, end_day = get_hydro_from_model(self.model, k)
             # Convert to daily dispatch
             hydro_dispatch = convert_to_daily_hydro(hydro_dispatch, start_day, end_day)
-            # Use PowNet to reoperate the reservoirs
             new_hydro_capacity = self.reservoir_operator.reoperate_basins(
                 pownet_dispatch=hydro_dispatch
             )
+
             for res in new_hydro_capacity.columns:
                 print(
                     f"{res}: {round(new_hydro_capacity[res].sum(),2)} vs {round(hydro_dispatch[res].sum(),2)}",
                 )
 
-            # Terminate the loop if the reservoirs have converged when difference is less than 1MW-day
             max_deviation = (new_hydro_capacity - hydro_dispatch).abs().max()
             # The tolerance for convergence should be 5% of the largest hydro capacity
             reop_tol = 0.05 * new_hydro_capacity.max()
@@ -234,7 +233,7 @@ class Simulator:
                 reop_converge = True
                 print(f"PowNet: Day {k+1} - Reservoirs converged at iteration {reop_k}")
 
-            if reop_k > 100:
+            if reop_k > 50:
                 raise ValueError(
                     "Reservoirs reoperation did not converge after 100 iterations"
                 )
