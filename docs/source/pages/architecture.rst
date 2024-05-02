@@ -217,23 +217,23 @@ PowNet Output Files
 +---------------------------------------------------------------+---------------------------------------------+
 | File                                                          | Description                                 |
 +===============================================================+=============================================+
-| YYYYMMDD_hhmm_laos_T_flow_variables.csv                       | Flow of electricity in the transmission     |
+| YYYYMMDD_hhmm_country_T_flow_variables.csv                    | Flow of electricity in the transmission     |
 |                                                               | lines. Indexed with (source, sink, time)    |
 |                                                               |                                             |
 +---------------------------------------------------------------+---------------------------------------------+
-| YYYYMMDD_hhmm_laos_T_node_variables.csv                       | hourly power values of different            |
+| YYYYMMDD_hhmm_country_T_node_variables.csv                    | hourly power values of different            |
 |                                                               | power plants based on nodes type (vartype). |
 |                                                               | Indexed with (node, time)                   |
 |                                                               |                                             |
 +---------------------------------------------------------------+---------------------------------------------+
-| YYYYMMDD_hhmm_laos_T_system_variables.csv                     | System level variables, i.e. spinning       |
+| YYYYMMDD_hhmm_country_T_system_variables.csv                  | System level variables, i.e. spinning       |
 |                                                               | reserve. Indexed with (time).               |
 |                                                               |                                             |
 +---------------------------------------------------------------+---------------------------------------------+
-| YYYYMMDD_hhmm_laos_fuelmix.png                                | Output figure showing the generation mix.   |
+| YYYYMMDD_hhmm_country_fuelmix.png                             | Output figure showing the generation mix.   |
 |                                                               |                                             |
 +---------------------------------------------------------------+---------------------------------------------+
-| YYYYMMDD_hhmm_unit_plots/YYYYMMDD_hhmm_laos_XXXXX.png         | Output figure showing the dispatch for      |
+| YYYYMMDD_hhmm_unit_plots/YYYYMMDD_hhmm_country_XXXXX.png      | Output figure showing the dispatch for      |
 |                                                               | each thermal unit and the unit’s on/off     |
 |                                                               | status.                                     |
 |                                                               |                                             |
