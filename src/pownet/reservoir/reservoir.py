@@ -791,6 +791,7 @@ class ReservoirOperator:
             reservoirs = [
                 res for res_lists in basin.reservoirs.values() for res in res_lists
             ]
+            # Increase font size
             for res in reservoirs:
                 fig, ax = plt.subplots(figsize=(13, 7), layout="constrained", dpi=350)
                 ax.plot(res.total_inflow, label="Inflow (m3/day)")
@@ -819,6 +820,15 @@ class ReservoirOperator:
                 )
                 ax2.set_ylabel("Storage (m3)")
                 fig.legend(loc="outside right upper")
+
+                # Save figure
+                output_folder = os.path.join(
+                    get_output_dir(), f"{self.model_name}_reservoirs"
+                )
+                if not os.path.exists(output_folder):
+                    os.makedirs(output_folder, exist_ok=True)
+                fig.savefig(os.path.join(output_folder, f"{res.name}.png"))
+
                 plt.show()
 
     def export_reservoir_outputs(self):
