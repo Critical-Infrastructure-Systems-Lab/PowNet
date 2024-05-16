@@ -852,6 +852,7 @@ class ReservoirOperator:
                         "spill": res.spill,
                         "level": res.level,
                         "mid_level": res.mid_level,
+                        "min_flow": res.min_flow,
                     }
                 )
                 df.to_csv(
@@ -883,5 +884,6 @@ if __name__ == "__main__":
     # Test the ReservoirOperator class
     res_operator = ReservoirOperator(model_name, num_days=365)
     res_operator.simulate()
-    res_operator.export_hydropower_csv(timestep="hourly")
-    res_operator.get_plots()
+    res_operator.export_reservoir_outputs()
+    res_operator.export_hydropower_csv(timestep="daily")
+    # res_operator.get_plots()
