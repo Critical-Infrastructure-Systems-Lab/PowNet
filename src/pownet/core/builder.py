@@ -54,7 +54,7 @@ class ModelBuilder:
         self.pimp = None  # import
 
         self.spin = None  # unit-specific spinning reserve
-        self.sys_spin = None  # system-wide spinning reserve
+        self.sys_spin = None  # system-wide spinning reserve shortfall
 
         self.s_pos = None
         self.s_neg = None
@@ -799,9 +799,6 @@ class ModelBuilder:
     def _c_reserve_req_carrion(self):
         """Equation 67 of Kneuven et al (2019). System-wide spinning reserve requirement.
         We substitute in the max_dispatch using Equation 13.
-
-        THE FORMULATION IN KNUEVEN ET AL  (2020) IS MISLEADING. WE NEED TO
-        CONSIDER GENERATION FROM ALL GENERATORS AND NOT JUST THERMAL UNITS.
         """
         raise NotImplementedError("This formulation needs modification.")
         self.model.addConstrs(
@@ -823,7 +820,10 @@ class ModelBuilder:
         )
 
     def _c_reserve_req(self):
-        """Equation 68 of Kneuven et al (2019)."""
+        """Equation 68 of Kneuven et al (2019). This spinning reserve constraint
+        is based on Morales-España et al. (2013).
+        
+        """
         self.model.addConstrs(
             (
                 gp.quicksum(
