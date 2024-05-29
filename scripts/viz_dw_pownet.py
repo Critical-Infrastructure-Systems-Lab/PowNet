@@ -8,20 +8,11 @@ import os
 import re
 
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
+import pandas as pd
 import seaborn as sns
 
-from pownet.folder_sys import get_temp_dir, get_output_dir
-
-from functions import (
-    read_dw_stats,
-    calc_percent_change,
-    get_total_daily_load,
-    get_total_daily_renewable,
-    get_total_daily_from_output,
-)
-
+from pownet.folder_sys import get_temp_dir
 
 naming_map = {
     "dw_gap": "Optimality gap (%)",
@@ -45,6 +36,8 @@ def plot_scatter(df, model_name: str, xname: str, yname: str):
     plt.show()
 
 
+figure_folder = os.path.join(get_temp_dir(), "figures_dw")
+
 # %% Load the data
 folder_name = os.path.join(get_temp_dir(), "dw_stats")
 stats = pd.read_csv(os.path.join(folder_name, "dw_experiment_outputs.csv"))
@@ -54,7 +47,14 @@ stats["dw_gen_col_time"] = stats["master_time"] + stats["subp_time"]
 # Capitalize country names
 stats["model_name"] = stats["model_name"].str.capitalize()
 
-# %% Plot the sample space of solution quality
+# Calculate speed-up of optim.time
+stats["xSpeedup"] = stats["mip_gurobi_time"] / stats["dw_total_time"]
+
+# Calculate-speed-up of wallclock
+stats["x_wallclock"] = stats["wall_clock_mip_gurobi"] / stats["wall_clock_dw"]
+
+
+# %% SAMPLE SPACE: OPTIMALITY GAP
 print("\nSample space of DW OPTGap")
 g = sns.FacetGrid(stats, row="set_rmpgap", col="set_dwimprove", margin_titles=True)
 g.map(
@@ -64,9 +64,11 @@ g.map(
     order=["Laos", "Cambodia", "Thailand"],
     linewidth=2.5,
 )
+plt.show()
 
 
-# %% Compare Opt.time
+# %% SAMPLE SPACE: RUNTIME
+
 print("\nSample space of DW opt.time")
 g = sns.FacetGrid(stats, row="set_rmpgap", col="set_dwimprove", margin_titles=True)
 g.map(
@@ -87,87 +89,105 @@ print("Mean DW GAP(%)")
 print(stats_grouped["dw_gap"])
 
 
-# %% Plot time series of the best case of DW against MIP Gurobi
+# %% TIMESERIES OF OPT.TIME
+def plot_log_time_series(df, country):
+    fig, ax = plt.subplots()
+    ax.semilogy(
+        df["master_mip_time"],
+        label="DW: Selecting schedule",
+        # alpha=0.75,
+        linewidth=1.25,
+    )
+    ax.semilogy(
+        df["dw_gen_col_time"],
+        label="DW: Generating schedules",
+        # alpha=0.5,
+        linewidth=1.25,
+    )
+    ax.semilogy(
+        df["mip_gurobi_time"],
+        label="Gurobi",
+        # alpha=0.75,
+        linewidth=1.25,
+        color="black",
+    )
+    ax.set_xlabel("Day")
+    ax.set_ylabel("Optimization time (s)")
+    ax.set_title(f"{country} over 24-hr horizon")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
+
+    country = df["model_name"].iloc[0]
+    fig.savefig(
+        os.path.join(figure_folder, f"dw_time_{country}.png"),
+        dpi=350,
+        bbox_inches="tight",
+    )
+
+    plt.show()
+
+
 best_dw_thailand = stats[
     (stats["model_name"] == "Thailand")
     & (stats["set_rmpgap"] == 50)
     & (stats["set_dwimprove"] == 50)
 ]
 best_dw_thailand = best_dw_thailand.reset_index(drop=True)
+plot_log_time_series(best_dw_thailand, country="Thailand")
 
-# Something weird happen at the 108th day with 100 and 100
-
-
-def plot_log_time_series(df):
-    fig, ax = plt.subplots()
-    ax.semilogy(
-        df["mip_gurobi_time"],
-        label="MIP",
-        alpha=1,
-        linewidth=2,
-    )
-    ax.semilogy(
-        df["dw_gen_col_time"],
-        label="DW: Generating schedules",
-        alpha=0.5,
-        linewidth=1,
-    )
-    ax.semilogy(
-        df["master_mip_time"],
-        label="DW: Selecting schedules",
-        alpha=1,
-        linewidth=2,
-    )
-    ax.set_xlabel("Day")
-    ax.set_ylabel("Optimization time (s)")
-    ax.set_title("Thailand over 24-hr horizon")
-    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
-    plt.show()
+best_dw_laos = stats[
+    (stats["model_name"] == "Laos")
+    & (stats["set_rmpgap"] == 50)
+    & (stats["set_dwimprove"] == 50)
+]
+best_dw_laos = best_dw_laos.reset_index(drop=True)
+plot_log_time_series(best_dw_laos, country="Laos")
 
 
-plot_log_time_series(best_dw_thailand)
-
-
-# %% Show the effects of parameterization for dw_improve 50% and dw_rmpgap at 50%
-sel_rmpgap = 50
+# %% Select RMPGAP
+sel_rmpgap = 50  # [1.e+01, 1.e-04, 1.e-02, 1.e+00, 5.e+01]
 param_subset = stats[
     (stats["set_rmpgap"] == sel_rmpgap) & (stats["set_dwimprove"] >= 50)
 ]
+
+param_subset2 = stats[(stats["set_rmpgap"] == 0.0001) & (stats["set_dwimprove"] >= 50)]
+
+
+# %% OPTIMALITY GAP - BOXPLOT
 g = sns.FacetGrid(
-    param_subset, row="set_rmpgap", col="set_dwimprove", margin_titles=True
+    param_subset, col="set_dwimprove", margin_titles=True, height=3, col_wrap=3
 )
 g.map(
     sns.boxplot,
     "model_name",
     "dw_gap",
     order=["Laos", "Cambodia", "Thailand"],
-    linewidth=2.5,
+    linewidth=1.5,
 )
 re_pat = r"""\=\s(\d+.\d+)"""
 for ax in g.axes.flatten():
     # Get the numerical value from the title
     dw_improve = ax.get_title()
     dw_improve = re.findall(re_pat, dw_improve)[0]
-    ax.set_title(f"Increm. improve: {dw_improve} %")
+    ax.set_title(f"Obj.Improve: {dw_improve} %")
 
     plt.setp(ax.texts, text=f"RMPGap {sel_rmpgap} (%)")
 
     ax.set_xlabel("")
     ax.set_ylabel("Optimality gap (%)")
 
+g.figure.savefig(
+    os.path.join(figure_folder, "dw_gap_rmpgap50.png"), dpi=350, bbox_inches="tight"
+)
 
-# %% Find the solution quality based on set_rmpgap = 10 and set_dwimprove = 10 for all countries
-# Need to update this plot once we have gotten additional data points
-# param_subset = param_subset[param_subset["set_dwimprove"] == 10]
-cols2group = ["model_name", "T_simulate", "set_rmpgap", "set_dwimprove"]
-param_subset.groupby(cols2group).mean()["dw_gap"]
-print(param_subset.groupby(cols2group).mean()["dw_gap"])
+plt.show()
 
 
-# %% Plot the speed-up
+# %% BARPLOT SPEED-UP - OPT.TIME
+
 param_subset.loc[:, "xSpeedup"] = (
     param_subset["mip_gurobi_time"] / param_subset["dw_total_time"]
 )
+
 g = sns.FacetGrid(
     param_subset,
     row="set_rmpgap",
@@ -206,43 +226,311 @@ laos100["dw_gen_col_time"] = laos100["master_time"] + laos100["subp_time"]
 # Indicate if the master_time is quicker than mip_gurobi_time
 laos100["is_master_quicker"] = laos100["mip_gurobi_time"] > laos100["master_time"]
 
+alpha = 0.6
 
 fig, ax = plt.subplots()
 ax.semilogy(
-    laos100["mip_gurobi_time"],
-    label="MIP",
-    alpha=1,
-    linewidth=2,
+    laos100["master_mip_time"],
+    label="DW: Selecting schedule",
+    linewidth=1.25,
+    alpha=alpha,
 )
 ax.semilogy(
     laos100["dw_gen_col_time"],
     label="DW: Generating schedules",
-    alpha=0.5,
-    linewidth=0.5,
+    linewidth=1.25,
+    alpha=alpha,
 )
 ax.semilogy(
-    laos100["master_mip_time"],
-    label="DW: Selecting schedules",
-    alpha=1,
-    linewidth=2,
+    laos100["mip_gurobi_time"],
+    label="MIP",
+    linewidth=1.25,
+    color="black",
+    linestyle="dashed",
+    # alpha=alpha,
 )
 
 ax.set_xlabel("Day")
 ax.set_ylabel("Optimization time (s)")
 ax.set_title("Laos (without spinning reserve)\n over 24-hr horizon")
 
-# Highlight that area when the master_time is quicker than gurobi_mip_time
+
+# Overlay with solid line when the master problem is quicker
+subset_df = laos100.copy()
+subset_df.loc[~subset_df["is_master_quicker"], "master_mip_time"] = np.nan
+ax.semilogy(
+    subset_df["master_mip_time"],
+    label="DW: Selecting schedule",
+    linewidth=2.5,
+    c="tab:blue",
+)
+
+"""# Highlight that area when the master_time is quicker than gurobi_mip_time
 for idx, row in laos100.iterrows():
     if row["is_master_quicker"]:
         ax.axvspan(
             idx - 0.5,
             idx + 0.5,
-            alpha=0.5,
-            color="yellow",
+            alpha=0.1,
+            color="green",
             label="",
         )
+"""
 plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
+fig.savefig(
+    os.path.join(figure_folder, f"dw_time_laos_100.png"), dpi=350, bbox_inches="tight"
+)
 plt.show()
 
+
+# %% SPEED-UP - OPTIMIZATION - LinePlot
+name_map = {
+    "set_dwimprove": "Obj.improve (%)",
+    "x_wallclock": "xSpeed-up (Wallclock)",
+    "xSpeedup": "xSpeed-up (Opt.time)",
+    "dw_gap": "Optimality gap (%)",
+}
+"""
+def plot_line(df, x_name, y_name, ymax, set_rmpgap, horizontal_line=True):
+
+    g = sns.FacetGrid(df, col="model_name", sharey=True, height=3)
+    g.map(
+        sns.lineplot,
+        x_name,
+        y_name,
+        linewidth=2.5,
+    )
+    g.figure.suptitle(
+        f"Discrete Dantzig-Wolfe w/ duality gap {set_rmpgap}%",
+        fontweight="bold",
+        y=1.03,
+    )
+
+    ax_id = 0
+    for ax in g.axes.flatten():
+        country = ax.get_title().split("|")[0].strip()
+        country = country.split("=")[1].strip()
+
+        ax.set_title(f"{country.title()} over 24-hour")
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        # The figure is 3x3. Only the bottom row should have x-axis labels
+        # Only the left column should have y-axis labels
+        if ax_id == 0:
+            ax.set_ylabel(name_map[y_name])
+        if ax_id == 1:
+            ax.set_xlabel(name_map[x_name])
+        ax_id += 1
+
+        ax.set_ylim(0, ymax)
+
+        if horizontal_line:
+            ax.axhline(1, ls="--", color="k", label=["1.0x"])
+
+        g.figure.savefig(
+            os.path.join(figure_folder, f"dw_{y_name}_{set_rmpgap}.png"),
+            dpi=350,
+            bbox_inches="tight",
+        )
+    plt.show()
+
+
+plot_line(
+    param_subset,
+    x_name="set_dwimprove",
+    y_name="x_wallclock",
+    ymax=2,
+    set_rmpgap=sel_rmpgap,
+)
+
+y_name = "xSpeedup"
+plot_line(
+    param_subset,
+    x_name="set_dwimprove",
+    y_name="xSpeedup",
+    ymax=2,
+    set_rmpgap=sel_rmpgap,
+)
+
+plot_line(
+    param_subset,
+    "set_dwimprove",
+    "dw_gap",
+    ymax=25,
+    set_rmpgap=sel_rmpgap,
+    horizontal_line=False,
+)
+plot_line(
+    param_subset2,
+    "set_dwimprove",
+    "x_wallclock",
+    ymax=2,
+    set_rmpgap=0.0001,
+)
+
+plot_line(
+    param_subset2,
+    "set_dwimprove",
+    "xSpeedup",
+    ymax=2,
+    set_rmpgap=0.0001,
+)
+
+plot_line(
+    param_subset2,
+    "set_dwimprove",
+    "dw_gap",
+    ymax=25,
+    set_rmpgap=0.0001,
+    horizontal_line=False,
+)
+
+"""
+
+# %% LINEPLOT - OPTIMALITY GAP
+
+sel_rmpgaps = [0.0001, 50]
+
+subset = stats.loc[
+    (stats["set_dwimprove"] >= 50) & (stats["set_rmpgap"].isin(sel_rmpgaps))
+]
+
+g = sns.FacetGrid(
+    subset,
+    hue="set_rmpgap",
+    col="model_name",
+    sharey=True,
+)
+g.map(sns.lineplot, "set_dwimprove", "dw_gap", linewidth=2.5, alpha=0.5)
+
+ax_id = 0
+for ax in g.axes.flatten():
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+    ax.set_title(f"{country.title()} over 24-hour")
+
+    ax.set_ylim(0, 25)
+
+    # Format labels
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    if ax_id == 0:
+        ax.set_ylabel("Optimality gap (%)")
+    if ax_id == 1:
+        ax.set_xlabel("Obj.improve (%)")
+    ax_id += 1
+
+
+# Format legend
+g.add_legend(title="Dual Gap (%)")
+
+g.figure.savefig(
+    os.path.join(figure_folder, f"dw_gap.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+plt.show()
+
+
+# %% LINEPLOT - SPEED-UP (OPT.TIME)
+
+g = sns.FacetGrid(
+    subset,
+    hue="set_rmpgap",
+    col="model_name",
+    sharey=True,
+)
+
+g.map(sns.lineplot, "set_dwimprove", "xSpeedup", linewidth=2.5, alpha=0.5)
+
+ax_id = 0
+for ax in g.axes.flatten():
+    # Horizontal line at 1.0x
+    ax.axhline(1, ls="--", color="k", label="1.0x")
+
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+    ax.set_title(f"{country.title()} over 24-hour")
+
+    ax.set_ylim(0, 1.5)
+
+    # Format labels
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    if ax_id == 0:
+        ax.set_ylabel("xSpeed-up (Opt.time)")
+    if ax_id == 1:
+        ax.set_xlabel("Obj.improve (%)")
+    ax_id += 1
+
+
+# Format legend
+handles, labels = ax.get_legend_handles_labels()
+g.figure.legend(
+    handles,
+    labels,
+    title="Dual Gap (%)",
+    loc="outside lower right",
+    bbox_to_anchor=(1, -0.15),
+    # bbox
+    ncol=3,
+)
+
+g.figure.savefig(
+    os.path.join(figure_folder, f"dw_speedup_opttime.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+# %% LINEPLOT - SPEED-UP (WALLCLOCK)
+
+g = sns.FacetGrid(
+    subset,
+    hue="set_rmpgap",
+    col="model_name",
+    sharey=True,
+)
+
+g.map(sns.lineplot, "set_dwimprove", "x_wallclock", linewidth=2.5, alpha=0.5)
+
+ax_id = 0
+for ax in g.axes.flatten():
+    # Horizontal line at 1.0x
+    ax.axhline(1, ls="--", color="k", label="1.0x")
+
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+    ax.set_title(f"{country.title()} over 24-hour")
+
+    ax.set_ylim(0, 1.5)
+
+    # Format labels
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    if ax_id == 0:
+        ax.set_ylabel("xSpeed-up (Wall clock)")
+    if ax_id == 1:
+        ax.set_xlabel("Obj.improve (%)")
+    ax_id += 1
+
+
+# Format legend
+handles, labels = ax.get_legend_handles_labels()
+g.figure.legend(
+    handles,
+    labels,
+    title="Dual Gap (%)",
+    loc="outside lower right",
+    bbox_to_anchor=(1, -0.15),
+    # bbox
+    ncol=3,
+)
+
+g.figure.savefig(
+    os.path.join(figure_folder, f"dw_speedup_wallclock.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
 
 # %%
