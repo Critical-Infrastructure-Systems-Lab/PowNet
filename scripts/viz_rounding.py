@@ -3,13 +3,15 @@ import os
 import re
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import pandas as pd
 import seaborn as sns
-import seaborn.objects as so
 
 from pownet.folder_sys import get_temp_dir
 from functions import calc_percent_change
 
+plt.rc("font", size=14)
+plt.rc("axes", titlesize=12)
 
 # --- Load the data
 # Specify the folder where the figures are stored
@@ -24,9 +26,10 @@ input_folder = "new_rounding_stats"
 name_map = {
     "fast": "Fast rounding",
     "slow": "Slow rounding",
-    "round_gap": "OPTGap (%)",
+    "round_gap": "Optimality gap (%)",
     "round_threshold": "Rounding threshold",
-    "opt_xspeed": "x(Optimization time)",
+    "opt_xspeed": "xSpeed-up (Opt.time)",
+    "wall_clock_xspeed": "xSpeed-up (Wall clock)",
 }
 
 # %% Read statistics from files and compile into a single dataframe
@@ -43,9 +46,11 @@ for file in files:
 
     # Read the file
     subset = pd.read_csv(os.path.join(get_temp_dir(), "new_rounding_stats", file))
+
     # Add information to the dataframe
     subset["round_strategy"] = round_strategy
     subset["round_threshold"] = float(round_threshold)
+
     # Process new features based on existing features
     subset["round_gap"] = calc_percent_change(
         subset["rounding_objval"], subset["true_objval"]
@@ -58,6 +63,7 @@ for file in files:
     subset["fraction_runtime"] = (
         subset["rounding_opt_time"] / subset["wall_clock_rounding"]
     )
+
     # Append the new df to the master_df
     compiled_df = pd.concat([compiled_df, subset], axis=0)
 
@@ -67,7 +73,8 @@ compiled_df = compiled_df.sort_values(
     by=["model_name", "round_strategy", "round_threshold"]
 )
 
-# %% Plot the fraction of causes of infeasibility
+
+# %% INFEASIBILITY
 # Calculate fractions of feasible/infeasible solutions
 cols2subset = ["model_name", "T_simulate", "round_strategy", "round_threshold"]
 infeasibility_df = (
@@ -76,7 +83,6 @@ infeasibility_df = (
 infeasibility_df["feasible"] = 1 - infeasibility_df["rounding_is_feasible"]
 infeasibility_df.columns = ["True", "False"]
 infeasibility_df = infeasibility_df.reset_index()
-
 
 strategies = ["slow", "fast"]
 model_T_pairs = [
@@ -89,11 +95,282 @@ model_T_pairs = [
     for T_simulate in [24, 48, 72]
 ]
 
+thresholds = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
+
+subset_infeasible = infeasibility_df[
+    infeasibility_df["round_threshold"].isin(thresholds)
+]
+
+
+# %% VISUALIZE INFEASIBILITY
+# Plot the fraction of infeasibility as a dot for the fast and slow strategies with seaborn
+# Subset to rounding thresholds of [0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50]
+xlabels = [f"{t:.2f}" for t in thresholds]
+
+g = sns.FacetGrid(
+    subset_infeasible,
+    col="T_simulate",
+    row="model_name",
+    row_order=["laos", "cambodia", "thailand"],
+    hue="round_strategy",
+)
+
+g.map(
+    sns.pointplot,
+    "round_threshold",
+    "True",
+    # alpha=0.45,
+    order=thresholds,
+    hue_order=strategies,
+)
+
+# g.add_legend(title="Rounding strategy")
+g.set_axis_labels(name_map["round_threshold"], "Fraction of feasible instances")
+
+# Format the figure
+ax_id = 0
+for ax in g.axes.flatten():
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+
+    T_simulate = ax.get_title().split("|")[1].strip()
+    T_simulate = T_simulate.split("=")[1].strip()
+
+    ax.set_title(f"{country.title()} over {T_simulate}-hour")
+
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    # Selectively add xlabel and ylabel
+    if ax_id == 3:
+        ax.set_ylabel("Fraction of feasible instances")
+    if ax_id == 7:
+        ax.set_xlabel(name_map["round_threshold"])
+    ax_id += 1
+
+    # Rotate xticks to 90 degrees
+    xticks = [float(t.get_text()) for t in ax.get_xticklabels()]
+    ax.xaxis.set_major_locator(mticker.FixedLocator(ax.get_xticks()))
+    ax.set_xticklabels(xlabels, rotation=90)
+
+# Capitalize the legend of the figure
+handles, labels = g.axes.flatten()[0].get_legend_handles_labels()
+labels = [label.title() for label in labels]
+g.figure.legend(
+    handles,
+    labels,
+    title="Rounding strategy",
+    loc="outside lower right",
+    bbox_to_anchor=(1, -0.1),
+    # bbox_transform=g.figure.transFigure,
+    ncol=2,
+)
+
+# Savefigure
+g.figure.savefig(
+    os.path.join(figure_folder, "rounding_infeasibility.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+
+plt.show()
+
+# %% PLOT OPTIMALITY GAP AS LINE PLOT
+feasible_df = compiled_df[compiled_df["rounding_is_feasible"]].reset_index()
+
+g_optgap = sns.FacetGrid(
+    feasible_df,
+    col="T_simulate",
+    row="model_name",
+    row_order=["laos", "cambodia", "thailand"],
+    hue="round_strategy",
+)
+
+g_optgap.map(
+    sns.lineplot,
+    "round_threshold",
+    "round_gap",
+    hue_order=strategies,
+)
+
+
+ax_id = 0
+for ax in g_optgap.axes.flatten():
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+
+    T_simulate = ax.get_title().split("|")[1].strip()
+    T_simulate = T_simulate.split("=")[1].strip()
+
+    ax.set_title(f"{country.title()} over {T_simulate}-hour")
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
+    ax.set_ylim(0, 10)
+
+    # Selectively add xlabel and ylabel
+    if ax_id == 3:
+        ax.set_ylabel(name_map["round_gap"])
+    if ax_id == 7:
+        ax.set_xlabel(name_map["round_threshold"])
+    ax_id += 1
+
+# Capitalize the legend of the figure
+handles, labels = g_optgap.axes.flatten()[0].get_legend_handles_labels()
+labels = [label.title() for label in labels]
+g_optgap.figure.legend(
+    handles,
+    labels,
+    title="Rounding strategy",
+    loc="outside lower right",
+    bbox_to_anchor=(1, -0.07),
+    # bbox_transform=g.figure.transFigure,
+    ncol=2,
+)
+
+# Save figure
+g_optgap.figure.savefig(
+    os.path.join(figure_folder, "rounding_optimality_gap.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+plt.show()
+
+
+# %% LINEPLOT SPEEDUP (OPT.TIME)
+
+g_speedup = sns.FacetGrid(
+    feasible_df,
+    col="T_simulate",
+    row="model_name",
+    row_order=["laos", "cambodia", "thailand"],
+    hue="round_strategy",
+)
+
+g_speedup.map(
+    sns.lineplot,
+    "round_threshold",
+    "opt_xspeed",
+    hue_order=strategies,
+)
+
+ax_id = 0
+for ax in g_speedup.axes.flatten():
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+
+    T_simulate = ax.get_title().split("|")[1].strip()
+    T_simulate = T_simulate.split("=")[1].strip()
+
+    ax.set_title(f"{country.title()} over {T_simulate}-hour")
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
+    ax.set_ylim(0, 12)
+
+    ax.axhline(1, ls="--", color="k", label="1.0x")
+
+    # Selectively add xlabel and ylabel
+    if ax_id == 3:
+        ax.set_ylabel(name_map["opt_xspeed"])
+    if ax_id == 7:
+        ax.set_xlabel(name_map["round_threshold"])
+    ax_id += 1
+
+# Capitalize the legend of the figure
+handles, labels = g_speedup.axes.flatten()[0].get_legend_handles_labels()
+labels = [label.title() for label in labels]
+g_speedup.figure.legend(
+    handles,
+    labels,
+    title="Rounding strategy",
+    loc="outside lower right",
+    bbox_to_anchor=(1, -0.07),
+    # bbox
+    ncol=3,
+)
+
+# Save figure
+g_speedup.figure.savefig(
+    os.path.join(figure_folder, "rounding_speedup_opttime.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+plt.show()
+
+
+# %% LINEPLOT SPEEDUP (WALL CLOCK)
+
+g_speedup_wall = sns.FacetGrid(
+    feasible_df,
+    col="T_simulate",
+    row="model_name",
+    row_order=["laos", "cambodia", "thailand"],
+    hue="round_strategy",
+)
+
+g_speedup_wall.map(
+    sns.lineplot,
+    "round_threshold",
+    "wall_clock_xspeed",
+    hue_order=strategies,
+)
+
+ax_id = 0
+for ax in g_speedup_wall.axes.flatten():
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+
+    T_simulate = ax.get_title().split("|")[1].strip()
+    T_simulate = T_simulate.split("=")[1].strip()
+
+    ax.set_title(f"{country.title()} over {T_simulate}-hour")
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
+    ax.set_ylim(0, 12)
+
+    ax.axhline(1, ls="--", color="k", label="1.0x")
+
+    # Selectively add xlabel and ylabel
+    if ax_id == 3:
+        ax.set_ylabel(name_map["wall_clock_xspeed"])
+    if ax_id == 7:
+        ax.set_xlabel(name_map["round_threshold"])
+    ax_id += 1
+
+# Capitalize the legend of the figure
+handles, labels = g_speedup_wall.axes.flatten()[0].get_legend_handles_labels()
+labels = [label.title() for label in labels]
+g_speedup_wall.figure.legend(
+    handles,
+    labels,
+    title="Rounding strategy",
+    loc="outside lower right",
+    bbox_to_anchor=(1, -0.07),
+    # bbox
+    ncol=3,
+)
+
+# Save figure
+g_speedup_wall.figure.savefig(
+    os.path.join(figure_folder, "rounding_speedup_wallclock.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+
+"""
+# %% Visualize the fraction of infeasible solutions
 
 for strategy in strategies:
     fig, axes = plt.subplots(
-        nrows=3, ncols=3, figsize=(10, 10), layout="constrained", sharey=True
+        nrows=3, ncols=3, figsize=(12, 10), layout="constrained", sharey=True
     )
+
+    ax_id = 0
     for ax, (model_name, T_simulate) in zip(axes.flatten(), model_T_pairs):
         subset = infeasibility_df[
             (infeasibility_df["model_name"] == model_name)
@@ -106,9 +383,16 @@ for strategy in strategies:
 
         subset.plot.bar(stacked=True, legend=False, ax=ax)
 
-        ax.set_ylabel("Fraction of solutions")
+        ax.set_ylabel("")
         ax.set_xlabel("")
-        ax.set_title(f"{model_name.title()} over {T_simulate}-hour horizon")
+        ax.set_title(f"{model_name.title()} over {T_simulate}-hour {ax_id}")
+
+        # The figure is 3x3. Only the bottom row should have x-axis labels
+        # Only the left column should have y-axis labels
+        if ax_id == 3:
+            ax.set_ylabel("Fraction of instances")
+        if ax_id == 7:
+            ax.set_xlabel(name_map["round_threshold"])
 
         # Add legend
         handles, labels = ax.get_legend_handles_labels()
@@ -116,30 +400,36 @@ for strategy in strategies:
             handles,
             labels,
             title="Feasible Solution",
-            loc="outside lower center",
-            ncol=4,
+            loc="outside lower right",
+            ncol=2,
         )
+
+        ax_id += 1
 
     fig.suptitle(f"Rounding strategy: {strategy.upper()}", fontweight="bold")
 
     fig.savefig(
-        os.path.join(figure_folder, f"fraction_causes_infeasibility_{strategy}.png"),
+        os.path.join(figure_folder, f"infeasibility_{strategy}.png"),
         dpi=350,
     )
     plt.show()
 
+# %% OPTIMALITY GAP
 
-# %% Visualize the solution quality
 # Filter to only feasible solutions
 feasible_df = compiled_df[compiled_df["rounding_is_feasible"]].reset_index()
 
 # Filter to only low rounding thresholds (0, 0.01, 0.05, 0.1)
-feasible_df = feasible_df[feasible_df["round_threshold"] != 0.5]
+# feasible_df = feasible_df[feasible_df["round_threshold"] != 0.5]
 
 
 def grid_line_plot(df, x_name, y_name, strategy, sup_title, figure_name):
     subset = df[df["round_strategy"] == strategy]
-    g = sns.FacetGrid(subset, col="T_simulate", row="model_name")
+    g = sns.FacetGrid(
+        subset,
+        col="T_simulate",
+        row="model_name",
+    )
     g.map(
         sns.lineplot,
         x_name,
@@ -150,9 +440,10 @@ def grid_line_plot(df, x_name, y_name, strategy, sup_title, figure_name):
     g.figure.suptitle(
         sup_title,
         fontweight="bold",
-        y=1.05,
+        y=1.01,
     )
 
+    ax_id = 0
     for ax in g.axes.flatten():
         country = ax.get_title().split("|")[0].strip()
         country = country.split("=")[1].strip()
@@ -160,14 +451,22 @@ def grid_line_plot(df, x_name, y_name, strategy, sup_title, figure_name):
         T_simulate = ax.get_title().split("|")[1].strip()
         T_simulate = T_simulate.split("=")[1].strip()
 
-        ax.set_title(f"{country.title()} over {T_simulate}-hour horizon")
-
-        ax.set_xlabel(name_map[x_name])
-        ax.set_ylabel(name_map[y_name])
+        ax.set_title(f"{country.title()} over {T_simulate}-hour")
+        ax.set_xlabel("")
+        ax.set_ylabel("")
 
         ax.set_ylim(0, 5)
 
-    g.figure.savefig(os.path.join(figure_folder, figure_name), dpi=350)
+        # Selectively add xlabel and ylabel
+        if ax_id == 3:
+            ax.set_ylabel(name_map[y_name])
+        if ax_id == 7:
+            ax.set_xlabel(name_map[x_name])
+        ax_id += 1
+
+    g.figure.savefig(
+        os.path.join(figure_folder, figure_name), dpi=350, bbox_inches="tight"
+    )
     plt.show()
 
 
@@ -182,62 +481,78 @@ for strategy in strategies:
     )
 
 
-# %% Visualize the opt.time speed-up
-# opt_time speed-up
-g = sns.FacetGrid(feasible_df, col="round_strategy", row="model_name")
-g = g.map(sns.lineplot, "round_threshold", "opt_xspeed", "model_name", linewidth=2.5)
-
-g.set_titles(col_template="{col_name}", row_template="{row_name}")
-g.set_axis_labels("Rounding threshold", "x(Opt.time)")
-# Add horizontal lines at breakeven point of 1.0x
-for ax in g.axes.flatten():
-    ax.axhline(1, ls="--", color="k", label=["1.0x"])
-    country = ax.get_title().split("|")[0].strip()
-    strategy = ax.get_title().split("|")[1].strip()
-    ax.set_title(f"{country.title()} | {name_map[strategy]}")
-
-# g.figure.savefig(os.path.join(figure_folder, "xopttime_vs_thresholds.png"), dpi=350)
-plt.show()
+# %% SPEEDUP - OPT.TIME
 
 
-# %% Visualize the opt.time speed-up
-# opt_time speed-up
+def plot_speedup(
+    df, x_name, y_name, runtime_name="Opt.time", heuristic_name="rounding"
+):
+    strategies = ["slow", "fast"]
+    for strategy in strategies:
+        subset = df[df["round_strategy"] == strategy]
+        g = sns.FacetGrid(subset, col="T_simulate", row="model_name")
+        g.map(
+            sns.lineplot,
+            x_name,
+            y_name,
+            linewidth=2.5,
+            label=f"x({runtime_name})",
+        )
+        # g.figure.suptitle(f"Speed-up of {strategy} rounding", fontweight="bold", y=1.05)
+        if heuristic_name == "rounding":
+            g.figure.suptitle(
+                f"Rounding strategy: {strategy.upper()}",
+                fontweight="bold",
+                y=1.01,
+            )
+        elif heuristic_name == "dw":
+            g.figure.suptitle(
+                "Discrete Dantzig-Wolfe",
+                fontweight="bold",
+                y=1.01,
+            )
 
-for strategy in strategies:
-    subset = feasible_df[feasible_df["round_strategy"] == strategy]
-    g = sns.FacetGrid(subset, col="T_simulate", row="model_name")
-    g.map(
-        sns.lineplot,
-        "round_threshold",
-        "opt_xspeed",
-        linewidth=2.5,
-        label="x(Opt.time)",
-    )
-    # g.figure.suptitle(f"Speed-up of {strategy} rounding", fontweight="bold", y=1.05)
-    g.figure.suptitle(
-        f"Rounding strategy: {strategy.upper()}", fontweight="bold", y=1.05
-    )
+        ax_id = 0
+        for ax in g.axes.flatten():
+            country = ax.get_title().split("|")[0].strip()
+            country = country.split("=")[1].strip()
 
-    for ax in g.axes.flatten():
-        country = ax.get_title().split("|")[0].strip()
-        country = country.split("=")[1].strip()
+            T_simulate = ax.get_title().split("|")[1].strip()
+            T_simulate = T_simulate.split("=")[1].strip()
 
-        T_simulate = ax.get_title().split("|")[1].strip()
-        T_simulate = T_simulate.split("=")[1].strip()
+            ax.set_title(f"{country.title()} over {T_simulate}-hour")
+            ax.set_xlabel("")
+            ax.set_ylabel("")
 
-        ax.set_title(f"{country.title()} over {T_simulate}-hour horizon")
+            ax.set_ylim(0, 12)
 
-        ax.set_xlabel(name_map["round_threshold"])
-        ax.set_ylabel(name_map["opt_xspeed"])
-        ax.set_ylim(0, 12)
+            ax.axhline(1, ls="--", color="k", label=["1.0x"])
 
-        ax.axhline(1, ls="--", color="k", label=["1.0x"])
+            # Selectively add xlabel and ylabel
+            if ax_id == 3:
+                ax.set_ylabel(name_map[y_name])
+            if ax_id == 7:
+                ax.set_xlabel(name_map[x_name])
+            ax_id += 1
 
         g.figure.savefig(
-            os.path.join(figure_folder, f"rounding_speedup_{strategy}.png"), dpi=350
+            os.path.join(
+                figure_folder,
+                f"{heuristic_name}_{y_name}_{strategy}.png",
+            ),
+            bbox_inches="tight",
+            dpi=350,
         )
+        plt.show()
 
-# g.figure.savefig(os.path.join(figure_folder, "xopttime_vs_thresholds.png"), dpi=350)
-plt.show()
+
+x_name = "round_threshold"
+y_name = "opt_xspeed"  # wall_clock_xspeed
+plot_speedup(feasible_df, x_name, y_name)
+
+y_name = "wall_clock_xspeed"
+plot_speedup(feasible_df, x_name, y_name, runtime_name="Wall clock")
 
 # %%
+
+"""
