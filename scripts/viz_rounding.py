@@ -362,8 +362,81 @@ g_speedup_wall.figure.savefig(
 )
 
 
+# %% Create box plots of the number of rounding iterations, or the rounding_k column
+feasible_df["rounding_k"] = feasible_df["rounding_k"].astype(int)
+
+# Subset to rounding thresholds in thresholds
+subset = feasible_df[feasible_df["round_threshold"].isin(thresholds)]
+
+g_rounding_k = sns.catplot(
+    subset,
+    x="round_threshold",
+    y="rounding_k",
+    col="T_simulate",
+    row="model_name",
+    row_order=["laos", "cambodia", "thailand"],
+    hue="round_strategy",
+    kind="box",
+    sharey=False,
+    height=4,
+    # log_scale=True,
+)
+
+ax_id = 0
+for ax in g_rounding_k.axes.flatten():
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+
+    T_simulate = ax.get_title().split("|")[1].strip()
+    T_simulate = T_simulate.split("=")[1].strip()
+
+    ax.set_title(f"{country.title()} over {T_simulate}-hour", fontsize=15)
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
+    # Selectively add xlabel and ylabel
+    if ax_id == 3:
+        ax.set_ylabel("Number of rounding iterations", fontsize=16)
+    if ax_id == 7:
+        ax.set_xlabel(name_map["round_threshold"], fontsize=16)
+    ax_id += 1
+
+    # Rotate xticks to 90 degrees
+    xticks = [float(t.get_text()) for t in ax.get_xticklabels()]
+    ax.xaxis.set_major_locator(mticker.FixedLocator(ax.get_xticks()))
+    ax.set_xticklabels(xlabels, rotation=90)
+
+# Capitalize the legend of the figure
+handles = g_rounding_k._legend_data.values()
+labels = g_rounding_k._legend_data.keys()
+
+g_rounding_k._legend.set(visible=False)
+
+labels = [label.title() for label in labels]
+g_rounding_k.figure.legend(
+    handles,
+    labels,
+    title="Rounding strategy",
+    loc="outside lower right",
+    bbox_to_anchor=(0.9, -0.05),
+    # bbox_transform=g.figure.transFigure,
+    ncol=2,
+    fontsize="small",
+)
+
+# Save figure
+g_rounding_k.figure.savefig(
+    os.path.join(figure_folder, "rounding_iterations.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+plt.show()
+
+
+# %%
 """
-# %% Visualize the fraction of infeasible solutions
+# Visualize the fraction of infeasible solutions
 
 for strategy in strategies:
     fig, axes = plt.subplots(
