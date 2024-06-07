@@ -739,29 +739,29 @@ class ModelBuilder:
             for node in self.inputs.nodes:
                 # If n is a thermal unit, then it can generate energy
                 if node in self.inputs.thermal_units:
-                    thermal_gen = self.dispatch[node, t] * line_efficiency
+                    thermal_gen = self.dispatch[node, t]
                 else:
                     thermal_gen = 0
 
                 # If n has renewables, then it can generate energy
                 if node in self.inputs.hydro_units:
-                    hydro_gen = self.phydro[node, t] * line_efficiency
+                    hydro_gen = self.phydro[node, t]
                 else:
                     hydro_gen = 0
 
                 if node in self.inputs.solar_units:
-                    solar_gen = self.psolar[node, t] * line_efficiency
+                    solar_gen = self.psolar[node, t]
                 else:
                     solar_gen = 0
 
                 if node in self.inputs.wind_units:
-                    wind_gen = self.pwind[node, t] * line_efficiency
+                    wind_gen = self.pwind[node, t]
                 else:
                     wind_gen = 0
 
                 # If n is an import node, then it can generate energy
                 if node in self.inputs.nodes_import:
-                    imp_gen = self.pimp[node, t] * line_efficiency
+                    imp_gen = self.pimp[node, t]
                 else:
                     imp_gen = 0
 
@@ -789,7 +789,7 @@ class ModelBuilder:
                         + solar_gen
                         + wind_gen
                         + imp_gen
-                        + arc_flow
+                        + arc_flow * line_efficiency
                         + mismatch
                         == demand_n_t
                     ),
@@ -822,7 +822,7 @@ class ModelBuilder:
     def _c_reserve_req(self):
         """Equation 68 of Kneuven et al (2019). This spinning reserve constraint
         is based on Morales-España et al. (2013).
-        
+
         """
         self.model.addConstrs(
             (
