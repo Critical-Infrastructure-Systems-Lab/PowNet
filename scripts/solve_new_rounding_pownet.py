@@ -83,7 +83,6 @@ def calculate_set_mipgap(rounding_objval: float, true_objval: float) -> float:
         return abs(rounding_objval - true_objval) / abs(true_objval)
 
 
-
 def run_experiment(
     model_name: str,
     T_simulate: int,
@@ -134,7 +133,7 @@ def run_experiment(
         "mip_objval",
         "mip_opt_time",
         "wall_clock_mip",
-        "true_objval"
+        "true_objval",
     ]
     csv_name = os.path.join(rounding_folder, f"{session_name}.csv")
     with open(csv_name, "w", newline="", encoding="utf-8") as csvfile:
@@ -185,6 +184,13 @@ def run_experiment(
             elif rounding_model.status == 3:
                 rounding_objval = None
                 rounding_is_feasible = False
+
+                # Save the ilp file
+                ilp_name = os.path.join(
+                    get_temp_dir(), "infeasible_models", f"{session_name}_{k}.ilp"
+                )
+                rounding_model.computeIIS()
+                rounding_model.write(ilp_name)
                 break
 
             else:
@@ -218,7 +224,7 @@ def run_experiment(
                 )
             else:
                 raise ValueError(f"Unimplemented rounding strategy: {round_strategy}")
-            
+
             # IMPORTANT: update the model
             rounding_model.update()
             round_iter += 1
@@ -258,7 +264,7 @@ def run_experiment(
                     mip_model.objval,  # mip_objval
                     mip_opt_time,  # mip_opt_time
                     wall_clock_mip,  # wall_lock_mip
-                    true_objval
+                    true_objval,
                 ]
             )
 
@@ -268,9 +274,9 @@ def run_experiment(
 
 if __name__ == "__main__":
     model_name = "laos"
-    T_simulates = [24, 48, 72]
-    round_strategies = ["slow_rounding", "fast_rounding"]
-    thresholds = [0, 0.01, 0.05, 0.1]  # Between 0.01 and 0.15
+    T_simulates = [24]
+    round_strategies = ["fast_rounding"]
+    thresholds = [0.5]  # Between 0.01 and 0.15
     verbose = False
 
     exp_pairs = [
