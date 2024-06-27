@@ -17,8 +17,9 @@ from pownet.folder_sys import get_temp_dir
 naming_map = {
     "dw_gap": "Optimality gap (%)",
     "mip_objval": "MIP Obj.val ($)",
-    "dw_mip_objval": "DW-MIP Obj.val ($)",
-    "dw_mip_time": "DW-MIP opt.time (s)",
+    "dw_mip_objval": "DDW-MIP Obj.val ($)",
+    "dw_mip_time": "DDW-MIP opt.time (s)",
+    "dw_itercount": "DDW Iterations",
     "mip_gurobi_time": "Gurobi opt.time (s)",
     "excess_renewable": "(Total Renewables - Total load) in MW",
     "total_on": "Online hours of thermal units",
@@ -94,19 +95,19 @@ def plot_log_time_series(df, country):
     fig, ax = plt.subplots()
     ax.semilogy(
         df["master_mip_time"],
-        label="DW: Selecting schedule",
+        label="DDW: Selecting schedules",
         # alpha=0.75,
         linewidth=1.25,
     )
     ax.semilogy(
         df["dw_gen_col_time"],
-        label="DW: Generating schedules",
+        label="DDW: Generating schedules",
         # alpha=0.5,
         linewidth=1.25,
     )
     ax.semilogy(
         df["mip_gurobi_time"],
-        label="Gurobi",
+        label="General MIP solver",
         # alpha=0.75,
         linewidth=1.25,
         color="black",
@@ -243,7 +244,7 @@ ax.semilogy(
 )
 ax.semilogy(
     laos100["mip_gurobi_time"],
-    label="MIP",
+    label="Gurobi",
     linewidth=1.25,
     color="black",
     linestyle="dashed",
@@ -461,7 +462,7 @@ for ax in g.axes.flatten():
     if ax_id == 0:
         ax.set_ylabel("xSpeed-up (Opt.time)")
     if ax_id == 1:
-        ax.set_xlabel("Obj.improve (%)")
+        ax.set_xlabel("Incremental improve (%)")
     ax_id += 1
 
 
@@ -511,7 +512,7 @@ for ax in g.axes.flatten():
     if ax_id == 0:
         ax.set_ylabel("xSpeed-up (Wall clock)")
     if ax_id == 1:
-        ax.set_xlabel("Obj.improve (%)")
+        ax.set_xlabel("Incremental improve (%)")
     ax_id += 1
 
 
@@ -533,4 +534,194 @@ g.figure.savefig(
     bbox_inches="tight",
 )
 
-# %%
+# %% Plot heatmap of dw_itercount as a fuction of set_rmpgap and set_dwimprove using the stats dataframe
+
+# Heatmap of dw_itercount
+subset = (
+    stats[["model_name", "set_rmpgap", "set_dwimprove", "dw_itercount"]]
+    .groupby(["model_name", "set_rmpgap", "set_dwimprove"])
+    .mean()
+    .reset_index()
+)
+
+# Pivot the dataframe
+country = "Cambodia"
+heatmap_df = subset[subset["model_name"] == country]
+heatmap_df = heatmap_df.pivot_table(
+    index="set_rmpgap", columns=["set_dwimprove"], values="dw_itercount"
+)
+
+
+# %% Scatter plot to show whether the number of iterations is
+# correlated with the optimality gap
+
+g = sns.FacetGrid(
+    stats,
+    col="model_name",
+    sharey=False,
+    height=3,
+    aspect=1.5,
+    col_order=["Laos", "Cambodia", "Thailand"],
+)
+
+g.map(
+    sns.scatterplot,
+    "dw_itercount",
+    "dw_gap",
+    alpha=0.15,
+)
+
+# Rename the axes
+ax_id = 0
+for ax in g.axes.flatten():
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+    ax.set_title(f"{country.title()} over 24-hour")
+    ax.set_xlabel("DW Iterations")
+    ax.set_ylabel("Optimality gap (%)")
+    ax_id += 1
+plt.show()
+
+# Save figure
+g.figure.savefig(
+    os.path.join(figure_folder, f"dw_itercount_gap.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+
+# %% Compare dw_gap, dw_itercount, and dw_total_time between two cases:
+# Case 1: set_rmpgap = 0.0001 and set_dwimprove = 0.0
+# Case 2: set_rmpgap = 50 and set_dwimprove = 100
+
+case1 = stats[(stats["set_rmpgap"] == 0.0001) & (stats["set_dwimprove"] == 0.0)].copy()
+# "Dual gap = 0.0001% | Incremental improve = 0.0%"
+case1["case"] = "Late stopping"
+case2 = stats[(stats["set_rmpgap"] == 50) & (stats["set_dwimprove"] == 100)].copy()
+"Dual gap = 50% | Incremental improve = 100%"
+case2["case"] = "Early stopping"
+
+# Concatenate the two cases
+cases = pd.concat([case1, case2])
+
+
+# %% Plot boxplot of two cases for each country - optimality gap
+g = sns.FacetGrid(
+    cases,
+    col="model_name",
+    sharey=False,
+    height=3,
+    aspect=1.5,
+    col_order=["Laos", "Cambodia", "Thailand"],
+)
+
+g.map(
+    sns.boxplot,
+    "case",
+    "dw_gap",
+    # linewidth=2.5,
+    order=["Late stopping", "Early stopping"],
+    width=0.5,
+    fill=False,
+)
+
+# Rename the axes
+ax_id = 0
+for ax in g.axes.flatten():
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+    ax.set_title(f"{country.title()} over 24-hour")
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax_id += 1
+
+    if ax_id == 1:
+        ax.set_ylabel("Optimality gap (%)")
+
+# Save the figure
+g.figure.savefig(
+    os.path.join(figure_folder, f"dw_gap_cases.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+# %% Speed-up of optimization time
+
+subset_cases = cases.copy()
+# Filter to only include instances where the deviation is less than 1%
+subset_cases["obj_deviation"] = (
+    subset_cases["dw_mip_objval"] - subset_cases["mip_objval"]
+) / (subset_cases["true_objval"] + 1)
+subset_cases["obj_deviation"] = subset_cases["obj_deviation"] * 100
+
+# Filter to only include instances where the deviation is less than 0.5%
+subset_cases = subset_cases[subset_cases["obj_deviation"] <= 0.5]
+
+g = sns.FacetGrid(
+    subset_cases,
+    col="model_name",
+    sharey=False,
+    height=3,
+    aspect=1.5,
+    col_order=["Laos", "Cambodia", "Thailand"],
+)
+
+g.map(
+    sns.boxplot,
+    "case",
+    "xSpeedup",
+    # linewidth=2.5,
+    order=["Late stopping", "Early stopping"],
+    width=0.5,
+    fill=False,
+)
+
+# Rename the axes
+ax_id = 0
+for ax in g.axes.flatten():
+    country = ax.get_title().split("|")[0].strip()
+    country = country.split("=")[1].strip()
+    ax.set_title(f"{country.title()} over 24-hour")
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax_id += 1
+
+    if ax_id == 1:
+        ax.set_ylabel("xSpeed-up (Opt.time)")
+
+# Save the figure
+g.figure.savefig(
+    os.path.join(figure_folder, f"dw_speedup_cases.png"),
+    dpi=350,
+    bbox_inches="tight",
+)
+
+
+# %% Print statistics: mean, min, max, std
+print("Optimality gap")
+print(cases.groupby(["model_name", "case"]).mean()["dw_gap"].round(1))
+print(cases.groupby(["model_name", "case"]).max()["dw_gap"].round(1))
+
+# Minimum optimality gap from thailand
+print(
+    subset_cases[subset_cases["model_name"] == "Cambodia"]
+    .groupby("case")
+    .min()["dw_gap"]
+    .round(1)
+)
+
+
+print("Speed-up of optimization time")
+print(subset_cases.groupby(["model_name", "case"]).mean()["xSpeedup"].round(1))
+print(subset_cases.groupby(["model_name", "case"]).max()["xSpeedup"].round(1))
+
+# Find the lowest optimality gap from thailand
+stats[stats["model_name"] == "Thailand"]["dw_gap"].min()
+
+# %% Boxplot optimality gap of case 1
+g = sns.boxplot(
+    x="model_name",
+    y="dw_gap",
+    data=case1,
+    order=["Laos", "Cambodia", "Thailand"],
+)
