@@ -66,7 +66,10 @@ class OutputProcessor:
         self.unit_status: pd.DataFrame = None
 
     def load(
-        self, df: pd.DataFrame, system_input: SystemInput, model_name: str
+        self,
+        df: pd.DataFrame,
+        system_input: SystemInput,
+        model_name: str,
     ) -> None:
         """Process node-specific variables from PowNet."""
         self.model_name = model_name
@@ -91,8 +94,11 @@ class OutputProcessor:
         )
 
         # Generation from renewables
-        mask = mask = (df["vartype"] == "phydro") | (
-            df["vartype"] == "psolar") | (df["vartype"] == "pwind")
+        mask = (
+            (df["vartype"] == "phydro")
+            | (df["vartype"] == "psolar")
+            | (df["vartype"] == "pwind")
+        )
         self.rnw_dispatch = df.loc[mask]
         self.rnw_dispatch = self.rnw_dispatch.reset_index(drop=True)
         self.rnw_dispatch["fuel_type"] = self.rnw_dispatch.apply(
@@ -150,28 +156,26 @@ class OutputProcessor:
         self.monthly_dispatch = self.total_dispatch.copy()
         self.monthly_dispatch["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_dispatch = self.monthly_dispatch.groupby("month").sum()
-        self.monthly_dispatch.index = self.monthly_dispatch.index.strftime(
-            "%b")
+        self.monthly_dispatch.index = self.monthly_dispatch.index.strftime("%b")
 
         # Sum across 24 hours to get the daily dispatch.
         self.daily_dispatch = self.total_dispatch.copy()
         self.daily_dispatch = self.daily_dispatch.groupby(
-            self.daily_dispatch.index // 24
-        ).mean()
+            (self.daily_dispatch.index - 1) // 24
+        ).sum()
 
         # Demand is an input to the simulation
         self.total_demand = system_input.demand.sum(axis=1)
 
         # Sum across each month to get the monthly demand
-        self.monthly_demand = self.total_demand[: self.total_timesteps].to_frame(
-        )
+        self.monthly_demand = self.total_demand[: self.total_timesteps].to_frame()
         self.monthly_demand.columns = ["demand"]
         self.monthly_demand["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_demand = self.monthly_demand.groupby("month").sum()
         self.monthly_demand.index = self.monthly_demand.index.strftime("%b")
 
         self.daily_demand = self.total_demand.groupby(
-            self.total_demand.index // 24
+            (self.total_demand.index - 1) // 24
         ).sum()
 
         # Need unit statuses for plotting their activities
@@ -200,6 +204,155 @@ class OutputProcessor:
 
     def get_unit_status(self) -> pd.DataFrame:
         return self.unit_status
+
+    def load_from_csv(
+        self,
+        filename: pd.DataFrame,
+        system_input: SystemInput,
+        model_name: str,
+    ) -> None:
+        """Load the PowNet output from a CSV file."""
+        df = pd.read_csv(filename, header=0)
+        self.load(df=df, system_input=system_input, model_name=model_name)
+
+    def _convert_rnw_to_daily(self, rnw: pd.DataFrame) -> pd.DataFrame:
+        """Convert the hourly renewable generation to daily."""
+        # Pivot the table to have names as columns and each row the value at each hour
+        rnw = rnw.pivot_table(index="hour", columns="node", values="value")
+        # Sum across each hour to get the daily hydro generation
+        # Plus 1 because the index starts with 1
+        rnw = rnw.groupby((rnw.index - 1) // 24).sum()
+        rnw.index.name = "day"
+        return rnw
+
+    def get_daily_hydro_dispatch(self) -> pd.DataFrame:
+        """Return the daily hydro generation."""
+        hydro = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "hydro"]
+        hydro = self._convert_rnw_to_daily(hydro)
+        return hydro
+
+    def get_daily_solar_dispatch(self) -> pd.DataFrame:
+        """Return the daily solar generation."""
+        solar = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "solar"]
+        solar = self._convert_rnw_to_daily(solar)
+        return solar
+
+    def get_daily_wind_dispatch(self) -> pd.DataFrame:
+        """Return the daily wind generation."""
+        wind = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "wind"]
+        wind = self._convert_rnw_to_daily(wind)
+        return wind
+
+    def _convert_rnw_to_monthly(self, rnw: pd.DataFrame) -> pd.DataFrame:
+        """Convert the daily renewable generation to monthly."""
+        rnw = rnw.pivot_table(index="hour", columns="node", values="value")
+        rnw["month"] = self.dates["date"].dt.to_period("M")
+        rnw = rnw.groupby("month").sum()
+        rnw.index = rnw.index.strftime("%b")
+        return rnw
+
+    def get_monthly_hydro_dispatch(self) -> pd.DataFrame:
+        """Return the monthly hydro generation."""
+        hydro = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "hydro"]
+        hydro = self._convert_rnw_to_monthly(hydro)
+        return hydro
+
+    def get_monthly_solar_dispatch(self) -> pd.DataFrame:
+        """Return the monthly solar generation."""
+        solar = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "solar"]
+        solar = self._convert_rnw_to_monthly(solar)
+        return solar
+
+    def get_monthly_wind_dispatch(self) -> pd.DataFrame:
+        """Return the monthly wind generation."""
+        wind = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "wind"]
+        wind = self._convert_rnw_to_monthly(wind)
+        return wind
+
+    def get_daily_thermal_dispatch(self) -> pd.DataFrame:
+        """Return the daily thermal generation."""
+        thermal = self.thermal_dispatch.pivot_table(
+            index="hour", columns="fuel_type", values="value", aggfunc="sum"
+        )
+        thermal["day"] = (thermal.index - 1) // 24
+        thermal = thermal.groupby("day").sum()
+        return thermal
+
+    def get_monthly_thermal_dispatch(self) -> pd.DataFrame:
+        """Return the monthly thermal generation."""
+        thermal = self.thermal_dispatch.pivot_table(
+            index="hour", columns="fuel_type", values="value", aggfunc="sum"
+        )
+        thermal["month"] = self.dates["date"].dt.to_period("M")
+        thermal = thermal.groupby("month").sum()
+        thermal.index = thermal.index.strftime("%b")
+        return thermal
+
+    def get_co2_emission(self, time_interval: str) -> pd.DataFrame:
+        """Return the CO2 emissions for timestep.
+        From Chowdhury, Dang, Nguyen, Koh, & Galelli. (2021).
+
+        coal: 1.04 Mton/MWh
+        gas:  0.47 Mton/MWh
+        oil : 0.73 Mton/MWh
+
+        From https://www.eia.gov/environment/emissions/co2_vol_mass.php:
+        wsth: 49.89 kg/MMBtu
+              = 49.89 kg/MMBtu * 3.412 MMBtu/MWh * 1 Mton/1000 kg = 0.170
+
+
+        """
+        co2_map = {
+            "coal": 1.04,
+            "gas": 0.47,
+            "oil": 0.73,
+            "import": 0.0,
+            "shortfall": 0.0,
+            "curtailment": 0.0,
+            "biomass": 0.0,
+            "wsth": 0.170,
+            "slack": 0.0,
+        }
+
+        if time_interval == "monthly":
+            df = self.get_monthly_thermal_dispatch()
+        elif time_interval == "daily":
+            df = self.get_daily_thermal_dispatch()
+        else:
+            raise ValueError("Time interval must be either 'monthly' or 'daily'.")
+
+        co2_emissions = pd.DataFrame()
+        for fuel in df.columns:
+            co2_emissions[fuel] = df[fuel] * co2_map[fuel]
+
+        return co2_emissions
+
+    def get_fuel_cost(self, time_interval: str) -> pd.DataFrame:
+        """Return the system cost for each timestep."""
+        cost_map = {
+            "coal": 5,
+            "gas": 5.85,
+            "oil": 8,
+            "import": 10,
+            "shortfall": 1000,
+            "curtailment": 1000,
+            "biomass": 3.02,
+            "wsth": 3.02,
+            "slack": 1000,
+        }
+
+        if time_interval == "monthly":
+            df = self.get_monthly_thermal_dispatch()
+        elif time_interval == "daily":
+            df = self.get_daily_thermal_dispatch()
+        else:
+            raise ValueError("Time interval must be either 'monthly' or 'daily'.")
+
+        system_cost = pd.DataFrame()
+        for fuel in df.columns:
+            system_cost[fuel] = df[fuel] * cost_map[fuel]
+
+        return system_cost
 
 
 class Visualizer:
@@ -317,8 +470,7 @@ class Visualizer:
             fig, ax1 = plt.subplots(figsize=(8, 5))
             ax2 = ax1.twinx()
 
-            ax1.step(df1["hour"], df1["value"],
-                     where="mid", color="b", label="Power")
+            ax1.step(df1["hour"], df1["value"], where="mid", color="b", label="Power")
             # If ymax is too low, then we cannot see the blue line
             ax1.set_ylim(bottom=0, top=full_max_cap[unit_g] * 1.05)
             ax1.tick_params(axis="x", labelrotation=45)
