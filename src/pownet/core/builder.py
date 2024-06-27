@@ -35,6 +35,9 @@ class ModelBuilder:
         else:
             self.formulation = inputs.formulation
 
+        # Hydropower formulation
+        self.hydro_timestep: str = inputs.hydro_timestep
+
         # reverse_flow is not implemented yet
         self.reverse_flow = reverse_flow
         if reverse_flow:
@@ -51,7 +54,7 @@ class ModelBuilder:
         self.pimp = None  # import
 
         self.spin = None  # unit-specific spinning reserve
-        self.sys_spin = None  # system-wide spinning reserve
+        self.sys_spin = None  # system-wide spinning reserve shortfall
 
         self.s_pos = None
         self.s_neg = None
@@ -222,8 +225,7 @@ class ModelBuilder:
         """
         self.model.addConstrs(
             (
-                self.pbar[unit_g, t] == self.p[unit_g, t] +
-                self.spin[unit_g, t]
+                self.pbar[unit_g, t] == self.p[unit_g, t] + self.spin[unit_g, t]
                 for unit_g in self.inputs.thermal_units
                 for t in self.timesteps
             ),
@@ -246,8 +248,7 @@ class ModelBuilder:
         )
         self.model.addConstrs(
             (
-                self.pbar[unit_g, t] +
-                self.inputs.min_cap[unit_g] * self.u[unit_g, t]
+                self.pbar[unit_g, t] + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
                 <= self.inputs.max_cap[unit_g][t] * self.u[unit_g, t]
                 for unit_g in self.inputs.thermal_units
                 for t in self.timesteps
@@ -372,8 +373,7 @@ class ModelBuilder:
                     / self.inputs.RU[unit_g]
                 )
 
-                KSD_t = min(
-                    time_RD, self.inputs.TU[unit_g] - 1, self.T - t - 1)
+                KSD_t = min(time_RD, self.inputs.TU[unit_g] - 1, self.T - t - 1)
 
                 # Omit adding inequalities if KSD <= 0 because
                 # c_trajec_up_bound dominates.
@@ -407,8 +407,7 @@ class ModelBuilder:
                     (
                         self.p[unit_g, t]
                         <= (
-                            self.inputs.max_cap[unit_g][t] -
-                            self.inputs.min_cap[unit_g]
+                            self.inputs.max_cap[unit_g][t] - self.inputs.min_cap[unit_g]
                         )
                         * self.u[unit_g, t]
                         - sum_1
@@ -459,8 +458,7 @@ class ModelBuilder:
                             self.pbar[unit_g, t]
                             + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
                             <= self.inputs.max_cap[unit_g][t] * self.u[unit_g, t]
-                            - (self.inputs.max_cap[unit_g]
-                               [t] - self.inputs.SD[unit_g])
+                            - (self.inputs.max_cap[unit_g][t] - self.inputs.SD[unit_g])
                             * self.w[unit_g, t + 1]
                             - sum_term
                         ),
@@ -686,8 +684,7 @@ class ModelBuilder:
         """
         cycle_incidence = pd.DataFrame(
             0,
-            index=pd.MultiIndex.from_tuples(
-                self.inputs.arcs, names=["source", "sink"]),
+            index=pd.MultiIndex.from_tuples(self.inputs.arcs, names=["source", "sink"]),
             columns=self.inputs.cycle_map.keys(),
         )
 
@@ -711,8 +708,7 @@ class ModelBuilder:
                 else:
                     cycle_incidence.loc[(flow[1], flow[0]), cycle_id] = -1
                     cycle_susceptance = pd.concat(
-                        [cycle_susceptance,
-                            self.inputs.suscept[(flow[1], flow[0])]],
+                        [cycle_susceptance, self.inputs.suscept[(flow[1], flow[0])]],
                         axis=1,
                     )
 
@@ -743,36 +739,35 @@ class ModelBuilder:
             for node in self.inputs.nodes:
                 # If n is a thermal unit, then it can generate energy
                 if node in self.inputs.thermal_units:
-                    thermal_gen = self.dispatch[node, t] * line_efficiency
+                    thermal_gen = self.dispatch[node, t]
                 else:
                     thermal_gen = 0
 
                 # If n has renewables, then it can generate energy
                 if node in self.inputs.hydro_units:
-                    hydro_gen = self.phydro[node, t] * line_efficiency
+                    hydro_gen = self.phydro[node, t]
                 else:
                     hydro_gen = 0
 
                 if node in self.inputs.solar_units:
-                    solar_gen = self.psolar[node, t] * line_efficiency
+                    solar_gen = self.psolar[node, t]
                 else:
                     solar_gen = 0
 
                 if node in self.inputs.wind_units:
-                    wind_gen = self.pwind[node, t] * line_efficiency
+                    wind_gen = self.pwind[node, t]
                 else:
                     wind_gen = 0
 
                 # If n is an import node, then it can generate energy
                 if node in self.inputs.nodes_import:
-                    imp_gen = self.pimp[node, t] * line_efficiency
+                    imp_gen = self.pimp[node, t]
                 else:
                     imp_gen = 0
 
                 # Get the demand of node n at time t
                 if node in self.inputs.nodes_w_demand:
-                    demand_n_t = self.inputs.demand.loc[t +
-                                                        self.T * self.k, node]
+                    demand_n_t = self.inputs.demand.loc[t + self.T * self.k, node]
                     mismatch = self.s_pos[node, t] - self.s_neg[node, t]
                 else:
                     demand_n_t = 0
@@ -789,7 +784,13 @@ class ModelBuilder:
                 # Given the above terms, we can specify the energy balance
                 self.model.addConstr(
                     (
-                        thermal_gen + hydro_gen + solar_gen + wind_gen + imp_gen + arc_flow + mismatch
+                        thermal_gen
+                        + hydro_gen
+                        + solar_gen
+                        + wind_gen
+                        + imp_gen
+                        + arc_flow * line_efficiency
+                        + mismatch
                         == demand_n_t
                     ),
                     name="flowBal" + f"[{node},{t}]",
@@ -798,9 +799,6 @@ class ModelBuilder:
     def _c_reserve_req_carrion(self):
         """Equation 67 of Kneuven et al (2019). System-wide spinning reserve requirement.
         We substitute in the max_dispatch using Equation 13.
-
-        THE FORMULATION IN KNUEVEN ET AL  (2020) IS MISLEADING. WE NEED TO
-        CONSIDER GENERATION FROM ALL GENERATORS AND NOT JUST THERMAL UNITS.
         """
         raise NotImplementedError("This formulation needs modification.")
         self.model.addConstrs(
@@ -822,7 +820,10 @@ class ModelBuilder:
         )
 
     def _c_reserve_req(self):
-        """Equation 68 of Kneuven et al (2019)."""
+        """Equation 68 of Kneuven et al (2019). This spinning reserve constraint
+        is based on Morales-España et al. (2013).
+
+        """
         self.model.addConstrs(
             (
                 gp.quicksum(
@@ -833,6 +834,37 @@ class ModelBuilder:
                 for t in self.timesteps
             ),
             name="reserveReq",
+        )
+
+    def _c_hydro_limit_hourly(self):
+        """Hydro generation must be less than the maximum capacity of the hydro unit."""
+        self.model.addConstrs(
+            (
+                self.phydro[hydro_unit, t]
+                <= self.inputs.hydro_cap.loc[t + self.T * self.k, hydro_unit]
+                for t in self.timesteps
+                for hydro_unit in self.inputs.hydro_units
+            ),
+            name="hydroLimit_hr",
+        )
+
+    def _c_hydro_limit_daily(self):
+        # The sum of the hydro generation in a day must be less than the maximum capacity.
+        # PowNet can decide the dispatch at each hour when given the amount of hydro energy available.
+        self.model.addConstrs(
+            (
+                gp.quicksum(self.phydro[hydro_unit, t] for t in self.timesteps)
+                <= gp.quicksum(
+                    self.inputs.hydro_cap.loc[
+                        (self.k * self.T) / 24
+                        + 1 : (self.k * self.T) / 24
+                        + self.T / 24,
+                        hydro_unit,
+                    ]
+                )
+                for hydro_unit in self.inputs.hydro_units
+            ),
+            name="hydroLimit_day",
         )
 
     def _add_variables(self) -> None:
@@ -870,11 +902,6 @@ class ModelBuilder:
             self.inputs.hydro_units,
             self.timesteps,
             lb=0,
-            ub={
-                (hydro_unit, t): self.inputs.hydro_cap.loc[t + self.T * self.k, hydro_unit]
-                for t in self.timesteps
-                for hydro_unit in self.inputs.hydro_cap.columns
-            },
             vtype=GRB.CONTINUOUS,
             name="phydro",
         )
@@ -884,7 +911,9 @@ class ModelBuilder:
             self.timesteps,
             lb=0,
             ub={
-                (solar_unit, t): self.inputs.solar_cap.loc[t + self.T * self.k, solar_unit]
+                (solar_unit, t): self.inputs.solar_cap.loc[
+                    t + self.T * self.k, solar_unit
+                ]
                 for t in self.timesteps
                 for solar_unit in self.inputs.solar_cap.columns
             },
@@ -1052,10 +1081,16 @@ class ModelBuilder:
         elif self.formulation == "kirchhoff":
             self._c_kirchhoff_voltage()
 
-        self._c_flow_balance()
+        # There are two ways to enforce the hydro limit.
+        if self.hydro_timestep == "hourly":
+            self._c_hydro_limit_hourly()
+        else:
+            self._c_hydro_limit_daily()
 
+        self._c_flow_balance()
         self._c_reserve_req()
 
+        # Update the model just in case we want to check model structure
         self.model.update()
 
     def build(
@@ -1107,8 +1142,7 @@ class ModelBuilder:
         """
         # TODO: Consider updating the model instead of creating a new one
         # Update cost coeffs, constraints, RHS
-        self.model = self.build(
-            k, init_conds, mip_gap=mip_gap, timelimit=timelimit)
+        self.model = self.build(k, init_conds, mip_gap=mip_gap, timelimit=timelimit)
 
         # Use the solution from the previous solve
         if is_warmstart():
@@ -1120,3 +1154,36 @@ class ModelBuilder:
             os.remove(previous_solution_file)
 
         return self.model
+
+    def get_hydro_capacity(self) -> pd.DataFrame:
+        if self.hydro_timestep == "daily":
+            return self.inputs.hydro_cap.loc[
+                self.T * self.k + 1 : self.T * self.k + self.T
+            ]
+        else:
+            return self.inputs.hydro_cap.loc[
+                self.T * self.k + 1 : self.T * self.k + self.T
+            ]
+
+    def update_hydro_capacity(self, new_hydro_capacity: pd.DataFrame) -> None:
+        if self.hydro_timestep == "hourly":
+            # Divid new_hydro_capacity evenly across the day
+            hourly_hydro_capacity = new_hydro_capacity / 24
+            # Repeat the hourly hydro capacity for the entire day
+            hourly_hydro_capacity = pd.concat(
+                [hourly_hydro_capacity] * 24, ignore_index=True
+            )
+            # Indexing of timeseries for model building starts at 1
+            hourly_hydro_capacity.index += 1
+
+            start_idx = self.T * self.k + 1
+            end_idx = self.T * self.k + self.T
+            self.inputs.hydro_cap.loc[
+                start_idx:end_idx, hourly_hydro_capacity.columns
+            ] = hourly_hydro_capacity.values
+
+        elif self.hydro_timestep == "daily":
+            day = new_hydro_capacity.index
+            self.inputs.hydro_cap.loc[day, new_hydro_capacity.columns] = (
+                new_hydro_capacity.values
+            )

@@ -120,3 +120,4 @@ user_inputs/*
 src/analysis/decom_files/*
 src/analysis/results/*
 scripts/scratch.py
+model_library/dummy_hydro/pownet_hydropower.csv
