@@ -19,6 +19,7 @@ class SystemInput:
         T: int,
         formulation: str,
         model_name: str,
+        simulated_day:int,
         price: str = "fuel",
         reverse_flow: bool = False,
     ) -> None:
@@ -26,7 +27,7 @@ class SystemInput:
         self.T: int = T
         self.formulation: str = formulation
         self.model_name: str = model_name
-
+        self.simulated_day: str = simulated_day
         self.model_dir: str = os.path.join(get_model_dir(), model_name)
 
         # User inputs
