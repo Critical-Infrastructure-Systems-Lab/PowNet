@@ -170,8 +170,7 @@ class SystemRecord:
         self.T: int = system_input.T
         self.model_name: str = system_input.model_name
         self.runtimes = None
-         self.simulated_day: int = system_input.simulated_day
-
+        self.simulated_day: int = system_input.simulated_day
         self.thermal_units: list = system_input.thermal_units
         self.TD: dict[str, int] = system_input.TD
         self.TU: dict[str, int] = system_input.TU
