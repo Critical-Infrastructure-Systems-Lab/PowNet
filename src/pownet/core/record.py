@@ -359,7 +359,7 @@ class SystemRecord:
         return self.runtimes
 
     def to_csv(self) -> None:
-         write_df(
+        write_df(
             self.var_node_t, output_name="node_variables", model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
         )
         write_df(
@@ -371,7 +371,6 @@ class SystemRecord:
         write_df(
             self.init_conds_df, output_name="initial_conditions",model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
         )
-
         objvals = pd.DataFrame({"objval": self.objvals})
         write_df(
             objvals,
