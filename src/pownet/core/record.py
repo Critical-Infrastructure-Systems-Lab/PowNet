@@ -14,23 +14,44 @@ from pownet.processing.functions import (
     get_nodehour_sys,
 )
 from pownet.folder_sys import get_output_dir
+import pownet.config as config
 
 
 def write_df(
     df: pd.DataFrame,
     output_name: str,
     model_name: str,
+    simulated_day: int,
     T: int,
 ) -> None:
     """Write a dataframe to the output folder."""
-    df.to_csv(
-        os.path.join(
-            get_output_dir(),
-            f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_{T}_{output_name}.csv',
-        ),
-        index=False,
-    )
+    STEP_BY_STEP=config.get_stepbystep()
+    ONE_STEP=config.get_onestep()
 
+    if STEP_BY_STEP: 
+        df.to_csv(
+            os.path.join(
+                get_output_dir(),
+                f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_D{simulated_day}_T{T}_{output_name}.csv',
+            ),
+            index=False,
+        )
+    elif ONE_STEP:
+        df.to_csv(
+            os.path.join(
+                get_output_dir(),
+                f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_D{simulated_day}_T{T}_{output_name}.csv',
+            ),
+            index=False,
+        )
+    else:
+        df.to_csv(
+            os.path.join(
+                get_output_dir(),
+                f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_D1-{simulated_day}_T{T}_{output_name}.csv',
+            ),
+            index=False,
+        )
 
 def increment_hour(df: pd.DataFrame, T: int, k: int):
     df = df.copy()
@@ -149,6 +170,7 @@ class SystemRecord:
         self.T: int = system_input.T
         self.model_name: str = system_input.model_name
         self.runtimes = None
+         self.simulated_day: int = system_input.simulated_day
 
         self.thermal_units: list = system_input.thermal_units
         self.TD: dict[str, int] = system_input.TD
@@ -299,7 +321,11 @@ class SystemRecord:
                 self.runtimes = [model.getRunTime()]
             else:
                 self.runtimes.append(model.getRunTime())
-
+        
+        self.init_conds = self.get_init_conds()
+        self.init_conds_df: pd.DataFrame = None
+        self.init_conds_df=pd.DataFrame(self.init_conds.items(), columns=['Variable', 'Value'])
+        
     def get_init_conds(self) -> dict[str, dict]:
         return {
             "initial_p": self.current_p,
@@ -334,24 +360,19 @@ class SystemRecord:
         return self.runtimes
 
     def to_csv(self) -> None:
-        write_df(
-            self.var_node_t,
-            output_name="node_variables",
-            model_name=self.model_name,
-            T=self.T,
+         write_df(
+            self.var_node_t, output_name="node_variables", model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
         )
         write_df(
-            self.var_flow,
-            output_name="flow_variables",
-            model_name=self.model_name,
-            T=self.T,
+            self.var_flow, output_name="flow_variables", model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
         )
         write_df(
-            self.var_syswide,
-            output_name="system_variables",
-            model_name=self.model_name,
-            T=self.T,
+            self.var_syswide, output_name="system_variables", model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
+        ) 
+        write_df(
+            self.init_conds_df, output_name="initial_conditions",model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
         )
+
         objvals = pd.DataFrame({"objval": self.objvals})
         write_df(
             objvals,
