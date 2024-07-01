@@ -120,3 +120,7 @@ def get_saveplots() -> bool:
     return CONFIG.getboolean('USER DEFINED INPUTS', 'SAVE_PLOT')
     return CONFIG.getfloat('GUROBI', 'TIMELIMIT')
 
+def get_resreop() -> bool:
+    ''' Get the user option for reservoir reoperation.
+    '''
+    return CONFIG.getboolean('USER DEFINED INPUTS', 'RES_REOP')
