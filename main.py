@@ -27,7 +27,7 @@ def main():
     # Decide whether to save results
     SAVE_RESULT = config.get_saveresults()
     SAVE_PLOT = config.get_saveplots()
-
+    to_reoperate = config.get_resreop()
     output_dir = get_output_dir()
     
     # We need a folder to store the figures
@@ -58,7 +58,7 @@ def run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,output_dir,SAVE_RESULT,SAVE
     system_input = SystemInput(T=T, formulation="kirchhoff", model_name=MODEL_NAME,simulated_day=SIM_DAY-1)
     
     #2) Intialize a Simulator Instance 
-    simulator = Simulator(system_input=system_input, use_gurobi=use_gurobi)
+    simulator = Simulator(system_input=system_input, use_gurobi=use_gurobi,to_reoperate=to_reoperate)
     
     #3) Read or Define Initial Conditions
     fileslist=[file for file in glob.glob(output_dir+'/*%s_D%d_T%d_initial_conditions.csv'%(MODEL_NAME,SIM_DAY-1,T))]
@@ -87,7 +87,11 @@ def run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,output_dir,SAVE_RESULT,SAVE
     #5) Save PowNet Results 
     if SAVE_RESULT:
         simulator_run.to_csv()
-
+    
+    # Export reservoir outputs as csv
+    if to_reoperate:
+        simulator.export_reservoir_outputs()
+        
     #6) Plot PowNet Results 
     if SAVE_PLOT:
         node_variables = simulator_run.get_node_variables()
