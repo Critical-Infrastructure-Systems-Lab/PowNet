@@ -14,12 +14,9 @@ def get_config() -> configparser.ConfigParser:
     return CONFIG
 
 
-def is_warmstart() -> bool:
-    ''' Get the user specified warmstart parameter.
-    '''
-    return CONFIG.getboolean('GUROBI', 'WARMSTART')
 
 
+#  [POWNET]
 def get_line_capacity_factor() -> float:
     ''' The safety margin to impose on the transmission lines.
     The default value is 0.75 based on the legacy approach.
@@ -53,7 +50,12 @@ def get_spin_reserve_penalty() -> int:
     '''
     return CONFIG.getint('POWNET', 'RESERVE_PENALTY')
 
-
+#  [Gurobi]
+def is_warmstart() -> bool:
+    ''' Get the user specified warmstart parameter.
+    '''
+    return CONFIG.getboolean('GUROBI', 'WARMSTART')
+    
 def get_mip_gap() -> float:
     ''' Gurobi MIPGAP significantly affect computation time.
     '''
@@ -69,5 +71,52 @@ def get_to_log() -> bool:
 def get_timelimit() -> float:
     ''' Enforces timelimit to solve the problem. 
     '''
+
+
+# [USER Defined Inputs]
+def get_modelname() -> str:
+    ''' Get the user defined model name.
+    '''
+    return CONFIG.get('USER DEFINED INPUTS', 'MODEL_NAME')
+
+def get_stepbystep() -> bool:
+    ''' Get the user option for step-by-step version.
+    '''
+    return CONFIG.getboolean('USER DEFINED INPUTS', 'STEP_BY_STEP')
+
+def get_onestep() -> bool:
+    ''' Get the user option for running one step version.
+    '''
+    return CONFIG.getboolean('USER DEFINED INPUTS', 'ONE_STEP')
+
+def get_usegurobi() -> bool:
+    ''' Get the user option for using Gurobi.
+    '''
+    return CONFIG.getboolean('USER DEFINED INPUTS', 'use_gurobi')
+
+def get_steps() -> int:
+    ''' Get the user selection for number of steps.
+    '''
+    return CONFIG.getint('USER DEFINED INPUTS', 'STEPS')
+
+def get_simday() -> int:
+    ''' Get the user selection for simulated day.
+    '''
+    return CONFIG.getint('USER DEFINED INPUTS', 'SIM_DAY')
+
+def get_timehorizon() -> int:
+    ''' Get the user selection for simulated time horizon in hours.
+    '''
+    return CONFIG.getint('USER DEFINED INPUTS', 'T')
+
+def get_saveresults() -> bool:
+    ''' Get the user option for saving results.
+    '''
+    return CONFIG.getboolean('USER DEFINED INPUTS', 'SAVE_RESULT')
+
+def get_saveplots() -> bool:
+    ''' Get the user option for saving plots.
+    '''
+    return CONFIG.getboolean('USER DEFINED INPUTS', 'SAVE_PLOT')
     return CONFIG.getfloat('GUROBI', 'TIMELIMIT')
 
