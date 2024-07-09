@@ -29,7 +29,7 @@ class Simulator:
         model_name: str,
         T: int,
         write_model: bool = False,
-        use_gurobi: bool = True,
+        use_gurobi: bool = False,
         to_reoperate: bool = False,
         reop_timestep: str = "hourly",
     ) -> None:
