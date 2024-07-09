@@ -71,7 +71,7 @@ def get_to_log() -> bool:
 def get_timelimit() -> float:
     ''' Enforces timelimit to solve the problem. 
     '''
-
+    return CONFIG.getfloat('GUROBI', 'TIMELIMIT')
 
 # [USER Defined Inputs]
 def get_modelname() -> str:
