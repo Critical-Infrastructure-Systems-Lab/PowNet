@@ -376,6 +376,7 @@ class SystemRecord:
             objvals,
             output_name="objvals",
             model_name=self.model_name,
+            simulated_day=self.simulated_day+1,
             T=self.T,
         )
 
