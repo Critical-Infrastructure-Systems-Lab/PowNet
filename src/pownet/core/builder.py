@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 import os
 
@@ -16,14 +18,13 @@ from pownet.config import (
     get_to_log,
     get_timelimit,
 )
-from pownet.core.input import SystemInput
-from pownet.folder_sys import get_output_dir
+from pownet.folder_utils import get_output_dir
 
 
 class ModelBuilder:
     """Build the model by adding unit commitment constraints."""
 
-    def __init__(self, inputs: SystemInput, reverse_flow: bool = False) -> None:
+    def __init__(self, inputs: "SystemInput", reverse_flow: bool = False) -> None:
         self.model = None
         self.model_name = inputs.model_name
 

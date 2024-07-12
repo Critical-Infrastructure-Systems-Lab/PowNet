@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from pownet.folder_sys import get_model_dir, get_output_dir
+from pownet.folder_utils import get_model_dir, get_output_dir
 from pownet.reservoir.solve_release import (
     solve_release_from_dispatch,
     solve_release_from_storage,

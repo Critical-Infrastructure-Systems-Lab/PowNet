@@ -5,12 +5,8 @@ import gurobipy as gp
 import pandas as pd
 
 from pownet.config import get_spin_reserve_factor
-from pownet.processing.functions import get_arcs, get_linecap, get_suscept
-from pownet.folder_sys import get_model_dir
-
-
-# Current code does not need these columns
-DATE_COLS = ["year", "month", "day", "hour", "date"]
+from pownet.data_utils import get_arcs, get_linecap, get_suscept
+from pownet.folder_utils import get_model_dir
 
 
 class SystemInput:
@@ -22,6 +18,9 @@ class SystemInput:
         price: str = "fuel",
         reverse_flow: bool = False,
     ) -> None:
+
+        # The date columns are not needed
+        date_cols = ["year", "month", "day", "hour", "date"]
 
         self.T: int = T
         self.formulation: str = formulation
@@ -63,17 +62,17 @@ class SystemInput:
         # The index of timeseries starts at 1
         self.demand: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, "demand_export.csv"), header=0
-        ).drop(DATE_COLS, axis=1, errors="ignore")
+        ).drop(date_cols, axis=1, errors="ignore")
         self.demand.index += 1
 
         self.derating: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, "pownet_derate_factor.csv"), header=0
-        ).drop(DATE_COLS, axis=1, errors="ignore")
+        ).drop(date_cols, axis=1, errors="ignore")
         self.derating.index += 1
 
         self.fuelprice: pd.DataFrame = pd.read_csv(
             os.path.join(self.model_dir, "fuel_price.csv"), header=0
-        ).drop(DATE_COLS, axis=1, errors="ignore")
+        ).drop(date_cols, axis=1, errors="ignore")
         self.fuelprice.index += 1
 
         # Read timeseries data for renewables
@@ -84,7 +83,7 @@ class SystemInput:
 
         # Hydropower capacity
         self.hydro_cap: pd.DataFrame = pd.read_csv(hydro_fn, header=0).drop(
-            DATE_COLS, axis=1, errors="ignore"
+            date_cols, axis=1, errors="ignore"
         )
         self.hydro_cap.index += 1
 
@@ -102,7 +101,7 @@ class SystemInput:
         solar_fn = os.path.join(self.model_dir, "solar.csv")
         if os.path.exists(solar_fn):
             self.solar_cap: pd.DataFrame = pd.read_csv(solar_fn, header=0).drop(
-                DATE_COLS, axis=1, errors="ignore"
+                date_cols, axis=1, errors="ignore"
             )
             self.solar_cap.index += 1
             self.solar_units: list = self.solar_cap.columns.tolist()
@@ -113,7 +112,7 @@ class SystemInput:
         wind_fn = os.path.join(self.model_dir, "wind.csv")
         if os.path.exists(wind_fn):
             self.wind_cap: pd.DataFrame = pd.read_csv(wind_fn, header=0).drop(
-                DATE_COLS, axis=1, errors="ignore"
+                date_cols, axis=1, errors="ignore"
             )
             self.wind_cap.index += 1
             self.wind_units: list = self.wind_cap.columns.tolist()
@@ -125,7 +124,7 @@ class SystemInput:
         fn_import = os.path.join(self.model_dir, "import.csv")
         if os.path.exists(fn_import):
             self.p_import: pd.DataFrame = pd.read_csv(fn_import, header=0).drop(
-                DATE_COLS, axis=1, errors="ignore"
+                date_cols, axis=1, errors="ignore"
             )
             self.p_import.index += 1
             self.nodes_import: list = self.p_import.columns.tolist()
@@ -198,7 +197,7 @@ class SystemInput:
             pd.read_csv(
                 os.path.join(self.model_dir, "pownet_derated_capacity.csv"), header=0
             )
-            .drop(DATE_COLS, axis=1, errors="ignore")
+            .drop(date_cols, axis=1, errors="ignore")
             .to_dict()
         )
 
