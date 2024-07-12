@@ -1,19 +1,23 @@
+from __future__ import annotations
 import datetime
 import os
 import re
+from typing import TYPE_CHECKING
 
 import gurobipy as gp
 import highspy
 import pandas as pd
 import numpy as np
 
-from pownet.core.input import SystemInput
-from pownet.processing.functions import (
+from pownet.data_utils import (
     get_nodehour,
     get_nodehour_flow,
     get_nodehour_sys,
 )
-from pownet.folder_sys import get_output_dir
+from pownet.folder_utils import get_output_dir
+
+if TYPE_CHECKING:
+    from pownet.core import SystemInput
 
 
 def write_df(
