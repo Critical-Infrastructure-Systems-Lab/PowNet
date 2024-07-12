@@ -87,7 +87,7 @@ PowNet Scripts
 |                          |                                                             |
 |                          | 4) fuel_map.csv (needed for fuel price)                     |
 +--------------------------+-------------------------------------------------------------+
-| folder_sys.py            | Define the path of different folders (e.g., pownet          |
+| folder_utils.py            | Define the path of different folders (e.g., pownet          |
 |                          | directory, inputs, outputs)                                 |
 |                          |                                                             |
 +--------------------------+-------------------------------------------------------------+
