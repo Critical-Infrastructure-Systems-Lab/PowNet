@@ -26,8 +26,6 @@ class Simulator:
     def __init__(
         self,
         system_input: SystemInput,
-        model_name: str,
-        T: int,
         write_model: bool = False,
         use_gurobi: bool = False,
         to_reoperate: bool = False,
@@ -50,9 +48,9 @@ class Simulator:
             self.reservoir_operator.export_hydropower_csv(timestep=reop_timestep)
 
         # Extract model parameters from the model library directory
-        self.system_input = SystemInput(
-            T=T, formulation="kirchhoff", model_name=model_name
-        )
+        # self.system_input = SystemInput(
+        #     T=T, formulation="kirchhoff", model_name=model_name
+        # )
 
         self.model: gp.Model = None
 
