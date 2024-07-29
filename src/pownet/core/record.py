@@ -221,7 +221,7 @@ class SystemRecord:
         model: gp.Model | highspy.highs.Highs,
         k: int,
     ) -> None:
-
+        ONE_STEP=config.get_onestep()
         if isinstance(model, gp.Model):
             results = self._get_sol_from_gurobi(model)
             self.objvals.append(model.objVal)
@@ -311,12 +311,12 @@ class SystemRecord:
 
         # Save the model runtime
         if isinstance(model, gp.Model):
-            if k == 0:
+            if k == 0 or ONE_STEP:
                 self.runtimes = [model.runtime]
             else:
                 self.runtimes.append(model.runtime)
         elif isinstance(model, highspy.highs.Highs):
-            if k == 0:
+            if k == 0 or  ONE_STEP:
                 self.runtimes = [model.getRunTime()]
             else:
                 self.runtimes.append(model.getRunTime())
@@ -371,6 +371,7 @@ class SystemRecord:
         write_df(
             self.init_conds_df, output_name="initial_conditions",model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
         )
+
         objvals = pd.DataFrame({"objval": self.objvals})
         write_df(
             objvals,

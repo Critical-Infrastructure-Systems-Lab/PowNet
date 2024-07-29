@@ -1119,6 +1119,7 @@ class ModelBuilder:
         else:
             self.model.setParam("MIPGap", mip_gap)
 
+        
         if not timelimit:
             self.model.setParam("TimeLimit", get_timelimit())
         else:
