@@ -4,9 +4,9 @@ import re
 import pandas as pd
 
 from pownet.core.input import SystemInput
-from pownet.core.simulation import Simulator
+from pownet.simulation import Simulator
 
-from pownet.folder_sys import get_output_dir, get_model_dir
+from pownet.folder_utils import get_output_dir, get_model_dir
 
 
 MODEL_NAME = "laos"
@@ -17,7 +17,7 @@ WRITE_DEC = False
 
 # We are only optimizing one step which is 24 hours. This optimization
 # is just to initiate a model so we can extract the model from Gurobi
-T = 72
+T = 24
 steps = 1
 
 

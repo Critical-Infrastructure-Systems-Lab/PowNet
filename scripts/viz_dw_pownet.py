@@ -12,14 +12,14 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from pownet.folder_sys import get_temp_dir
+from pownet.folder_utils import get_temp_dir
 
 naming_map = {
     "dw_gap": "Optimality gap (%)",
     "mip_objval": "MIP Obj.val ($)",
-    "dw_mip_objval": "DDW-MIP Obj.val ($)",
-    "dw_mip_time": "DDW-MIP opt.time (s)",
-    "dw_itercount": "DDW Iterations",
+    "dw_mip_objval": "CGH-MIP Obj.val ($)",
+    "dw_mip_time": "CGH-MIP opt.time (s)",
+    "dw_itercount": "CGH Iterations",
     "mip_gurobi_time": "Gurobi opt.time (s)",
     "excess_renewable": "(Total Renewables - Total load) in MW",
     "total_on": "Online hours of thermal units",
@@ -95,19 +95,19 @@ def plot_log_time_series(df, country):
     fig, ax = plt.subplots()
     ax.semilogy(
         df["master_mip_time"],
-        label="DDW: Selecting schedules",
+        label="CGH: Selecting schedules",
         # alpha=0.75,
         linewidth=1.25,
     )
     ax.semilogy(
         df["dw_gen_col_time"],
-        label="DDW: Generating schedules",
+        label="CGH: Generating schedules",
         # alpha=0.5,
         linewidth=1.25,
     )
     ax.semilogy(
         df["mip_gurobi_time"],
-        label="General MIP solver",
+        label="Benchmark solver (Gurobi)",
         # alpha=0.75,
         linewidth=1.25,
         color="black",
@@ -232,19 +232,19 @@ alpha = 0.6
 fig, ax = plt.subplots()
 ax.semilogy(
     laos100["master_mip_time"],
-    label="DW: Selecting schedule",
+    label="CGH: Selecting schedule",
     linewidth=1.25,
     alpha=alpha,
 )
 ax.semilogy(
     laos100["dw_gen_col_time"],
-    label="DW: Generating schedules",
+    label="CGH: Generating schedules",
     linewidth=1.25,
     alpha=alpha,
 )
 ax.semilogy(
     laos100["mip_gurobi_time"],
-    label="Gurobi",
+    label="Benchmark solver (Gurobi)",
     linewidth=1.25,
     color="black",
     linestyle="dashed",
@@ -261,7 +261,7 @@ subset_df = laos100.copy()
 subset_df.loc[~subset_df["is_master_quicker"], "master_mip_time"] = np.nan
 ax.semilogy(
     subset_df["master_mip_time"],
-    label="DW: Selecting schedule",
+    label="CGH: Selecting schedule",
     linewidth=2.5,
     c="tab:blue",
 )
@@ -577,7 +577,7 @@ for ax in g.axes.flatten():
     country = ax.get_title().split("|")[0].strip()
     country = country.split("=")[1].strip()
     ax.set_title(f"{country.title()} over 24-hour")
-    ax.set_xlabel("DW Iterations")
+    ax.set_xlabel("CGH Iterations")
     ax.set_ylabel("Optimality gap (%)")
     ax_id += 1
 plt.show()
@@ -697,12 +697,25 @@ g.figure.savefig(
 )
 
 
-# %% Print statistics: mean, min, max, std
-print("Optimality gap")
-print(cases.groupby(["model_name", "case"]).mean()["dw_gap"].round(1))
-print(cases.groupby(["model_name", "case"]).max()["dw_gap"].round(1))
+# %% Print statistics to support the box plots:
+# min, 25th percentile, mean, median, 75th percentile, max
+print("\nOptimality gap:")
+print(subset_cases.groupby(["model_name", "case"]).describe()["dw_gap"].round(2))
 
-# Minimum optimality gap from thailand
+print("\nSpeed-up of optimization time:")
+print(subset_cases.groupby(["model_name", "case"]).describe()["xSpeedup"].round(2))
+
+# Save the two cases to a csv file
+subset_cases.groupby(["model_name", "case"]).describe()["dw_gap"].round(2).to_csv(
+    os.path.join(figure_folder, "dw_stats_optgap.csv")
+)
+
+subset_cases.groupby(["model_name", "case"]).describe()["xSpeedup"].round(2).to_csv(
+    os.path.join(figure_folder, "dw_stats_speedup.csv")
+)
+
+
+# Minimum optimality gap from Cambodia and Thailand
 print(
     subset_cases[subset_cases["model_name"] == "Cambodia"]
     .groupby("case")
@@ -710,12 +723,6 @@ print(
     .round(1)
 )
 
-
-print("Speed-up of optimization time")
-print(subset_cases.groupby(["model_name", "case"]).mean()["xSpeedup"].round(1))
-print(subset_cases.groupby(["model_name", "case"]).max()["xSpeedup"].round(1))
-
-# Find the lowest optimality gap from thailand
 stats[stats["model_name"] == "Thailand"]["dw_gap"].min()
 
 # %% Boxplot optimality gap of case 1
