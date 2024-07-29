@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/Users/dardiry/Academia/Cornell/Research/Integrated_Modeling/Model_Couplers/Analysis/PowNet/Software_Package/Version_3_Hisham/PowNet_StepByStep_GitHub_V3.2/src')
+
 from datetime import datetime
 import os
 import pandas as pd
@@ -27,7 +30,8 @@ def main():
     # Decide whether to save results
     SAVE_RESULT = config.get_saveresults()
     SAVE_PLOT = config.get_saveplots()
-    to_reoperate = config.get_resreop()
+    to_reoperate= config.get_resreop()
+    
     output_dir = get_output_dir()
     
     # We need a folder to store the figures
@@ -37,20 +41,20 @@ def main():
     if STEP_BY_STEP: # STEP_BY_STEP Version
         print('\n\n Running STEP_BY_STEP Version..........')
         for SIM_DAY in range(1,STEPS+1):
-            run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,output_dir,SAVE_RESULT,SAVE_PLOT)
+            run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,to_reoperate,output_dir,SAVE_RESULT,SAVE_PLOT)
             
     elif ONE_STEP: # ONE_STEP Version
         print('\n\n Running ONE_STEP Version..........')
         SIM_DAY=config.get_simday()
-        run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,output_dir,SAVE_RESULT,SAVE_PLOT)
+        run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,to_reoperate,output_dir,SAVE_RESULT,SAVE_PLOT)
         
     else:   # ALL_STEPS Version
         print('\n\n Running ALL_STEPS Version..........')
         SIM_DAY=STEPS
-        run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,output_dir,SAVE_RESULT,SAVE_PLOT)
+        run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,to_reoperate,output_dir,SAVE_RESULT,SAVE_PLOT)
         
     
-def run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,output_dir,SAVE_RESULT,SAVE_PLOT):
+def run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,to_reoperate,output_dir,SAVE_RESULT,SAVE_PLOT):
         
     time_start = datetime.now()
     
@@ -91,7 +95,7 @@ def run_pownet(MODEL_NAME,T,STEPS,SIM_DAY,use_gurobi,output_dir,SAVE_RESULT,SAVE
     # Export reservoir outputs as csv
     if to_reoperate:
         simulator.export_reservoir_outputs()
-        
+
     #6) Plot PowNet Results 
     if SAVE_PLOT:
         node_variables = simulator_run.get_node_variables()
