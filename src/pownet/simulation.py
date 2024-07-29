@@ -7,19 +7,17 @@ import pandas as pd
 import gurobipy as gp
 import highspy
 
-from pownet.core.builder import ModelBuilder
-from pownet.core.input import SystemInput
+from pownet.data_utils import (
+    create_init_condition,
+    get_current_time,
+)
+from pownet.core import ModelBuilder, SystemInput, SystemRecord
 from pownet.core.record import (
-    SystemRecord,
     get_hydro_from_model,
     convert_to_daily_hydro,
 )
 from pownet.reservoir.reservoir import ReservoirOperator
-from pownet.processing.functions import (
-    create_init_condition,
-    get_current_time,
-)
-from pownet.folder_sys import get_output_dir
+from pownet.folder_utils import get_output_dir
 
 
 class Simulator:
@@ -58,7 +56,7 @@ class Simulator:
         self.reop_iter: int = []  # Number of reoperation iterations
         self.reop_opt_time: float = 0  # Total runtime of reoperation
 
-    def _check_infeasibility(self, k) -> bool:
+    def _check_infeasibility(self, system_record, k) -> bool:
         """
         Check if the model is infeasible. If it is, generate an output file."""
         is_infeasible = self.model.status == 3

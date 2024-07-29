@@ -1,12 +1,12 @@
+from __future__ import annotations
 from datetime import datetime
 import os
 
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from pownet.core.input import SystemInput
-from pownet.folder_sys import get_output_dir, get_database_dir
-from pownet.processing.functions import get_dates
+from pownet.folder_utils import get_output_dir, get_database_dir
+from pownet.data_utils import get_dates
 
 
 def format_variable_fueltype(
@@ -68,7 +68,7 @@ class OutputProcessor:
     def load(
         self,
         df: pd.DataFrame,
-        system_input: SystemInput,
+        system_input: "SystemInput",
         model_name: str,
     ) -> None:
         """Process node-specific variables from PowNet."""
@@ -208,7 +208,7 @@ class OutputProcessor:
     def load_from_csv(
         self,
         filename: pd.DataFrame,
-        system_input: SystemInput,
+        system_input: "SystemInput",
         model_name: str,
     ) -> None:
         """Load the PowNet output from a CSV file."""
