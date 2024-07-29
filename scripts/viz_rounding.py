@@ -340,9 +340,11 @@ plt.show()
 # %% LINEPLOT SPEEDUP (WALL CLOCK)
 
 # Print statistics
-subset_feasible_df.groupby(["model_name", "T_simulate", "round_strategy"]).agg(
-    {"wall_clock_xspeed": ["mean", "std", "min", "max", "count"]}
-).round(2)
+print(
+    subset_feasible_df.groupby(["model_name", "T_simulate", "round_strategy"])
+    .agg({"wall_clock_xspeed": ["mean", "std", "min", "max", "count"]})
+    .round(2)
+)
 
 g_speedup_wall = sns.FacetGrid(
     subset_feasible_df,
@@ -705,6 +707,13 @@ g_speedup = sns.catplot(
     sharey=False,
     height=4,
     fill=False,
+)
+
+# Print the median and interquartile range to label the boxplot
+print(
+    subset_threshold_deviate.groupby(["model_name", "T_simulate", "round_strategy"])
+    .agg({"wall_clock_xspeed": ["median", "quantile"]})
+    .round(2)
 )
 
 ax_id = 0
