@@ -7,20 +7,20 @@ import pandas as pd
 import gurobipy as gp
 import highspy
 
-from pownet.core.builder import ModelBuilder
-from pownet.core.input import SystemInput
+from pownet.data_utils import (
+    create_init_condition,
+    get_current_time,
+)
+from pownet.core import ModelBuilder, SystemInput, SystemRecord
 from pownet.core.record import (
-    SystemRecord,
     get_hydro_from_model,
     convert_to_daily_hydro,
 )
 from pownet.reservoir.reservoir import ReservoirOperator
-from pownet.processing.functions import (
-    create_init_condition,
-    get_current_time,
-)
-from pownet.folder_sys import get_output_dir
+
 import pownet.config as config
+from pownet.folder_utils import get_output_dir
+
 
 class Simulator:
     def __init__(
@@ -37,7 +37,7 @@ class Simulator:
         self.T = system_input.T
         self.write_model = write_model
         self.use_gurobi = use_gurobi
-        
+
         self.to_reoperate = to_reoperate
         self.reop_timestep = reop_timestep
 
@@ -93,7 +93,7 @@ class Simulator:
     def run(
         self,
         steps: int,
-        init_conds, 
+        init_conds,
         simulated_day,
         mip_gap: float = None,
         timelimit: float = None,
@@ -102,28 +102,26 @@ class Simulator:
         system_record = SystemRecord(self.system_input)
         builder = ModelBuilder(self.system_input)
 
-        
-
         # The indexing of 'k' starts at zero because we use this to
         # index the parameters of future simulation periods (t + self.k*self.T)
         # Need to ensure that steps is a multiple of T
-        STEP_BY_STEP=config.get_stepbystep()
-        ONE_STEP=config.get_onestep()
+        STEP_BY_STEP = config.get_stepbystep()
+        ONE_STEP = config.get_onestep()
 
         if STEP_BY_STEP or ONE_STEP:
-            steps_to_run=1
+            steps_to_run = 1
         else:
             steps_to_run = min(steps, 365 * 24 // self.T)
-            
+
         for k in range(0, steps_to_run):
             # Create a gurobipy model for each simulation period
             if STEP_BY_STEP or ONE_STEP:
-                simulated_step=simulated_day
+                simulated_step = simulated_day
             else:
-                simulated_step=k
+                simulated_step = k
             print("\n\n\n============")
             print(f"PowNet: Simulate step {k+1}\n\n")
-            
+
             k_timer = datetime.now()
 
             if k == 0:
@@ -149,7 +147,9 @@ class Simulator:
                 )
                 if not os.path.exists(dirname):
                     os.makedirs(dirname)
-                self.model.write(os.path.join(dirname, f"{self.model_name}_{simulated_step}.mps"))
+                self.model.write(
+                    os.path.join(dirname, f"{self.model_name}_{simulated_step}.mps")
+                )
 
             # Solve the model with either Gurobi or HiGHs
             if self.use_gurobi:

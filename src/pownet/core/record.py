@@ -1,20 +1,24 @@
+from __future__ import annotations
 import datetime
 import os
 import re
+from typing import TYPE_CHECKING
 
 import gurobipy as gp
 import highspy
 import pandas as pd
 import numpy as np
 
-from pownet.core.input import SystemInput
-from pownet.processing.functions import (
+from pownet.data_utils import (
     get_nodehour,
     get_nodehour_flow,
     get_nodehour_sys,
 )
-from pownet.folder_sys import get_output_dir
 import pownet.config as config
+from pownet.folder_utils import get_output_dir
+
+if TYPE_CHECKING:
+    from pownet.core import SystemInput
 
 
 def write_df(
@@ -25,10 +29,10 @@ def write_df(
     T: int,
 ) -> None:
     """Write a dataframe to the output folder."""
-    STEP_BY_STEP=config.get_stepbystep()
-    ONE_STEP=config.get_onestep()
+    STEP_BY_STEP = config.get_stepbystep()
+    ONE_STEP = config.get_onestep()
 
-    if STEP_BY_STEP: 
+    if STEP_BY_STEP:
         df.to_csv(
             os.path.join(
                 get_output_dir(),
@@ -52,6 +56,7 @@ def write_df(
             ),
             index=False,
         )
+
 
 def increment_hour(df: pd.DataFrame, T: int, k: int):
     df = df.copy()
@@ -221,7 +226,7 @@ class SystemRecord:
         model: gp.Model | highspy.highs.Highs,
         k: int,
     ) -> None:
-        ONE_STEP=config.get_onestep()
+        ONE_STEP = config.get_onestep()
         if isinstance(model, gp.Model):
             results = self._get_sol_from_gurobi(model)
             self.objvals.append(model.objVal)
@@ -316,15 +321,17 @@ class SystemRecord:
             else:
                 self.runtimes.append(model.runtime)
         elif isinstance(model, highspy.highs.Highs):
-            if k == 0 or  ONE_STEP:
+            if k == 0 or ONE_STEP:
                 self.runtimes = [model.getRunTime()]
             else:
                 self.runtimes.append(model.getRunTime())
-        
+
         self.init_conds = self.get_init_conds()
         self.init_conds_df: pd.DataFrame = None
-        self.init_conds_df=pd.DataFrame(self.init_conds.items(), columns=['Variable', 'Value'])
-        
+        self.init_conds_df = pd.DataFrame(
+            self.init_conds.items(), columns=["Variable", "Value"]
+        )
+
     def get_init_conds(self) -> dict[str, dict]:
         return {
             "initial_p": self.current_p,
@@ -360,16 +367,32 @@ class SystemRecord:
 
     def to_csv(self) -> None:
         write_df(
-            self.var_node_t, output_name="node_variables", model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
+            self.var_node_t,
+            output_name="node_variables",
+            model_name=self.model_name,
+            simulated_day=self.simulated_day + 1,
+            T=self.T,
         )
         write_df(
-            self.var_flow, output_name="flow_variables", model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
+            self.var_flow,
+            output_name="flow_variables",
+            model_name=self.model_name,
+            simulated_day=self.simulated_day + 1,
+            T=self.T,
         )
         write_df(
-            self.var_syswide, output_name="system_variables", model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
-        ) 
+            self.var_syswide,
+            output_name="system_variables",
+            model_name=self.model_name,
+            simulated_day=self.simulated_day + 1,
+            T=self.T,
+        )
         write_df(
-            self.init_conds_df, output_name="initial_conditions",model_name=self.model_name,simulated_day=self.simulated_day+1,T=self.T
+            self.init_conds_df,
+            output_name="initial_conditions",
+            model_name=self.model_name,
+            simulated_day=self.simulated_day + 1,
+            T=self.T,
         )
 
         objvals = pd.DataFrame({"objval": self.objvals})
@@ -377,7 +400,7 @@ class SystemRecord:
             objvals,
             output_name="objvals",
             model_name=self.model_name,
-            simulated_day=self.simulated_day+1,
+            simulated_day=self.simulated_day + 1,
             T=self.T,
         )
 
