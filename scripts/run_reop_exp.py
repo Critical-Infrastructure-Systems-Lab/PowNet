@@ -1,8 +1,9 @@
 from datetime import datetime
 import os
 
-from pownet.core.simulation import Simulator
-from pownet.folder_sys import get_output_dir
+from pownet.simulation import Simulator
+from pownet.core import Visualizer, OutputProcessor
+from pownet.folder_utils import get_output_dir
 
 
 def main():
@@ -12,12 +13,12 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 365
+    STEPS = 2
 
-    to_reoperate = False
+    to_reoperate = True
     reop_timestep = "daily"
 
-    save_result = True
+    save_result = False
 
     #############################
     output_dir = get_output_dir()
@@ -31,12 +32,14 @@ def main():
 
     simulator = Simulator(
         model_name=MODEL_NAME,
+        use_gurobi=True,
         T=T,
         to_reoperate=to_reoperate,
         reop_timestep=reop_timestep,
     )
 
     record = simulator.run(steps=STEPS)
+    results = record.get_node_variables()
 
     if save_result:
         record.to_csv()
@@ -59,6 +62,20 @@ def main():
     if to_reoperate:
         simulator.export_reop_iter()
     simulator.export_runtimes()
+
+    # Plot the results
+    output_processor = OutputProcessor()
+    output_processor.load(results, simulator.system_input, MODEL_NAME)
+
+    visualizer = Visualizer(model_name=MODEL_NAME, ctime=output_processor.ctime)
+    visualizer.plot_fuelmix_area(
+        dispatch=output_processor.get_total_dispatch()[: 24 * 3],
+        demand=output_processor.get_total_demand()[: 24 * 3],
+        to_save=False,
+    )
+
+    nodal_prices = simulator.model.get_lmp()
+    model = simulator.model.model
 
 
 if __name__ == "__main__":

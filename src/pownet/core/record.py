@@ -9,6 +9,7 @@ import highspy
 import pandas as pd
 import numpy as np
 
+from pownet.model import PowerSystemModel
 from pownet.data_utils import (
     get_nodehour,
     get_nodehour_flow,
@@ -46,7 +47,7 @@ def increment_hour(df: pd.DataFrame, T: int, k: int):
 def get_init_min_on(
     df: pd.DataFrame,
     T: int,
-    thermal_units: list[str, ...],
+    thermal_units: list[str],
     TU: dict[str, int],
 ) -> dict[str, int]:
     init_min_on = {}
@@ -77,7 +78,7 @@ def get_init_min_on(
 def get_init_min_off(
     df: pd.DataFrame,
     T: int,
-    thermal_units: list[str, ...],
+    thermal_units: list[str],
     TD: dict[str, int],
 ) -> dict[str, int]:
     init_min_off = {}
@@ -201,16 +202,26 @@ class SystemRecord:
 
     def keep(
         self,
-        model: gp.Model | highspy.highs.Highs,
+        power_system_model: PowerSystemModel,
         k: int,
     ) -> None:
+
+        model: gp.Model | highspy.highs.Highs = power_system_model.model
 
         if isinstance(model, gp.Model):
             results = self._get_sol_from_gurobi(model)
             self.objvals.append(model.objVal)
+            runtime = model.Runtime
         elif isinstance(model, highspy.highs.Highs):
             results = self._get_sol_from_highs(model)
             self.objvals.append(self._get_objval_from_highs(model))
+            runtime = model.getRunTime()
+
+        # Save the model runtime
+        if k == 0:
+            self.runtimes = [runtime]
+        else:
+            self.runtimes.append(runtime)
 
         # Create a col of variable types for filtering
         pat_vartype = r"(\w+)\["
@@ -292,18 +303,6 @@ class SystemRecord:
             cur_var_node_t, T=self.T, thermal_units=self.thermal_units, TD=self.TD
         )
 
-        # Save the model runtime
-        if isinstance(model, gp.Model):
-            if k == 0:
-                self.runtimes = [model.runtime]
-            else:
-                self.runtimes.append(model.runtime)
-        elif isinstance(model, highspy.highs.Highs):
-            if k == 0:
-                self.runtimes = [model.getRunTime()]
-            else:
-                self.runtimes.append(model.getRunTime())
-
     def get_init_conds(self) -> dict[str, dict]:
         return {
             "initial_p": self.current_p,
@@ -334,7 +333,7 @@ class SystemRecord:
         """
         return self.var_syswide
 
-    def runtimes(self) -> list[datetime.datetime]:
+    def runtimes(self) -> list[float]:
         return self.runtimes
 
     def to_csv(self) -> None:

@@ -4,14 +4,13 @@ import os
 import re
 
 import pandas as pd
-import gurobipy as gp
-import highspy
 
 from pownet.data_utils import (
     create_init_condition,
     get_current_time,
 )
 from pownet.core import ModelBuilder, SystemInput, SystemRecord
+from pownet.model import PowerSystemModel
 from pownet.core.record import (
     get_hydro_from_model,
     convert_to_daily_hydro,
@@ -49,43 +48,12 @@ class Simulator:
             T=T, formulation="kirchhoff", model_name=model_name
         )
 
-        self.model: gp.Model = None
+        self.model: PowerSystemModel = None
 
         # Statistics
         self.runtimes: float = []  # Total runtime of each instance
         self.reop_iter: int = []  # Number of reoperation iterations
         self.reop_opt_time: float = 0  # Total runtime of reoperation
-
-    def _check_infeasibility(self, system_record, k) -> bool:
-        """
-        Check if the model is infeasible. If it is, generate an output file."""
-        is_infeasible = self.model.status == 3
-        if is_infeasible == 3:
-            print(f"PowNet: Iteration: {k} is infeasible.")
-            self.model.computeIIS()
-            c_time = get_current_time()
-            ilp_file = os.path.join(
-                get_output_dir(),
-                f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.ilp",
-            )
-            self.model.write(ilp_file)
-
-            mps_file = os.path.join(
-                get_output_dir(),
-                f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.mps",
-            )
-            self.model.write(mps_file)
-
-            # Need to learn about the initial conditions as well
-            with open(
-                os.path.join(
-                    get_output_dir(),
-                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.pkl",
-                ),
-                "wb",
-            ) as f:
-                pickle.dump(system_record, f)
-        return is_infeasible
 
     def run(
         self,
@@ -128,61 +96,29 @@ class Simulator:
                     timelimit=timelimit,
                 )
 
-            # We can write the model as .MPS and use non-Gurobi solvers
             if self.write_model:
-                # Save the model
-                dirname = os.path.join(
-                    get_output_dir(), f"{self.model_name}_{self.T}_instances"
-                )
-                if not os.path.exists(dirname):
-                    os.makedirs(dirname)
-                self.model.write(os.path.join(dirname, f"{self.model_name}_{k}.mps"))
+                self.model.write_mps(f"{self.model_name}_{self.T}")
 
             # Solve the model with either Gurobi or HiGHs
             if self.use_gurobi:
                 self.model.optimize()
-
             else:
-                # Export the instance to MPS and solve with HiGHs
-                mps_file = "temp_instance_for_HiGHs.mps"
-                self.model.write(mps_file)
-
-                self.model = highspy.Highs()
-                self.model.readModel(mps_file)
-                self.model.run()
-
-                # Delete the MPS file
-                os.remove(mps_file)
+                self.model.optimize_with_highs()
 
             # In case when the model is infeasible, we generate an output file
-            # to troubleshoot the problem. The model should always be feasible.
-            if self.use_gurobi:
-                if self.model.status == 3:
-                    print(f"PowNet: Iteration: {k} is infeasible.")
-                    self.model.computeIIS()
-                    c_time = get_current_time()
-                    ilp_file = os.path.join(
+            # to troubleshoot the problem.
+            if not self.model.check_feasible():
+                self.model.write_ilp_mps(f"{self.model_name}_{self.T}_{k}")
+                # Need to learn about the initial conditions as well
+                with open(
+                    os.path.join(
                         get_output_dir(),
-                        f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.ilp",
-                    )
-                    self.model.write(ilp_file)
-
-                    mps_file = os.path.join(
-                        get_output_dir(),
-                        f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.mps",
-                    )
-                    self.model.write(mps_file)
-
-                    # Need to learn about the initial conditions as well
-                    with open(
-                        os.path.join(
-                            get_output_dir(),
-                            f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.pkl",
-                        ),
-                        "wb",
-                    ) as f:
-                        pickle.dump(system_record, f)
-                    break
+                        f"infeasible_{self.model_name}_{self.T}_{k}.pkl",
+                    ),
+                    "wb",
+                ) as f:
+                    pickle.dump(system_record, f)
+                break
 
             # Reoperate reservoirs
             if self.to_reoperate:
@@ -212,7 +148,9 @@ class Simulator:
             print("New Capacity vs. Current Dispatch")
 
             # PowNet returns the hydropower dispatch in hourly resolution across the simulation horizon
-            hydro_dispatch, start_day, end_day = get_hydro_from_model(self.model, k)
+            hydro_dispatch, start_day, end_day = get_hydro_from_model(
+                self.model.model, k
+            )
             # Convert to daily dispatch
             hydro_dispatch = convert_to_daily_hydro(hydro_dispatch, start_day, end_day)
             new_hydro_capacity = self.reservoir_operator.reoperate_basins(
@@ -248,7 +186,7 @@ class Simulator:
             self.model.optimize()
 
             # Keep track of optimization time oand reoperation iterations
-            self.reop_opt_time += self.model.runtime
+            self.reop_opt_time += self.model.get_runtime()
             reop_k += 1
 
         # Record the number of iterations after convergence

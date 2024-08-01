@@ -7,7 +7,7 @@ import matplotlib.ticker as mticker
 import pandas as pd
 import seaborn as sns
 
-from pownet.folder_sys import get_temp_dir
+from pownet.folder_utils import get_temp_dir
 from functions import calc_percent_change
 
 plt.rc("font", size=14)

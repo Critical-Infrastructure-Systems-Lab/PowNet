@@ -19,6 +19,7 @@ from pownet.config import (
     get_timelimit,
 )
 from pownet.folder_utils import get_output_dir
+from pownet.model import PowerSystemModel
 
 
 class ModelBuilder:
@@ -1096,7 +1097,7 @@ class ModelBuilder:
 
     def build(
         self, k: int, init_conds: dict[str, dict], mip_gap: float, timelimit: float
-    ) -> gp.Model:
+    ) -> PowerSystemModel:
         self.k = k
 
         self.initial_p = init_conds["initial_p"]
@@ -1129,7 +1130,7 @@ class ModelBuilder:
         self._set_objective()
         self._add_constraints()
 
-        return self.model
+        return PowerSystemModel(self.model)
 
     def update(
         self,
