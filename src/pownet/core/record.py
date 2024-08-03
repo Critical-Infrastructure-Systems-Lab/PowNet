@@ -25,31 +25,32 @@ def write_df(
     df: pd.DataFrame,
     output_name: str,
     model_name: str,
-    T: int,
+    sim_horizon: int,
 ) -> None:
     """Write a dataframe to the output folder."""
     df.to_csv(
         os.path.join(
             get_output_dir(),
-            f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_{T}_{output_name}.csv',
+            f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_{sim_horizon}_{output_name}.csv',
         ),
         index=False,
     )
 
 
-def increment_hour(df: pd.DataFrame, T: int, k: int):
+def increment_hour(df: pd.DataFrame, sim_horizon: int, step_k: int):
+    """Since the model is solved in a rolling horizon manner, we need to increment the hour"""
     df = df.copy()
-    # Increment the hour column according to the simulation period
-    df["hour"] = df["hour"] + T * k
+    df["hour"] = df["hour"] + sim_horizon * step_k
     return df
 
 
-def get_init_min_on(
+def calc_min_on(
     df: pd.DataFrame,
-    T: int,
+    sim_horizon: int,
     thermal_units: list[str],
     TU: dict[str, int],
 ) -> dict[str, int]:
+    """Calculate the remaining minimum online duration for each thermal unit."""
     init_min_on = {}
 
     for unit_g in thermal_units:
@@ -66,21 +67,22 @@ def get_init_min_on(
         else:
             # Taking the negative of T will ensure the calculation is negative
             # such that max(0, calculation) = 0
-            time_last_off = -T
+            time_last_off = -sim_horizon
 
         # The calculated remaining shutdown duration can be negative,
         # which should be converted to
-        init_min_on[unit_g] = max(0, TU[unit_g] - (T - time_last_off))
+        init_min_on[unit_g] = max(0, TU[unit_g] - (sim_horizon - time_last_off))
 
     return init_min_on
 
 
-def get_init_min_off(
+def calc_min_off(
     df: pd.DataFrame,
-    T: int,
+    sim_horizon: int,
     thermal_units: list[str],
     TD: dict[str, int],
 ) -> dict[str, int]:
+    """Calculate the remaining minimum shutdown duration for each thermal unit."""
     init_min_off = {}
 
     for unit_g in thermal_units:
@@ -97,11 +99,11 @@ def get_init_min_off(
         else:
             # Taking the negative of T will ensure the calculation is negative
             # such that max(0, calculation) = 0
-            time_last_on = -T
+            time_last_on = -sim_horizon
 
         # The calculated remaining shutdown duration can be negative,
         # which should be converted to
-        init_min_off[unit_g] = max(0, TD[unit_g] - (T - time_last_on))
+        init_min_off[unit_g] = max(0, TD[unit_g] - (sim_horizon - time_last_on))
 
     return init_min_off
 
@@ -150,8 +152,17 @@ def convert_to_daily_hydro(
 
 
 class SystemRecord:
+    """This class is used to store the results of the model. The results are stored
+    in three dataframes: var_node_t, var_flow, and var_syswide. The var_node_t dataframe
+    stores the node-specific variables such as dispatch, unit status, unit switching, etc.
+    The var_flow dataframe stores the flow variables. The var_syswide dataframe stores
+    the system variables. The class also stores the current state of the system such as
+    the current dispatch, unit status, unit switching, etc. The class also stores
+    the minimum time on/off for each thermal unit.
+    """
+
     def __init__(self, system_input: SystemInput) -> None:
-        self.T: int = system_input.T
+        self.sim_horizon: int = system_input.T
         self.model_name: str = system_input.model_name
         self.runtimes = None
 
@@ -203,7 +214,7 @@ class SystemRecord:
     def keep(
         self,
         power_system_model: PowerSystemModel,
-        k: int,
+        step_k: int,
     ) -> None:
 
         model: gp.Model | highspy.highs.Highs = power_system_model.model
@@ -218,7 +229,7 @@ class SystemRecord:
             runtime = model.getRunTime()
 
         # Save the model runtime
-        if k == 0:
+        if step_k == 0:
             self.runtimes = [runtime]
         else:
             self.runtimes.append(runtime)
@@ -282,24 +293,29 @@ class SystemRecord:
         self.current_w = {k: v for k, v in self.current_w.items()}
 
         # Record the results after incrementing the hour by the simulation period
-        cur_var_node_t = increment_hour(cur_var_node_t, T=self.T, k=k)
-        # The solver produces very small numbers
+        cur_var_node_t = increment_hour(
+            cur_var_node_t, sim_horizon=self.T, step_k=step_k
+        )
+
+        # The solver produces very small numbers, so binary variables may not be exactly 0 or 1
         cur_var_node_t.loc[np.isclose(cur_var_node_t["value"], 0), "value"] = 0
 
         self.var_node_t = pd.concat([self.var_node_t, cur_var_node_t], axis=0)
 
-        cur_var_flow = increment_hour(cur_var_flow, T=self.T, k=k)
+        cur_var_flow = increment_hour(cur_var_flow, sim_horizon=self.T, step_k=step_k)
         self.var_flow = pd.concat([self.var_flow, cur_var_flow], axis=0)
 
         # Currently there is only the system-wider reserve
-        cur_var_syswide = increment_hour(cur_var_syswide, T=self.T, k=k)
+        cur_var_syswide = increment_hour(
+            cur_var_syswide, sim_horizon=self.T, step_k=step_k
+        )
         self.var_syswide = pd.concat([self.var_syswide, cur_var_syswide], axis=0)
 
         # Need to calculate the minimum time on/off
-        self.current_min_on = get_init_min_on(
+        self.current_min_on = calc_min_on(
             cur_var_node_t, T=self.T, thermal_units=self.thermal_units, TU=self.TU
         )
-        self.current_min_off = get_init_min_off(
+        self.current_min_off = calc_min_off(
             cur_var_node_t, T=self.T, thermal_units=self.thermal_units, TD=self.TD
         )
 
@@ -341,29 +357,31 @@ class SystemRecord:
             self.var_node_t,
             output_name="node_variables",
             model_name=self.model_name,
-            T=self.T,
+            sim_horizon=self.T,
         )
         write_df(
             self.var_flow,
             output_name="flow_variables",
             model_name=self.model_name,
-            T=self.T,
+            sim_horizon=self.T,
         )
         write_df(
             self.var_syswide,
             output_name="system_variables",
             model_name=self.model_name,
-            T=self.T,
+            sim_horizon=self.T,
         )
         objvals = pd.DataFrame({"objval": self.objvals})
         write_df(
             objvals,
             output_name="objvals",
             model_name=self.model_name,
-            T=self.T,
+            sim_horizon=self.T,
         )
 
     def get_hydro_dispatch(self) -> pd.DataFrame:
+        # TODO: This function should not convert to daily hydro dispatch
+        # because a function should only do one thing.
         df = self.var_node_t[self.var_node_t["vartype"] == "phydro"]
         df = df[["node", "hour", "value"]]
         df = df.rename(columns={"node": "reservoir", "value": "dispatch"})
