@@ -25,7 +25,7 @@ from pownet.model import PowerSystemModel
 class ModelBuilder:
     """Build the model by adding unit commitment constraints."""
 
-    def __init__(self, inputs: "SystemInput", reverse_flow: bool = False) -> None:
+    def __init__(self, inputs: "SystemInput") -> None:
         self.model = None
         self.model_name = inputs.model_name
 
@@ -39,11 +39,6 @@ class ModelBuilder:
 
         # Hydropower formulation
         self.hydro_timestep: str = inputs.hydro_timestep
-
-        # reverse_flow is not implemented yet
-        self.reverse_flow = reverse_flow
-        if reverse_flow:
-            raise NotImplementedError("Reverse flow is not implemented.")
 
         # Variables. See _add_variables for the descriptions.
         self.dispatch = None
@@ -1005,41 +1000,25 @@ class ModelBuilder:
         # then energy flows from a to b.
         # We set the bounds based on the transmission limit
         line_capacity_factor = get_line_capacity_factor()
-        if not self.reverse_flow:
-            self.flow = self.model.addVars(
-                self.inputs.arcs,
-                self.timesteps,
-                lb={
-                    (source, sink, t): -1
-                    * line_capacity_factor
-                    * self.inputs.linecap.loc[t + self.T * self.k, (source, sink)]
-                    for source, sink in self.inputs.arcs
-                    for t in self.timesteps
-                },
-                ub={
-                    (source, sink, t): line_capacity_factor
-                    * self.inputs.linecap.loc[t + self.T * self.k, (source, sink)]
-                    for source, sink in self.inputs.arcs
-                    for t in self.timesteps
-                },
-                vtype=GRB.CONTINUOUS,
-                name="flow",
-            )
-        else:
-            # We only deal with positive flows in this case
-            self.flow = self.model.addVars(
-                self.inputs.arcs,
-                self.timesteps,
-                lb=0,
-                ub={
-                    (source, sink, t): line_capacity_factor
-                    * self.inputs.linecap.loc[t + self.T * self.k, (source, sink)]
-                    for source, sink in self.inputs.arcs
-                    for t in self.timesteps
-                },
-                vtype=GRB.CONTINUOUS,
-                name="flow",
-            )
+        self.flow = self.model.addVars(
+            self.inputs.arcs,
+            self.timesteps,
+            lb={
+                (source, sink, t): -1
+                * line_capacity_factor
+                * self.inputs.linecap.loc[t + self.T * self.k, (source, sink)]
+                for source, sink in self.inputs.arcs
+                for t in self.timesteps
+            },
+            ub={
+                (source, sink, t): line_capacity_factor
+                * self.inputs.linecap.loc[t + self.T * self.k, (source, sink)]
+                for source, sink in self.inputs.arcs
+                for t in self.timesteps
+            },
+            vtype=GRB.CONTINUOUS,
+            name="flow",
+        )
 
         # Volt angle. Unit: radians
         # Not sure if we should do between -pi and pi or between 0 and 2*pi

@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import os
 
@@ -12,27 +13,25 @@ from pownet.folder_utils import get_model_dir
 class SystemInput:
     def __init__(
         self,
-        T: int,
+        sim_horizon: int,
         formulation: str,
         model_name: str,
-        price: str = "fuel",
-        reverse_flow: bool = False,
+        year: int,
     ) -> None:
-
+        """This class reads the input data for the power system model."""
         # The date columns are not needed
         date_cols = ["year", "month", "day", "hour", "date"]
 
-        self.T: int = T
+        self.T: int = sim_horizon
         self.formulation: str = formulation
         self.model_name: str = model_name
-
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         self.model_dir: str = os.path.join(get_model_dir(), model_name)
 
         # User inputs
-        self.year: int = pd.read_csv(
-            os.path.join(self.model_dir, "demand_export.csv"), header=0
-        )["year"].iloc[0]
+        self.year: year
 
+        # Read static data from model directory
         self.thermal_units: list = pd.read_csv(
             os.path.join(self.model_dir, "unit_param.csv"),
             header=0,
@@ -164,18 +163,15 @@ class SystemInput:
         # Transmission lines
         self.arcs: gp.tuplelist = get_arcs(
             self.transmission,
-            reverse_flow=reverse_flow,
         )
 
         self.linecap: pd.DataFrame = get_linecap(
             self.transmission,
-            reverse_flow=reverse_flow,
         )
         self.linecap.index += 1
 
         self.suscept: pd.DataFrame = get_suscept(
             self.transmission,
-            reverse_flow=reverse_flow,
         )
         self.suscept.index += 1
 
