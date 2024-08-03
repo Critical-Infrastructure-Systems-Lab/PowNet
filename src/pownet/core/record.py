@@ -10,11 +10,7 @@ import pandas as pd
 import numpy as np
 
 from pownet.model import PowerSystemModel
-from pownet.data_utils import (
-    get_nodehour,
-    get_nodehour_flow,
-    get_nodehour_sys,
-)
+from pownet.data_utils import get_nodehour_flow
 from pownet.folder_utils import get_output_dir
 
 if TYPE_CHECKING:
@@ -153,9 +149,9 @@ def convert_to_daily_hydro(
 
 class SystemRecord:
     """This class is used to store the results of the model. The results are stored
-    in three dataframes: var_node_t, var_flow, and var_syswide. The var_node_t dataframe
+    in three dataframes: node_vars, flow_vars, and syswide_vars. The node_vars dataframe
     stores the node-specific variables such as dispatch, unit status, unit switching, etc.
-    The var_flow dataframe stores the flow variables. The var_syswide dataframe stores
+    The flow_vars dataframe stores the flow variables. The syswide_vars dataframe stores
     the system variables. The class also stores the current state of the system such as
     the current dispatch, unit status, unit switching, etc. The class also stores
     the minimum time on/off for each thermal unit.
@@ -164,19 +160,20 @@ class SystemRecord:
     def __init__(self, system_input: SystemInput) -> None:
         self.sim_horizon: int = system_input.T
         self.model_name: str = system_input.model_name
-        self.runtimes = None
-
         self.thermal_units: list = system_input.thermal_units
         self.TD: dict[str, int] = system_input.TD
         self.TU: dict[str, int] = system_input.TU
 
         # The model results are separated into three types based on
         # the formating of their index: var(node, t), var(node, node, t), var(t)
-        self.var_node_t: pd.DataFrame = None
-        self.var_flow: pd.DataFrame = None
-        self.var_syswide: pd.DataFrame = None
+        self.node_vars: pd.DataFrame = None
+        self.flow_vars: pd.DataFrame = None
+        self.syswide_vars: pd.DataFrame = None
 
-        # These attributes are a list of values
+        self.objvals = []
+        self.runtimes = []
+
+        # These are dispatch, unit status, unit switching, etc.
         self.current_p = None
         self.current_u = None
         self.current_v = None
@@ -184,139 +181,119 @@ class SystemRecord:
         self.current_min_on = None
         self.current_min_off = None
 
-        self.objvals = []
-
-    def _get_sol_from_gurobi(self, gp_model) -> pd.DataFrame:
-        # Extract the variables from the model to process them
-        return pd.DataFrame(
-            {"varname": gp_model.getAttr("varname"), "value": gp_model.getAttr("X")}
-        )
-
-    def _get_sol_from_highs(self, highs_model: highspy.highs.Highs) -> pd.DataFrame:
-        # Extract the variables from the model to process them
-        # Check the solution
-        return pd.DataFrame(
-            {
-                "varname": [
-                    highs_model.getColName(i)[1]
-                    for i in range(
-                        highs_model.getNumCol()
-                    )  # getColName returns a tuple
-                ],
-                "value": highs_model.getSolution().col_value,
-            }
-        )
-
-    def _get_objval_from_highs(self, highs_model: highspy.highs.Highs) -> float:
-        info = highs_model.getInfo()
-        return info.objective_function_value
-
     def keep(
         self,
         power_system_model: PowerSystemModel,
         step_k: int,
     ) -> None:
+        """Keep the simulation results at the current simulation period step_k"""
 
-        model: gp.Model | highspy.highs.Highs = power_system_model.model
+        self.runtimes.append(power_system_model.get_runtime())
+        self.objvals.append(power_system_model.get_objval())
 
-        if isinstance(model, gp.Model):
-            results = self._get_sol_from_gurobi(model)
-            self.objvals.append(model.objVal)
-            runtime = model.Runtime
-        elif isinstance(model, highspy.highs.Highs):
-            results = self._get_sol_from_highs(model)
-            self.objvals.append(self._get_objval_from_highs(model))
-            runtime = model.getRunTime()
-
-        # Save the model runtime
-        if step_k == 0:
-            self.runtimes = [runtime]
-        else:
-            self.runtimes.append(runtime)
-
+        solution = pd.DataFrame(power_system_model.get_solution())
         # Create a col of variable types for filtering
         pat_vartype = r"(\w+)\["
-        results[["vartype"]] = results["varname"].str.extract(pat_vartype, expand=True)
+        solution[["vartype"]] = solution["varname"].str.extract(
+            pat_vartype, expand=True
+        )
 
-        # Some variables are not in the (node, t) format.
-        # These are system-level variables
-        col2exclude = ["flow", "sys_spin"]
-
-        # Format the dataframe into vartype, node, hour, value columns
-        cur_var_node_t = results[~results["vartype"].isin(col2exclude)]
-        cur_var_node_t = get_nodehour(cur_var_node_t)
-        # Prevent numerical instability by ensuring the binary values are zero or one
-        cur_var_node_t.loc[
-            np.isclose(cur_var_node_t["value"], 0, atol=1e-4), "value"
+        ##################
+        # Node variables are in the (node, t) format.
+        ##################
+        pat_node_var = r"(\w+)\[(\w+),(\d+)\]"
+        # Filter to only variables that are node-specific
+        current_node_vars = solution[solution["varname"].str.match(pat_node_var)].copy()
+        current_node_vars[["node", "hour"]] = current_node_vars["varname"].str.extract(
+            pat_node_var, expand=True
+        )[[1, 2]]
+        # Convert the hour to an integer
+        current_node_vars["hour"] = current_node_vars["hour"].astype(int)
+        # The extracted hour is across the entire simulation period, so we need to increment it
+        # by the simulation horizon to get the actual hour of the year.
+        current_node_vars = increment_hour(
+            current_node_vars, sim_horizon=self.sim_horizon, step_k=step_k
+        )
+        # The solver may return binary values that are are not exactly zero or one, so we need to round them
+        current_node_vars.loc[
+            np.isclose(current_node_vars["value"], 0, atol=1e-4), "value"
         ] = 0
-        cur_var_node_t.loc[
-            np.isclose(cur_var_node_t["value"], 1, atol=1e-4), "value"
+        current_node_vars.loc[
+            np.isclose(current_node_vars["value"], 1, atol=1e-4), "value"
         ] = 1
 
-        cur_var_flow = results[results["vartype"] == "flow"]
-        cur_var_flow = get_nodehour_flow(cur_var_flow)
+        self.node_vars = pd.concat([self.node_vars, current_node_vars], axis=0)
 
-        cur_var_syswide = results[results["vartype"] == "sys_spin"]
-        cur_var_syswide = get_nodehour_sys(cur_var_syswide)
+        ##################
+        # The flow variables are in the (node, node, t) format.
+        ##################
+        pat_flow_var = r"flow\[(\w+),(\w+),(\d+)\]"
+        cur_flow_vars = solution[solution["varname"].str.match(pat_flow_var)].copy()
+        cur_flow_vars[["node_a", "node_b", "hour"]] = cur_flow_vars[
+            "varname"
+        ].str.extract(pat_flow_var, expand=True)
+        cur_flow_vars["hour"] = cur_flow_vars["hour"].astype(int)
+        cur_flow_vars = increment_hour(
+            cur_flow_vars, sim_horizon=self.sim_horizon, step_k=step_k
+        )
+        self.flow_vars = pd.concat([self.flow_vars, cur_flow_vars], axis=0)
 
-        # Save some variables as initial conditions for the next simulation period
+        ##################
+        # The system-wide variables are in the (t) format
+        ##################
+        pat_syswide = r"(\w+)\[(\d+)\]"
+        cur_syswide_vars = solution[solution["varname"].str.match(pat_syswide)].copy()
+        cur_syswide_vars["hour"] = cur_syswide_vars["varname"].str.extract(
+            pat_syswide, expand=True
+        )[1]
+        cur_syswide_vars["hour"] = cur_syswide_vars["hour"].astype(int)
+        cur_syswide_vars = increment_hour(
+            cur_syswide_vars, sim_horizon=self.sim_horizon, step_k=step_k
+        )
+        self.syswide_vars = pd.concat([self.syswide_vars, cur_syswide_vars], axis=0)
+
+        ##################
+        # Initial conditions are dispatch (p), commitment (u), startup (v), and shutdown (w).
+        ##################
         self.current_p = (
-            cur_var_node_t[cur_var_node_t["vartype"] == "p"]
+            current_node_vars[current_node_vars["vartype"] == "p"]
             .drop("vartype", axis=1)
             .set_index(["node", "hour"])
             .to_dict()["value"]
         )
-
         self.current_u = (
-            cur_var_node_t[cur_var_node_t["vartype"] == "status"]
+            current_node_vars[current_node_vars["vartype"] == "status"]
             .drop("vartype", axis=1)
             .set_index(["node", "hour"])
             .to_dict()["value"]
         )
 
         self.current_v = (
-            cur_var_node_t[cur_var_node_t["vartype"] == "start"]
+            current_node_vars[current_node_vars["vartype"] == "start"]
             .drop("vartype", axis=1)
             .set_index(["node", "hour"])
             .to_dict()["value"]
         )
 
         self.current_w = (
-            cur_var_node_t[cur_var_node_t["vartype"] == "shut"]
+            current_node_vars[current_node_vars["vartype"] == "shut"]
             .drop("vartype", axis=1)
             .set_index(["node", "hour"])
             .to_dict()["value"]
         )
 
-        self.current_u = {k: v for k, v in self.current_u.items()}
-        self.current_v = {k: v for k, v in self.current_v.items()}
-        self.current_w = {k: v for k, v in self.current_w.items()}
-
-        # Record the results after incrementing the hour by the simulation period
-        cur_var_node_t = increment_hour(
-            cur_var_node_t, sim_horizon=self.T, step_k=step_k
-        )
-
-        # The solver produces very small numbers, so binary variables may not be exactly 0 or 1
-        cur_var_node_t.loc[np.isclose(cur_var_node_t["value"], 0), "value"] = 0
-
-        self.var_node_t = pd.concat([self.var_node_t, cur_var_node_t], axis=0)
-
-        cur_var_flow = increment_hour(cur_var_flow, sim_horizon=self.T, step_k=step_k)
-        self.var_flow = pd.concat([self.var_flow, cur_var_flow], axis=0)
-
-        # Currently there is only the system-wider reserve
-        cur_var_syswide = increment_hour(
-            cur_var_syswide, sim_horizon=self.T, step_k=step_k
-        )
-        self.var_syswide = pd.concat([self.var_syswide, cur_var_syswide], axis=0)
-
         # Need to calculate the minimum time on/off
         self.current_min_on = calc_min_on(
-            cur_var_node_t, T=self.T, thermal_units=self.thermal_units, TU=self.TU
+            current_node_vars,
+            sim_horizon=self.sim_horizon,
+            thermal_units=self.thermal_units,
+            TU=self.TU,
         )
         self.current_min_off = calc_min_off(
-            cur_var_node_t, T=self.T, thermal_units=self.thermal_units, TD=self.TD
+            current_node_vars,
+            sim_horizon=self.sim_horizon,
+            thermal_units=self.thermal_units,
+            TD=self.TD,
         )
 
     def get_init_conds(self) -> dict[str, dict]:
@@ -329,60 +306,60 @@ class SystemRecord:
             "initial_min_off": self.current_min_off,
         }
 
-    def get_record(self) -> None:
-        """Return all the variables as a set of three dataframes"""
-        return [self.var_node_t, self.var_flow, self.var_syswide]
-
     def get_node_variables(self) -> pd.DataFrame:
         """Return node-specific variables. These variables include
         dispatch, unit status, unit switching, etc.
         """
-        return self.var_node_t
+        return self.node_vars
 
     def get_flow_variables(self) -> pd.DataFrame:
         """Return the flow variables."""
-        return self.var_flow
+        return self.flow_vars
 
-    def get_system_variables(self) -> pd.DataFrame:
+    def get_systemwide_variables(self) -> pd.DataFrame:
         """Return the system variables. We currently only have the
         system-wide spinning reserve shortfall.
         """
-        return self.var_syswide
+        return self.syswide_vars
 
-    def runtimes(self) -> list[float]:
+    def get_runtimes(self) -> list[float]:
         return self.runtimes
 
-    def to_csv(self) -> None:
+    def get_objvals(self) -> list[float]:
+        return self.objvals
+
+    def write_simulation_results(self) -> None:
         write_df(
-            self.var_node_t,
+            self.node_vars,
             output_name="node_variables",
             model_name=self.model_name,
-            sim_horizon=self.T,
+            sim_horizon=self.sim_horizon,
         )
         write_df(
-            self.var_flow,
+            self.flow_vars,
             output_name="flow_variables",
             model_name=self.model_name,
-            sim_horizon=self.T,
+            sim_horizon=self.sim_horizon,
         )
         write_df(
-            self.var_syswide,
+            self.syswide_vars,
             output_name="system_variables",
             model_name=self.model_name,
-            sim_horizon=self.T,
+            sim_horizon=self.sim_horizon,
         )
         objvals = pd.DataFrame({"objval": self.objvals})
         write_df(
             objvals,
             output_name="objvals",
             model_name=self.model_name,
-            sim_horizon=self.T,
+            sim_horizon=self.sim_horizon,
         )
+        runtimes = pd.DataFrame({"runtime": self.runtimes})
 
     def get_hydro_dispatch(self) -> pd.DataFrame:
         # TODO: This function should not convert to daily hydro dispatch
         # because a function should only do one thing.
-        df = self.var_node_t[self.var_node_t["vartype"] == "phydro"]
+        df = self.node_vars[self.node_vars["vartype"] == "phydro"]
         df = df[["node", "hour", "value"]]
         df = df.rename(columns={"node": "reservoir", "value": "dispatch"})
         # Columns: reservoir, hour, v.x

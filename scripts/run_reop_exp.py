@@ -8,14 +8,14 @@ from pownet.folder_utils import get_output_dir
 
 def main():
     # ------- User defined inputs
-    MODEL_NAME = "dummy_hydro"
+    MODEL_NAME = "dummy_trade"
     # The default simulation horizon T is 24 hours
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
     STEPS = 2
 
-    to_reoperate = True
+    to_reoperate = False
     reop_timestep = "daily"
 
     save_result = False
@@ -65,7 +65,7 @@ def main():
 
     # Plot the results
     output_processor = OutputProcessor()
-    output_processor.load(results, simulator.system_input, MODEL_NAME)
+    output_processor.load(results, simulator.system_input)
 
     visualizer = Visualizer(model_name=MODEL_NAME, ctime=output_processor.ctime)
     visualizer.plot_fuelmix_area(

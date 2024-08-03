@@ -69,10 +69,9 @@ class OutputProcessor:
         self,
         df: pd.DataFrame,
         system_input: "SystemInput",
-        model_name: str,
     ) -> None:
         """Process node-specific variables from PowNet."""
-        self.model_name = model_name
+        self.model_name = system_input.model_name
         self.year = system_input.year
 
         # For saving files
