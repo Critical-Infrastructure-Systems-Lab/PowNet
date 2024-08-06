@@ -10,29 +10,40 @@ from pownet.data_utils import get_dates
 
 
 class DataProcessor:
-    def __init__(self, year: int, model_name: str, frequency: int) -> None:
-
-        self.year = year
+    def __init__(self, model_name: str, year: int, frequency: int) -> None:
         self.model_name = model_name
+        self.year = year
         self.frequency = frequency
 
-        wavelengths = {50: 6000, 60: 5000}  # in km
+        # Values that will be calculated
+        self.cycle_map: dict = {}
+        self.thermal_derate_factors: pd.DataFrame = get_dates(year)
+        self.marginal_costs: pd.DataFrame = get_dates(year)
+
+        # Maps frequency to wavelength
+        wavelengths = {50: 6000, 60: 5000}
         self.wavelength = wavelengths[frequency]
 
         # Note that we will modify the original file
         self.model_folder = os.path.join(get_model_dir(), model_name)
 
-        self.transmission_file = os.path.join(self.model_folder, "transmission.csv")
-        self.transmission_data = pd.read_csv(self.transmission_file, header=0)
-
-        # We use these parameters for calculations
-        self.transmission_params = (
+    def load_data(self) -> None:
+        self.user_transmission = pd.read_csv(
+            os.path.join(self.model_folder, "transmission.csv"),
+            header=0,
+        )
+        # Generic transmission parameters for a power system
+        self.transmission_params: dict = (
             pd.read_csv(
-                os.path.join(get_database_dir(), "transmission_params.csv"),
+                os.path.join(get_database_dir(), "transmission_params.csv"), header=0
             )
             .set_index("kv")
             .to_dict(orient="dict")
         )
+        # Calculated transmission data
+        self.transmission_data: pd.DataFrame = self.user_transmission[
+            ["source", "sink", "source_kv", "sink_kv"]
+        ].copy()
 
     def calc_stability_limit(
         self,
@@ -42,15 +53,17 @@ class DataProcessor:
         wavelength: int,
         n_circuits: int,
     ) -> float:
-        """From Chapter 5 of Power System Analysis and Design 5th (EQ 5.4.30)"""
+        """This function calculates the steady-state stability limit of a transmission line.
+        From Chapter 5 of Power System Analysis and Design 5th (EQ 5.4.30)
+        """
+        # The reactance of the line is a function of the maximum voltage level
+        # of the two buses.
         max_kv = max(source_kv, sink_kv)
         reactance_per_km = self.transmission_params["reactance_ohms_per_km"][max_kv]
         # Calculate the Surge Impedance Limit (SIL)
         sil = source_kv * sink_kv / reactance_per_km / 1000  # Divide by 1000 to get MW
         stability_limit_per_circuit = sil / np.sin(2 * np.pi * distance / wavelength)
-        return round(n_circuits * stability_limit_per_circuit, 0)
-
-    # Calculate the steady-state stability limit
+        return int(n_circuits * stability_limit_per_circuit)
 
     def calc_thermal_limit(
         self, source_kv: int, sink_kv: int, n_circuits: int
@@ -63,15 +76,15 @@ class DataProcessor:
         """
         max_kv = max(source_kv, sink_kv)
         n_conductors = self.transmission_params["n_conductors"][max_kv]
-        # in A
+        # in Amps
         current_capacity = self.transmission_params["current_capacity_amps"][max_kv]
-
         total_current_capacity = n_conductors * current_capacity / 1000  # in kilo-A
         thermal_limit_per_circuit = total_current_capacity * np.sqrt(3) * max_kv
-        return round(n_circuits * thermal_limit_per_circuit, 0)
+        return int(n_circuits * thermal_limit_per_circuit)
 
-    def get_transmission_capacity(self) -> None:
-        self.transmission_data["pownet_stability_limit"] = self.transmission_data.apply(
+    def calc_line_capacity(self) -> None:
+        """Calculate the capacity of line segments. The unit is in MW."""
+        self.transmission_data["stability_limit"] = self.user_transmission.apply(
             lambda x: self.calc_stability_limit(
                 x["source_kv"],
                 x["sink_kv"],
@@ -82,49 +95,47 @@ class DataProcessor:
             axis=1,
         )
 
-        self.transmission_data["pownet_thermal_limit"] = self.transmission_data.apply(
+        self.transmission_data["thermal_limit"] = self.user_transmission.apply(
             lambda x: self.calc_thermal_limit(
                 x["source_kv"], x["sink_kv"], x["n_circuits"]
             ),
             axis=1,
         )
         # The transmission limit is the minimum of the thermal limit and
-        # the steady-state steability limit. Normally, distance is the deciding factor.
-        self.transmission_data["pownet_line_capacity"] = self.transmission_data[
-            ["pownet_thermal_limit", "pownet_stability_limit"]
+        # the steady-state steability limit (a function of distance).
+        # Normally, distance is the deciding factor.
+        self.transmission_data["line_capacity"] = self.transmission_data[
+            ["thermal_limit", "stability_limit"]
         ].min(axis=1)
 
-    def get_transmission_susceptance(self) -> None:
-        """This is the susceptance of the line segment. The unit is in siemens-km"""
-        source_sink = pd.DataFrame(
-            self.transmission_data["source_kv"].values, columns=["source_kv"]
+    def calc_line_susceptance(self) -> None:
+        # Find the max voltage level of each line segment from
+        # self.user_transmission
+        self.transmission_data["max_kv"] = self.user_transmission.apply(
+            lambda x: max(x["source_kv"], x["sink_kv"]), axis=1
         )
 
-        source_sink["sink_kv"] = self.transmission_data["sink_kv"]
-        source_sink["max_kv"] = source_sink.max(axis=1)
-
-        source_sink["reactance_per_km"] = source_sink.apply(
+        self.transmission_data["reactance_per_km"] = self.transmission_data.apply(
             lambda x: self.transmission_params["reactance_ohms_per_km"][x["max_kv"]],
             axis=1,
         )
 
-        self.transmission_data["pownet_reactance_pu"] = (
-            source_sink["reactance_per_km"] * self.transmission_data["distance"]
+        self.transmission_data["reactance_pu"] = (
+            self.transmission_data["reactance_per_km"]
+            * self.user_transmission["distance"]
         )
 
         self.transmission_data["pownet_susceptance"] = self.transmission_data.apply(
-            lambda x: int(x["source_kv"] * x["sink_kv"] / x["pownet_reactance_pu"]),
+            lambda x: int(x["source_kv"] * x["sink_kv"] / x["reactance_pu"]),
             axis=1,
         )
 
-    def transform_transmission_inputs(self, to_write: bool = True) -> None:
-        self.get_transmission_capacity()
-        self.get_transmission_susceptance()
-        # Write the new columns
-        if to_write:
-            self.transmission_data.to_csv(self.transmission_file, index=False)
+    def write_transmission_data(self) -> None:
+        self.transmission_data.to_csv(
+            os.path.join(self.model_folder, "pownet_transmission.csv"), index=False
+        )
 
-    def create_cycle_map(self, to_write: bool = True) -> None:
+    def create_cycle_map(self) -> None:
         # Find all the basic cycles in the transmission system
         graph = nx.from_pandas_edgelist(
             self.transmission_data,
@@ -132,36 +143,33 @@ class DataProcessor:
             target="sink",
         )
         cycles = nx.cycle_basis(graph)
-
         # We save this map to use by the ModelBuilder
-        cycle_map = {f"cycle_{idx+1}": cycle for idx, cycle in enumerate(cycles)}
+        self.cycle_map = {f"cycle_{idx+1}": cycle for idx, cycle in enumerate(cycles)}
 
+    def write_cycle_map(self) -> None:
         # Save in the model_library/model_name folder so we only need to find
         # the cycles once
         with open(os.path.join(self.model_folder, "pownet_cycle_map.json"), "w") as f:
-            json.dump(cycle_map, f)
+            json.dump(self.cycle_map, f)
 
-    def create_derate_factors(
-        self, derate_factor: float = 1.00, to_write: bool = True
-    ) -> None:
-        """Create a csv file called "pownet_derate_factor.csv" in
-        moddel_library/{model_name} folder
+    def create_thermal_derate_factors(self, derate_factor: float = 1.00) -> None:
+        """Assumes a constant derate factor for all thermal units. The derate factor is applied
+        to the nameplate capacity of thermal units.
         """
-        derate_df = get_dates(self.year)
         # Get the thermal units
         model_dir = os.path.join(get_model_dir(), self.model_name)
-        thermal_units = pd.read_csv(os.path.join(model_dir, "unit_param.csv"))[
+        thermal_units = pd.read_csv(os.path.join(model_dir, "thermal_unit.csv"))[
             "name"
         ].values
-        derate_df[thermal_units] = derate_factor
+        self.thermal_derate_factors[thermal_units] = derate_factor
 
-        if to_write:
-            derate_df.to_csv(
-                os.path.join(self.model_folder, "pownet_derate_factor.csv"), index=False
-            )
+    def write_thermal_derate_factors(self) -> None:
+        self.thermal_derate_factors.to_csv(
+            os.path.join(self.model_folder, "pownet_derate_factor.csv"), index=False
+        )
 
-    def create_derated_max_capacities(self, to_write: bool = True) -> None:
-        """Create a dict of derated generation capacity of thermal units.
+    def create_derated_max_capacities(self) -> None:
+        """Create a dict of derated generation capacity of thermal units for each hour of the year.
         The structure of this is
         {
             'unit_a': {
@@ -172,50 +180,98 @@ class DataProcessor:
                 }
             }
         """
-        derate_path = os.path.join(self.model_folder, "pownet_derate_factor.csv")
-        derate_df = pd.read_csv(derate_path, header=0)
-
+        # Get the nameplate capacity of each thermal unit
         max_cap = pd.read_csv(
-            os.path.join(self.model_folder, "unit_param.csv"),
+            os.path.join(self.model_folder, "thermal_unit.csv"),
             header=0,
             index_col="name",
             usecols=["name", "max_capacity"],
         ).to_dict()["max_capacity"]
 
-        derated_max_cap = pd.DataFrame()
+        self.derated_max_cap = pd.DataFrame()
         for thermal_unit in max_cap.keys():
-            derated_max_cap[thermal_unit] = (
-                derate_df[thermal_unit] * max_cap[thermal_unit]
+            self.derated_max_cap[thermal_unit] = (
+                self.thermal_derate_factors[thermal_unit] * max_cap[thermal_unit]
             )
 
-        derated_max_cap = pd.concat(
-            [get_dates(year=self.year), derated_max_cap], axis=1
+        self.derated_max_cap = pd.concat(
+            [get_dates(year=self.year), self.derated_max_cap], axis=1
         )
         # Pownet indexing starts at 1 and usually ends at 8760.
-        derated_max_cap.index += 1
+        self.derated_max_cap.index += 1
 
-        derated_max_cap.to_csv(
+    def write_derated_max_capacities(self) -> None:
+        self.derated_max_cap.to_csv(
             os.path.join(self.model_folder, "pownet_derated_capacity.csv"), index=False
         )
 
-    def create_fuelprice(self) -> None:
-        """Create a dataframe of hourly fuel price of each generator
-        from fuel_map.csv.
+    def create_marginal_costs(self) -> None:
+        """Create a dataframe of hourly fuel prices (or marginal costs) of non-thermal units.
+        The columns are names of renewable and import units. The marginal cost is in $/MWh.
         """
-        fuel_map = pd.read_csv(os.path.join(self.model_folder, "fuel_map.csv")).dropna()
+        # unit_marginal_cost.csv has three columns: name, fuel_type, and marginal_cost.
+        # Now, we create a fuel_type to marginal_cost mapping
+        constant_prices = pd.read_csv(
+            os.path.join(self.model_folder, "unit_marginal_cost.csv"),
+            header=0,
+            index_col="fuel_type",
+        ).to_dict()["marginal_cost"]
 
-        fuelprice = fuel_map[["name", "fuel_price_optional"]].set_index("name").T
-        fuelprice.index = [0]
+        # If there are solar.csv, hydro.csv, and wind.csv files, then we need to
+        # include them in the fuel price file.
+        hours_in_year = range(8760)
+        # self.marginal_costs = pd.DataFrame(0, index=hours_in_year, columns=[])
+        unit_types = ["solar", "wind", "hydro", "import"]
+        for unit_type in unit_types:
+            filename = os.path.join(self.model_folder, f"{unit_type}.csv")
+            if os.path.exists(filename):
+                units = pd.read_csv(filename, header=0).columns
+                units = units.drop(
+                    ["year", "month", "day", "hour"], errors="ignore"
+                ).to_list()
+                temp_df = pd.DataFrame(
+                    constant_prices[unit_type],
+                    index=hours_in_year,
+                    columns=units,
+                )
+                self.marginal_costs = pd.concat(
+                    [
+                        self.marginal_costs,
+                        temp_df,
+                    ],
+                    axis=1,
+                )
 
-        fuelprice = pd.concat([get_dates(year=self.year), fuelprice], axis=1)
-        fuelprice = fuelprice.ffill()
+    def write_marginal_costs(self) -> None:
+        self.marginal_costs.to_csv(
+            os.path.join(self.model_folder, "pownet_marginal_costs.csv"), index=False
+        )
 
-        fuelprice.to_csv(os.path.join(self.model_folder, "fuel_price.csv"), index=False)
+    def check_user_line_capacities(self) -> None:
+        """The user can provide their own line capacities under user_line_cap column
+        in transmission.csv. If this is the case, then it will be used instead of the
+        calculated line capacities.
+        """
+        pass
+
+    def process_data(self) -> None:
+        """Run all the data processing steps"""
+        self.calc_line_capacity()
+        self.calc_line_susceptance()
+        self.create_cycle_map()
+        self.create_thermal_derate_factors()
+        self.create_derated_max_capacities()
+        self.create_marginal_costs()
+
+    def write_data(self) -> None:
+        self.write_transmission_data()
+        self.write_cycle_map()
+        self.write_thermal_derate_factors()
+        self.write_derated_max_capacities()
+        self.write_marginal_costs()
 
 
 if __name__ == "__main__":
-    ip = DataProcessor(2016, "dummy_hydro", 50)
-    ip.transform_transmission_inputs()
-    ip.create_cycle_map()
-    ip.create_derate_factors()
-    ip.create_derated_max_capacities()
+    data_processor = DataProcessor(model_name="dummy_trade", year=2016, frequency=50)
+    data_processor.process_data()
+    data_processor.write_data()
