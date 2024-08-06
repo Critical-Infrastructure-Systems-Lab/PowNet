@@ -8,6 +8,9 @@ import pandas as pd
 
 
 def get_dates(year):
+    """Return a dataframe of dates for the given year. The dataframe will have
+    365 rows, one for each day of the year. The columns are 'date' and 'hour'.
+    """
     # Create dates to concatenate with the new dataframes
     dates = pd.DataFrame(
         {"date": pd.date_range(start=str(year), periods=366, freq="D")}
@@ -17,7 +20,7 @@ def get_dates(year):
     # Remove 1st Jan of the next year in case it is included when it is not a leap year
     dates = dates.loc[dates.date.dt.strftime("%Y-%m-%d") != f"{year+1}-01-01"]
 
-    # In case we need three columns
+    # In case we need three columns: date, hour, and day
     dates = dates.loc[dates.index.repeat(24)]
     dates["hour"] = np.tile(range(1, 25), 365)
     dates = dates.reset_index(drop=True)
