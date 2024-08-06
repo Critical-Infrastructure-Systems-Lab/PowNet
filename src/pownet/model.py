@@ -14,45 +14,45 @@ from pownet.folder_utils import get_output_dir
 class PowerSystemModel:
     def __init__(self, model: gp.Model):
         self.model = model
+        self.solver: str = "gurobi"
 
-    def add_var(self, name, lb, ub, vtype, obj):
-        return self.model.addVar(lb=lb, ub=ub, vtype=vtype, obj=obj, name=name)
+        # Define dictionaries of functions for Gurobi and HiGHs
+        self.optimize_functions = {
+            "gurobi": self._optimize_gurobi,
+            "highs": self._optimize_highs,
+        }
+        self.check_feasible_functions = {
+            "gurobi": self._check_feasible_gurobi,
+            "highs": self._check_feasible_highs,
+        }
+        self.get_objval_functions = {
+            "gurobi": self._get_objval_gurobi,
+            "highs": self._get_objval_highs,
+        }
+        self.get_status_functions = {
+            "gurobi": self._get_status_gurobi,
+            "highs": self._get_status_highs,
+        }
+        self.get_solution_functions = {
+            "gurobi": self.get_solution_gurobi,
+            "highs": self.get_solution_highs,
+        }
+        self.get_runtime_functions = {
+            "gurobi": self.get_runtime_gurobi,
+            "highs": self.get_runtime_highs,
+        }
 
-    def add_constr(self, lhs, sense, rhs, name):
-        return self.model.addConstr(lhs, sense, rhs, name)
+    def write_mps(self, output_folder: str, filename: str):
+        if not isinstance(self.model, gp.Model):
+            raise ValueError("The model must be a Gurobi model")
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+        self.model.write(os.path.join(output_folder, f"{filename}.mps"))
 
-    def set_objective(self, obj):
-        self.model.setObjective(obj)
-
-    def write_mps(self, name: str):
-        # Save the model
-        dirname = os.path.join(get_output_dir(), f"{name}_instances")
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-        self.model.write(os.path.join(dirname, f"{name}.mps"))
-
-    def optimize(self):
+    def _optimize_gurobi(self):
         self.model.optimize()
 
-    def check_feasible(self):
-        if isinstance(self.model, gp.Model):
-            return self.model.status == gp.GRB.Status.OPTIMAL
-        elif isinstance(self.model, highspy.highs.Highs):
-            model_status = self.model.getModelStatus()
-            return self.model.modelStatusToString(model_status) == "Optimal"
-
-    def write_ilp_mps(self, name):
-        # Write the infeasible model to a file
-        self.model.computeIIS()
-        ilp_file = os.path.join(
-            get_output_dir(),
-            f"infeasible_{name}.ilp",
-        )
-        self.model.write(ilp_file)
-        # Write the infeasible model to a MPS file
-        self.model.write(ilp_file.replace(".ilp", ".mps"))
-
-    def optimize_with_highs(self):
+    def _optimize_highs(self):
         # Export the instance to MPS and solve with HiGHs
         mps_file = "temp_instance_for_HiGHs.mps"
         self.model.write(mps_file)
@@ -62,42 +62,83 @@ class PowerSystemModel:
         # Delete the MPS file
         os.remove(mps_file)
 
+    def optimize(self, solver: str = "gurobi"):
+        if solver not in ["gurobi", "highs"]:
+            raise ValueError("The solver must be either 'gurobi' or 'highs'")
+
+        # Update the solver attribute for referencing in other methods
+        self.solver = solver
+        self.optimize_functions[self.solver]()
+
+    def _check_feasible_gurobi(self) -> bool:
+        return self.model.status == gp.GRB.Status.OPTIMAL
+
+    def _check_feasible_highs(self) -> bool:
+        model_status = self.model.getModelStatus()
+        return self.model.modelStatusToString(model_status) == "Optimal"
+
+    def check_feasible(self) -> bool:
+        return self.check_feasible_functions[self.solver]()
+
+    def write_ilp_mps(self, output_folder: str, instance_name: str):
+        # Write the infeasible model to a file
+        self.model.computeIIS()
+        ilp_file = os.path.join(
+            output_folder,
+            f"infeasible_{instance_name}.ilp",
+        )
+        self.model.write(ilp_file)
+        # Write the infeasible model to a MPS file
+        self.model.write(ilp_file.replace(".ilp", ".mps"))
+
+    def _get_objval_gurobi(self) -> float:
+        return self.model.objVal
+
+    def _get_objval_highs(self) -> float:
+        info = self.model.getInfo()
+        return info.objective_function_value
+
     def get_objval(self) -> float:
-        if isinstance(self.model, gp.Model):
-            return self.model.objVal
-        elif isinstance(self.model, highspy.highs.Highs):
-            info = self.model.getInfo()
-            return info.objective_function_value
+        return self.get_objval_functions[self.solver]()
+
+    def _get_status_gurobi(self):
+        return self.model.status
+
+    def _get_status_highs(self):
+        return self.model.getModelStatus()
 
     def get_status(self):
-        if isinstance(self.model, gp.Model):
-            return self.model.status
-        elif isinstance(self.model, highspy.highs.Highs):
-            return self.model.getModelStatus()
+        return self.get_status_functions[self.solver]()
 
     def get_model(self):
         return self.model
 
+    def get_solution_gurobi(self) -> dict:
+        return {
+            "varname": self.model.getAttr("varname"),
+            "value": self.model.getAttr("X"),
+        }
+
+    def get_solution_highs(self) -> dict:
+        return {
+            "varname": [
+                self.model.getColName(i)[1]
+                for i in range(self.model.getNumCol())  # getColName returns a tuple
+            ],
+            "value": self.model.getSolution().col_value,
+        }
+
     def get_solution(self) -> dict:
-        if isinstance(self.model, gp.Model):
-            return {
-                "varname": self.model.getAttr("varname"),
-                "value": self.model.getAttr("X"),
-            }
-        elif isinstance(self.model, highspy.highs.Highs):
-            return {
-                "varname": [
-                    self.model.getColName(i)[1]
-                    for i in range(self.model.getNumCol())  # getColName returns a tuple
-                ],
-                "value": self.model.getSolution().col_value,
-            }
+        return self.get_solution_functions[self.solver]()
+
+    def get_runtime_gurobi(self) -> float:
+        return self.model.Runtime
+
+    def get_runtime_highs(self) -> float:
+        return self.model.getRunTime()
 
     def get_runtime(self) -> float:
-        if isinstance(self.model, gp.Model):
-            return self.model.Runtime
-        elif isinstance(self.model, highspy.highs.Highs):
-            return self.model.getRunTime()
+        return self.get_runtime_functions[self.solver]()
 
     def get_lmp(self) -> dict:
         """Get the locational marginal price (LMP) for each node in the network"""
