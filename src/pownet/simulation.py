@@ -45,7 +45,7 @@ class Simulator:
 
         # Extract model parameters from the model library directory
         self.system_input = SystemInput(
-            T=T, formulation="kirchhoff", model_name=model_name
+            sim_horizon=T, formulation="kirchhoff", model_name=model_name, year=2016
         )
 
         self.model: PowerSystemModel = None
@@ -60,6 +60,7 @@ class Simulator:
         steps: int,
         mip_gap: float = None,
         timelimit: float = None,
+        solver: str = "gurobi",
     ) -> SystemRecord:
         # Initialize objects
         system_record = SystemRecord(self.system_input)
@@ -97,18 +98,24 @@ class Simulator:
                 )
 
             if self.write_model:
-                self.model.write_mps(f"{self.model_name}_{self.T}")
+                output_folder = get_output_dir()
+                filename = f"{self.model_name}_{self.T}_{k}"
+                self.model.write_mps(output_folder=output_folder, filename=filename)
 
             # Solve the model with either Gurobi or HiGHs
-            if self.use_gurobi:
-                self.model.optimize()
-            else:
-                self.model.optimize_with_highs()
+            self.model.optimize(solver=solver)
 
-            # In case when the model is infeasible, we generate an output file
-            # to troubleshoot the problem.
+            # In case when the model is infeasible, we generate ILP and MPS files
+            # to describe the problem instance.
             if not self.model.check_feasible():
-                self.model.write_ilp_mps(f"{self.model_name}_{self.T}_{k}")
+                output_folder_infeasible = "infeasible"
+                if not os.path.exists(output_folder_infeasible):
+                    os.makedirs(output_folder_infeasible)
+
+                self.model.write_ilp_mps(
+                    output_folder=output_folder_infeasible,
+                    instance_name=f"{self.model_name}_{self.T}_{k}",
+                )
                 # Need to learn about the initial conditions as well
                 with open(
                     os.path.join(
