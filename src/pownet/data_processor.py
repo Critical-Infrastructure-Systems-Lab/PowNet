@@ -11,6 +11,15 @@ from pownet.data_utils import get_dates
 
 class DataProcessor:
     def __init__(self, model_name: str, year: int, frequency: int) -> None:
+        """The DataProcessor class is used to process the data provided by the user. The data
+        is stored in the model_library/model_name folder. The required files are:
+        1. transmission.csv: A file that contains the transmission data.
+        2. thermal_unit.csv: A file that contains the thermal unit data.
+        3. unit_marginal_cost.csv: A file that contains the marginal cost of non-thermal units.
+        4. (Optional) solar.csv, wind.csv, hydropower.csv, import.csv: Files that contain the renewable unit data.
+
+
+        """
         self.model_name = model_name
         self.year = year
         self.frequency = frequency
@@ -109,8 +118,8 @@ class DataProcessor:
         ].min(axis=1)
 
     def calc_line_susceptance(self) -> None:
-        # Find the max voltage level of each line segment from
-        # self.user_transmission
+        """Calculate the susceptance of line segments. The unit is in Siemens (S)."""
+        # Assume reactance based on the maximum voltage level of the two buses
         self.transmission_data["max_kv"] = self.user_transmission.apply(
             lambda x: max(x["source_kv"], x["sink_kv"]), axis=1
         )
@@ -125,7 +134,7 @@ class DataProcessor:
             * self.user_transmission["distance"]
         )
 
-        self.transmission_data["pownet_susceptance"] = self.transmission_data.apply(
+        self.transmission_data["susceptance"] = self.transmission_data.apply(
             lambda x: int(x["source_kv"] * x["sink_kv"] / x["reactance_pu"]),
             axis=1,
         )
@@ -168,18 +177,8 @@ class DataProcessor:
             os.path.join(self.model_folder, "pownet_derate_factor.csv"), index=False
         )
 
-    def create_derated_max_capacities(self) -> None:
-        """Create a dict of derated generation capacity of thermal units for each hour of the year.
-        The structure of this is
-        {
-            'unit_a': {
-                1: maxcap*derated_factor_1,
-                2: maxcap*derated_factor_2,
-                ...
-                T: maxcap*derated_factor_T
-                }
-            }
-        """
+    def create_derated_capacity(self) -> None:
+        """Create a dataframe of hourly derated capacity of thermal units. The columns are names of thermal units."""
         # Get the nameplate capacity of each thermal unit
         max_cap = pd.read_csv(
             os.path.join(self.model_folder, "thermal_unit.csv"),
@@ -200,7 +199,7 @@ class DataProcessor:
         # Pownet indexing starts at 1 and usually ends at 8760.
         self.derated_max_cap.index += 1
 
-    def write_derated_max_capacities(self) -> None:
+    def write_derated_capacity(self) -> None:
         self.derated_max_cap.to_csv(
             os.path.join(self.model_folder, "pownet_derated_capacity.csv"), index=False
         )
@@ -217,7 +216,7 @@ class DataProcessor:
             index_col="fuel_type",
         ).to_dict()["marginal_cost"]
 
-        # If there are solar.csv, hydro.csv, and wind.csv files, then we need to
+        # If there are solar.csv, hydropower.csv, and wind.csv files, then we need to
         # include them in the fuel price file.
         hours_in_year = range(8760)
         # self.marginal_costs = pd.DataFrame(0, index=hours_in_year, columns=[])
@@ -244,7 +243,7 @@ class DataProcessor:
 
     def write_marginal_costs(self) -> None:
         self.marginal_costs.to_csv(
-            os.path.join(self.model_folder, "pownet_marginal_costs.csv"), index=False
+            os.path.join(self.model_folder, "pownet_marginal_cost.csv"), index=False
         )
 
     def check_user_line_capacities(self) -> None:
@@ -260,18 +259,19 @@ class DataProcessor:
         self.calc_line_susceptance()
         self.create_cycle_map()
         self.create_thermal_derate_factors()
-        self.create_derated_max_capacities()
+        self.create_derated_capacity()
         self.create_marginal_costs()
 
     def write_data(self) -> None:
         self.write_transmission_data()
         self.write_cycle_map()
         self.write_thermal_derate_factors()
-        self.write_derated_max_capacities()
+        self.write_derated_capacity()
         self.write_marginal_costs()
 
 
 if __name__ == "__main__":
     data_processor = DataProcessor(model_name="dummy_trade", year=2016, frequency=50)
+    data_processor.load_data()
     data_processor.process_data()
     data_processor.write_data()

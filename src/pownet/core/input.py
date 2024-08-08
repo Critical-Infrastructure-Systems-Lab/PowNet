@@ -5,238 +5,425 @@ import os
 import gurobipy as gp
 import pandas as pd
 
-from pownet.config import get_spin_reserve_factor
-from pownet.data_utils import get_arcs, get_linecap, get_suscept
 from pownet.folder_utils import get_model_dir
 
 
 class SystemInput:
     def __init__(
         self,
-        sim_horizon: int,
-        formulation: str,
         model_name: str,
         year: int,
+        sim_horizon: int,
+        line_flow: str = "kirchhoff",
+        spin_reserve_factor: float = 0.15,
+        line_loss_factor: float = 0.075,
+        line_capacity_factor: float = 0.9,
+        shortfall_penalty: float = 1000,
+        reserve_penalty: float = 1000,
     ) -> None:
         """This class reads the input data for the power system model."""
-        # The date columns are not needed
-        date_cols = ["year", "month", "day", "hour", "date"]
 
-        self.T: int = sim_horizon
-        self.formulation: str = formulation
-        self.model_name: str = model_name
+        self.model_name = model_name
+        self.year = year
+        self.sim_horizon = sim_horizon
+
+        # The spin reserve factor is a fraction of total demand
+        self.spin_reserve_factor = spin_reserve_factor
+
+        # The line loss factor is also called the inefficiency factor.
+        # It is the fraction of power lost in the transmission line.
+        self.line_loss_factor = line_loss_factor
+
+        # The line capacity factor is the fraction of the line capacity
+        # that can be used. It is used to account for the uncertainty in
+        # the line capacity.
+        self.line_capacity_factor = line_capacity_factor
+
+        # The shortfall penalty is the cost of not meeting the demand. (USD/MWh)
+        self.shortfall_penalty = shortfall_penalty
+
+        # The reserve penalty is the cost of not meeting the reserve requirement. (USD/MWh)
+        self.reserve_penalty = reserve_penalty
+
+        if line_flow not in ["kirchhoff", "voltage_angle"]:
+            raise ValueError(
+                "PowNet: Line flow must be either 'kirchhoff' or 'voltage_angle'."
+            )
+        self.line_flow = line_flow
+
+        # The timestamp is used to create a unique folder for the model
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        self.model_dir: str = os.path.join(get_model_dir(), model_name)
+        # folder structure: pownet_root/model_library/
+        self.model_dir = os.path.join(get_model_dir(), model_name)
 
-        # User inputs
-        self.year: year
+        #################
+        # Complex attributes that will be defined in load_data
+        #################
 
-        # Read static data from model directory
-        self.thermal_units: list = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name"],
-        ).index.tolist()
+        # Thermal units
+        self.thermal_unit_node: dict[str, str] = {}
 
-        self.transmission: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "transmission.csv"), header=0
+        self.thermal_opex: dict[str, float] = {}
+        self.thermal_fixed_cost: dict[str, float] = {}
+        self.thermal_startup_cost: dict[str, float] = {}
+        self.thermal_heat_rate: dict[str, float] = {}
+
+        self.thermal_rated_capacity: dict[str, float] = {}
+        self.thermal_derated_capacity: dict[str, float] = {}
+        self.thermal_min_capacity: dict[str, float] = {}
+
+        self.TD: dict[str, int] = {}
+        self.TU: dict[str, int] = {}
+        self.SD: dict[str, float] = {}
+        self.SU: dict[str, float] = {}
+        self.RD: dict[str, float] = {}
+        self.RU: dict[str, float] = {}
+
+        # Other data
+        self.demand: pd.DataFrame = pd.DataFrame()
+
+        self.unit_marginal_cost: pd.DataFrame = pd.DataFrame()
+
+        self.hydro_capacity: pd.DataFrame = pd.DataFrame()
+        self.hydro_timestep: str = ""
+        self.hydro_unit_node: dict[str, str] = {}
+
+        self.solar_capacity: pd.DataFrame = pd.DataFrame()
+        self.solar_unit_node: dict[str, str] = {}
+
+        self.wind_capacity: pd.DataFrame = pd.DataFrame()
+        self.wind_unit_node: dict[str, str] = {}
+
+        self.import_capacity: pd.DataFrame = pd.DataFrame()
+        self.import_unit_node: dict[str, str] = {}
+
+        self.demand_nodes: list[str] = []
+        self.edges: gp.tuplelist = gp.tuplelist()
+        self.line_capacity: pd.DataFrame = pd.DataFrame()
+        self.susceptance: pd.DataFrame = pd.DataFrame()
+        self.cycle_map: dict = {}
+
+        self.max_demand_node: str = ""
+        self.max_line_capacity: int = 0
+        self.spin_requirement: pd.DataFrame = pd.DataFrame()
+
+    def _load_csv(self, filename: str, header_levels: int) -> pd.DataFrame:
+        """Helper function to load CSV with default options.
+        Note:
+        - Files are located in the model directory
+        - Date columns are dropped from the DataFrame
+        """
+        date_cols = ["year", "month", "day", "hour", "date"]
+        # If there are header levels, we drop the date columns at the lowest level
+        col_level = None
+        if header_levels > 0:
+            col_level = 0
+        return pd.read_csv(
+            os.path.join(self.model_dir, filename),
+            header=list(range(header_levels + 1)),
+        ).drop(date_cols, level=col_level, axis=1, errors="ignore")
+
+    def _check_and_load_timeseries(
+        self, filename: str, header_levels: int
+    ) -> pd.DataFrame:
+        """Check if the timeseries file exists and load it.
+        Timeseries of unit capacities are column indexed with unit name and the connected node.
+        """
+        if os.path.exists(os.path.join(self.model_dir, filename)):
+            df = self._load_csv(filename, header_levels=header_levels)
+            df.index += 1
+            return df
+        return pd.DataFrame()
+
+    def _get_columns_if_not_empty(self, df: pd.DataFrame) -> list:
+        """Return the columns of the DataFrame if it's not empty, otherwise return an empty list."""
+        return df.columns.tolist() if not df.empty else []
+
+    def load_thermal_unit_params(self):
+        """Load the techno-economic parameters of thermal units from thermal_unit.csv"""
+        thermal_unit_df = pd.read_csv(
+            os.path.join(self.model_dir, "thermal_unit.csv"), header=0, index_col="name"
         )
 
-        self.unit_econ: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name", "operation_cost", "fixed_cost", "startup_cost"],
-        )
+        self.thermal_units = thermal_unit_df.index.tolist()
+        self.thermal_unit_node = thermal_unit_df["node"].to_dict()
 
-        self.heat_rate: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name", "heat_rate"],
-        )
+        self.thermal_opex = thermal_unit_df["operation_cost"].to_dict()
+        self.thermal_fixed_cost = thermal_unit_df["fixed_cost"].to_dict()
+        self.thermal_startup_cost = thermal_unit_df["startup_cost"].to_dict()
+        self.thermal_heat_rate = thermal_unit_df["heat_rate"].to_dict()
 
-        # Read timeseries data
-        # The index of timeseries starts at 1
-        self.demand: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "demand_export.csv"), header=0
-        ).drop(date_cols, axis=1, errors="ignore")
+        # The minimum downtime and uptime are in hours
+        self.TD = thermal_unit_df["min_downtime"].to_dict()
+        self.TU = thermal_unit_df["min_uptime"].to_dict()
+
+        # The startup and shutdown ramp rates are in MW/h
+        # IMPORTANT: Currently we do not model these values in PowNet
+        # Therefore, we assume the shutdown and startup ramp rates are equal
+        # and they are equal to the minimum capacity of the unit.
+        self.SD = thermal_unit_df["min_capacity"].to_dict()
+        self.SU = self.SD.copy()
+
+        # The ramp rates are in MW/h.
+        # IMPORTANT: We assume the ramp rates are equal for both directions.
+        self.RD = thermal_unit_df["ramp_rate"].to_dict()
+        self.RU = self.RD.copy()
+
+        # Maximum/Minimum capacity of the thermal units
+        self.thermal_rated_capacity = thermal_unit_df["max_capacity"].to_dict()
+        self.thermal_min_capacity = thermal_unit_df["min_capacity"].to_dict()
+
+        # The maximum capacity is reduced by the derating factor (timeseries)
+        self.thermal_derated_capacity = self._load_csv(
+            "pownet_derated_capacity.csv", header_levels=0
+        )
+        self.thermal_derated_capacity.index += 1
+
+    def load_data(self):
+        """Load the input data for the power system model.
+        Timeseries are loaded as dataframes with the index starting at 1.
+        """
+
+        #################
+        # Thermal units
+        #################
+        self.load_thermal_unit_params()
+
+        #################
+        # Demand (timeseries)
+        #################
+
+        self.demand = self._load_csv("demand_export.csv", header_levels=0)
         self.demand.index += 1
 
-        self.derating: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "pownet_derate_factor.csv"), header=0
-        ).drop(date_cols, axis=1, errors="ignore")
-        self.derating.index += 1
+        # Demand nodes
+        self.demand_nodes = self.demand.columns.tolist()
+        # Identify the node with the maximum demand
+        self.max_demand_node = self.demand.idxmax().idxmax()
 
-        self.fuelprice: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "fuel_price.csv"), header=0
-        ).drop(date_cols, axis=1, errors="ignore")
-        self.fuelprice.index += 1
+        #################
+        # Marginal costs of renewables and import (timeseries)
+        #################
 
-        # Read timeseries data for renewables
+        self.unit_marginal_cost = self._load_csv(
+            "pownet_marginal_cost.csv", header_levels=0
+        )
+        self.unit_marginal_cost.index += 1
+
+        #################
+        # Hydropower (timeseries)
+        #################
+
+        # CHOOSE pownet_hydropower.csv over hydropower.csv because
+        # the former is created from the reservoir module in PowNet
+
         if os.path.exists(os.path.join(self.model_dir, "pownet_hydropower.csv")):
-            hydro_fn = os.path.join(self.model_dir, "pownet_hydropower.csv")
+            self.hydro_capacity = self._load_csv(
+                "pownet_hydropower.csv", header_levels=1
+            )
+
+        elif os.path.exists(os.path.join(self.model_dir, "hydropower.csv")):
+            self.hydro_capacity = self._load_csv("hydropower.csv", header_levels=1)
+
         else:
-            hydro_fn = os.path.join(self.model_dir, "hydro.csv")
+            self.hydro_capacity = pd.DataFrame()
 
-        # Hydropower capacity
-        self.hydro_cap: pd.DataFrame = pd.read_csv(hydro_fn, header=0).drop(
-            date_cols, axis=1, errors="ignore"
-        )
-        self.hydro_cap.index += 1
+        # Covert the multi-index columns to dict of {unit: node}
+        self.hydro_unit_node = {
+            k: v for k, v in self._get_columns_if_not_empty(self.hydro_capacity)
+        }
 
-        # Hydropower can be given at hourly or daily resolution
-        if len(self.hydro_cap) == 8760:
+        # Hydropower can be given at hourly or daily resolution,
+        # which the optimization model must match.
+        hours_in_year = 8760
+        days_in_year = 365
+        if len(self.hydro_capacity) == hours_in_year:
             self.hydro_timestep = "hourly"
-        elif len(self.hydro_cap) == 365:
+        elif len(self.hydro_capacity) == days_in_year:
             self.hydro_timestep = "daily"
+        elif len(self.hydro_capacity) == 0:
+            self.hydro_timestep = "none"
         else:
-            raise ValueError("Hydropower timeseries must be either 8760 or 365.")
-
-        # Reservoirs are treated as units
-        self.hydro_units: list = self.hydro_cap.columns.tolist()
-
-        solar_fn = os.path.join(self.model_dir, "solar.csv")
-        if os.path.exists(solar_fn):
-            self.solar_cap: pd.DataFrame = pd.read_csv(solar_fn, header=0).drop(
-                date_cols, axis=1, errors="ignore"
+            raise ValueError(
+                "PowNet: Hydropower timeseries must be either of length 8760 or 365."
             )
-            self.solar_cap.index += 1
-            self.solar_units: list = self.solar_cap.columns.tolist()
-        else:
-            self.solar_cap = pd.DataFrame()
-            self.solar_units = []
 
-        wind_fn = os.path.join(self.model_dir, "wind.csv")
-        if os.path.exists(wind_fn):
-            self.wind_cap: pd.DataFrame = pd.read_csv(wind_fn, header=0).drop(
-                date_cols, axis=1, errors="ignore"
-            )
-            self.wind_cap.index += 1
-            self.wind_units: list = self.wind_cap.columns.tolist()
-        else:
-            self.wind_cap = pd.DataFrame()
-            self.wind_units = []
+        #################
+        # Renewables (timeseries)
+        #################
+        # Solar
+        self.solar_capacity = self._check_and_load_timeseries(
+            "solar.csv", header_levels=1
+        )
+        self.solar_unit_node = {
+            k: v for k, v in self._get_columns_if_not_empty(self.solar_capacity)
+        }
 
-        # Import nodes are treated similary to a renewable but with higher cost
-        fn_import = os.path.join(self.model_dir, "import.csv")
-        if os.path.exists(fn_import):
-            self.p_import: pd.DataFrame = pd.read_csv(fn_import, header=0).drop(
-                date_cols, axis=1, errors="ignore"
-            )
-            self.p_import.index += 1
-            self.nodes_import: list = self.p_import.columns.tolist()
-        else:
-            self.p_import = pd.DataFrame()
-            self.nodes_import = []
+        # Wind
+        self.wind_capacity = self._check_and_load_timeseries(
+            "wind.csv", header_levels=1
+        )
+        self.wind_unit_node = {
+            k: v for k, v in self._get_columns_if_not_empty(self.wind_capacity)
+        }
 
-        # System nodes
-        self.nodes_w_demand: list = self.demand.columns.tolist()
+        # Import
+        self.import_capacity = self._check_and_load_timeseries(
+            "import.csv", header_levels=1
+        )
+        self.import_unit_node = {
+            k: v for k, v in self._get_columns_if_not_empty(self.import_capacity)
+        }
 
-        # Map units to their fuel type beginning with thermal units,
-        # then hydro, solar, wind, import, and demand nodes
-        self.fuelmap = (
-            pd.read_csv(
-                os.path.join(self.model_dir, "unit_param.csv"),
-                header=0,
-                usecols=["name", "fuel_type"],
-            )
-            .set_index("name")
-            .to_dict()["fuel_type"]
+        #################
+        # Transmission
+        #################
+
+        transmission: pd.DataFrame = pd.read_csv(
+            os.path.join(self.model_dir, "pownet_transmission.csv"), header=0
         )
 
-        self.fuelmap.update({node: "hydro" for node in self.hydro_units})
-        self.fuelmap.update({node: "solar" for node in self.solar_units})
-        self.fuelmap.update({node: "wind" for node in self.wind_units})
-        self.fuelmap.update({node: "import" for node in self.nodes_import})
+        # Nodes are connected by transmission lines
+        self.nodes: set = set(transmission.source).union(set(transmission.sink))
 
-        self.fuelmap.update({node: "slack" for node in self.nodes_w_demand})
-
-        # A node does not need to be connected. In this case,
-        # we are concerned about unconnected nodes with demand.
-        self.nodes: set = (
-            set(self.transmission.source)
-            .union(set(self.transmission.sink))
-            .union(set(self.nodes_w_demand))
-        )
-        # Transmission lines
-        self.arcs: gp.tuplelist = get_arcs(
-            self.transmission,
+        # Edges are the transmission lines
+        self.edges = gp.tuplelist(
+            transmission.set_index(["source", "sink"]).index.tolist()
         )
 
-        self.linecap: pd.DataFrame = get_linecap(
-            self.transmission,
-        )
-        self.linecap.index += 1
+        # The line susceptance is a function of hydroclimatic conditions (temperature),
+        # so it is best being a timeseries. Line susceptance is used when the line flow
+        # is modeled with voltage angle.
+        self.susceptance = pd.DataFrame(
+            transmission.susceptance.values,
+            index=pd.MultiIndex.from_tuples(self.edges, name=["source", "sink"]),
+            columns=["susceptance"],
+        ).T
+        self.susceptance = self.susceptance.loc[
+            self.susceptance.index.repeat(365 * 24)
+        ].reset_index(drop=True)
+        self.susceptance.index += 1
 
-        self.suscept: pd.DataFrame = get_suscept(
-            self.transmission,
-        )
-        self.suscept.index += 1
+        # Similar to susceptance, the line capacity is also a timeseries. We use line capacity when
+        # the line flow is modeled with Kirchhoff's laws.
+        self.line_capacity = pd.DataFrame(
+            transmission.line_capacity.values,
+            index=pd.MultiIndex.from_tuples(self.edges, name=["source", "sink"]),
+            columns=["line_capacity"],
+        ).T
+        self.line_capacity = self.line_capacity.loc[
+            self.line_capacity.index.repeat(365 * 24)
+        ].reset_index(drop=True)
+        self.line_capacity.index += 1
 
-        # User should use the PowNet processing function to identify the basic cycles
-        if formulation == "kirchhoff":
+        self.max_line_capacity = self.line_capacity.max().max()
+
+        # A user can use DataProcessor to generate pownet_cycle_map.json
+        if self.line_flow == "kirchhoff":
             with open(os.path.join(self.model_dir, "pownet_cycle_map.json")) as f:
-                self.cycle_map: dict = json.load(f)
+                self.cycle_map = json.load(f)
 
-        # Thermal unit params
-        self.full_max_cap: dict = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name", "max_capacity"],
-        ).to_dict()["max_capacity"]
+        #################
+        # System requirements
+        #################
 
-        # The maximum capacity is reduced by the derating factor
-        self.max_cap: dict = (
-            pd.read_csv(
-                os.path.join(self.model_dir, "pownet_derated_capacity.csv"), header=0
-            )
-            .drop(date_cols, axis=1, errors="ignore")
-            .to_dict()
-        )
-
-        self.min_cap: dict = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name", "min_capacity"],
-        ).to_dict()["min_capacity"]
-
-        self.TD: dict = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name", "min_downtime"],
-        ).to_dict()["min_downtime"]
-
-        self.TU: dict = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name", "min_uptime"],
-        ).to_dict()["min_uptime"]
-
-        self.SD: dict = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name", "min_capacity"],
-        ).to_dict()["min_capacity"]
-        self.SU: dict = self.SD.copy()
-
-        self.RD: dict = pd.read_csv(
-            os.path.join(self.model_dir, "unit_param.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name", "ramp_rate"],
-        ).to_dict()["ramp_rate"]
-        self.RU: dict = self.RD.copy()
-
-        # Calculated parameters
-        self.max_node: str = self.demand.idxmax().idxmax()
-        self.max_linecap: int = self.linecap.max().max()
         # The first index of spin_req is already at 1
-        SPIN_FACTOR = get_spin_reserve_factor()
-        self.spin_req: pd.DataFrame = self.demand.sum(axis=1) * SPIN_FACTOR
+        self.spin_requirement = self.demand.sum(axis=1) * self.spin_reserve_factor
+
+    def check_data(self):
+        #################
+        # Perform checks and prints the input data summary
+        #################
+        # Demand nodes must be connected to the grid
+        if not set(self.demand_nodes).issubset(self.nodes):
+            raise ValueError(
+                f"PowNet: Demand nodes must be connected to the grid: {set(self.demand_nodes) - self.nodes}"
+            )
+        # Similarly for hydropower, solar, wind, and import units
+        if not set(self.hydro_unit_node.values()).issubset(self.nodes):
+            raise ValueError(
+                f"PowNet: Hydropower units must be connected to the grid: {set(self.hydro_unit_node.values()) - self.nodes}"
+            )
+        if not set(self.solar_unit_node.values()).issubset(self.nodes):
+            raise ValueError(
+                f"PowNet: Solar units must be connected to the grid: {set(self.solar_unit_node.values()) - self.nodes}"
+            )
+        if not set(self.wind_unit_node.values()).issubset(self.nodes):
+            raise ValueError(
+                f"PowNet: Wind units must be connected to the grid: {set(self.wind_unit_node.values()) - self.nodes}"
+            )
+        if not set(self.import_unit_node.values()).issubset(self.nodes):
+            raise ValueError(
+                f"PowNet: Import units must be connected to the grid: {set(self.import_unit_node.values()) - self.nodes}"
+            )
+
+        # Check that factors are between 0 and 1
+        if not 0 <= self.spin_reserve_factor <= 1:
+            raise ValueError("PowNet: Spin reserve factor must be between 0 and 1.")
+        if not 0 <= self.line_loss_factor <= 1:
+            raise ValueError("PowNet: Line loss factor must be between 0 and 1.")
+        if not 0 <= self.line_capacity_factor <= 1:
+            raise ValueError("PowNet: Line capacity factor must be between 0 and 1.")
+
+        # Timeseries are of length 8760
+        if len(self.demand) != 8760:
+            raise ValueError("PowNet: Demand timeseries must be of length 8760.")
+        if len(self.unit_marginal_cost) != 8760:
+            raise ValueError("PowNet: Marginal cost timeseries must be of length 8760.")
+        if len(self.hydro_capacity) not in [0, 8760, 365]:
+            raise ValueError(
+                "PowNet: Hydropower timeseries must be of length 8760 or 365."
+            )
+        if len(self.solar_capacity) not in [0, 8760]:
+            raise ValueError("PowNet: Solar timeseries must be of length 8760.")
+        if len(self.wind_capacity) not in [0, 8760]:
+            raise ValueError("PowNet: Wind timeseries must be of length 8760.")
+        if len(self.import_capacity) not in [0, 8760]:
+            raise ValueError("PowNet: Import timeseries must be of length 8760.")
+
+        if len(self.susceptance) != 8760:
+            raise ValueError("PowNet: Line susceptance must be of length 8760.")
+        if len(self.line_capacity) != 8760:
+            raise ValueError("PowNet: Line capacity must be of length 8760.")
+
+    def print_summary(self):
+        print("\n\n==== PowNet Input Data Summary ====")
+        print(f"{'Timestamp':<25} = {self.timestamp}")
+        print(f"{'Model name':<25} = {self.model_name}")
+        print(f"{'Year':<25} = {self.year}")
+        print("---- System characteristics ----")
+        print(f"{'No. of nodes':<25} = {len(self.nodes)}")
+        print(f"{'No. of edges':<25} = {len(self.edges)}")
+        print(f"{'No. of thermal units':<25} = {len(self.thermal_units)}")
+        print(f"{'No. of demand nodes':<25} = {len(self.demand_nodes)}")
+        print(f"{'Peak demand':<25} = {self.demand.max().max()} MW")
+
+        print("---- Renewable capacities ----")
+        print(f"{'Hydropower units':<25} = {len(self.hydro_unit_node)}")
+        print(f"{'Solar units':<25} = {len(self.solar_unit_node)}")
+        print(f"{'Wind units':<25} = {len(self.wind_unit_node)}")
+        print(f"{'Import units':<25} = {len(self.import_unit_node)}")
+
+        print("---- Modeling parameters ----")
+        print(f"{'Simulation horizon':<25} = {self.sim_horizon} hours")
+        print(f"{'Line flow model':<25} = {self.line_flow}")
+        print(f"{'Spin reserve factor':<25} = {self.spin_reserve_factor}")
+        print(f"{'Line loss factor':<25} = {self.line_loss_factor}")
+        print(f"{'Line capacity factor':<25} = {self.line_capacity_factor}")
+        print(f"{'Shortfall penalty':<25} = {self.shortfall_penalty}")
+        print(f"{'Reserve penalty':<25} = {self.reserve_penalty}")
+        print("=====================================\n")
+
+    def load_check_and_print_summary(self):
+        self.load_data()
+        self.check_data()
+        self.print_summary()
+
+
+if __name__ == "__main__":
+    model_name = "dummy_trade"
+    year = 2016
+    sim_horizon = 24
+
+    system_input = SystemInput(model_name, year, sim_horizon)
+    system_input.load_check_and_print_summary()

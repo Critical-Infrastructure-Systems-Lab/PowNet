@@ -27,38 +27,6 @@ def get_dates(year):
     return dates
 
 
-def get_arcs(transmission: pd.DataFrame) -> gp.tuplelist:
-    return gp.tuplelist(transmission.set_index(["source", "sink"]).index.tolist())
-
-
-def get_suscept(transmission: pd.DataFrame) -> pd.DataFrame:
-    """Return the hourly susceptance values as a dataframe"""
-    # Arcs form an undirected graph
-    arcs = get_arcs(transmission)
-
-    # Create the susceptance file
-    suscept = pd.DataFrame(
-        transmission.pownet_susceptance.values,
-        index=pd.MultiIndex.from_tuples(arcs, name=["source", "sink"]),
-        columns=["susceptance"],
-    ).T
-    suscept = suscept.loc[suscept.index.repeat(365 * 24)].reset_index(drop=True)
-    return suscept
-
-
-def get_linecap(transmission: pd.DataFrame) -> pd.DataFrame:
-    arcs = get_arcs(transmission)
-
-    # Create the line-capacity file
-    linecap = pd.DataFrame(
-        transmission.pownet_line_capacity.values,
-        index=pd.MultiIndex.from_tuples(arcs, name=["source", "sink"]),
-        columns=["linecap"],
-    ).T
-    linecap = linecap.loc[linecap.index.repeat(365 * 24)].reset_index(drop=True)
-    return linecap
-
-
 def create_init_condition(thermal_units: list, T: int) -> dict[(str, int), dict]:
     "Return dicts of system statuses in the format {unit: {t:value}}"
     # If the user does not specify the initial condition, then we assume

@@ -75,7 +75,7 @@ def main():
     #         thermal_dispatch=output_processor.get_dispatch(),
     #         unit_status=output_processor.get_unit_status(),
     #         thermal_units=system_input.thermal_units,
-    #         full_max_cap=system_input.full_max_cap,
+    #         thermal_rated_capacity=system_input.thermal_rated_capacity,
     #         to_save=SAVE_PLOT,
     #     )
 

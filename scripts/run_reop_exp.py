@@ -13,7 +13,7 @@ def main():
     T = 24
     # One year has 8760 hours. If T = 24, then we have 365 steps.
     # STEPS = math.floor(8760/T)
-    STEPS = 2
+    STEPS = 1
 
     to_reoperate = False
     reop_timestep = "daily"
@@ -38,7 +38,7 @@ def main():
         reop_timestep=reop_timestep,
     )
 
-    record = simulator.run(steps=STEPS)
+    record = simulator.run(steps=STEPS, solver="highs")
     results = record.get_node_variables()
 
     if save_result:

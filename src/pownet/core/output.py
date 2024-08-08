@@ -44,8 +44,6 @@ class OutputProcessor:
         self.ctime: str = None  # Date in 'YYYYMMDD_mmss' format
         self.dates: pd.Series = None
 
-        self.fuelmap: dict[str, str] = None
-
         self.thermal_dispatch: pd.DataFrame = None
         self.rnw_dispatch: pd.DataFrame = None
         self.shortfall: pd.Series = None
@@ -105,7 +103,7 @@ class OutputProcessor:
         )
 
         # Generation from import nodes
-        self.p_import = format_variable_fueltype(
+        self.import_capacity = format_variable_fueltype(
             df=df, vartype="pimp", fuel_type="import"
         )
         # Shortfall (positive) and curtailment (negative)
@@ -121,7 +119,7 @@ class OutputProcessor:
             [
                 self.thermal_dispatch,
                 self.rnw_dispatch,
-                self.p_import,
+                self.import_capacity,
                 self.shortfall,
                 self.curtailment,
             ],
@@ -456,7 +454,7 @@ class Visualizer:
         thermal_dispatch: pd.DataFrame,
         unit_status: pd.DataFrame,
         thermal_units: list[str],
-        full_max_cap: dict[str, float],
+        thermal_rated_capacity: dict[str, float],
         to_save: bool,
     ) -> None:
         """Plot the on/off status of individual thermal units"""
@@ -471,7 +469,7 @@ class Visualizer:
 
             ax1.step(df1["hour"], df1["value"], where="mid", color="b", label="Power")
             # If ymax is too low, then we cannot see the blue line
-            ax1.set_ylim(bottom=0, top=full_max_cap[unit_g] * 1.05)
+            ax1.set_ylim(bottom=0, top=thermal_rated_capacity[unit_g] * 1.05)
             ax1.tick_params(axis="x", labelrotation=45)
             ax1.set_xlabel("Hour")
             ax1.set_ylabel("Power (MW)")
