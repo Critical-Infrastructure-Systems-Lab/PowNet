@@ -778,7 +778,7 @@ class ModelBuilder:
                 arc_flow = 0
                 for x, y in self.inputs.arcs:
                     if x == node:
-                        arc_flow -= self.flow[x, y, t]
+                        arc_flow -= self.flow[x, y, t] * 1 / line_efficiency
                     elif y == node:
                         arc_flow += self.flow[x, y, t]
 
@@ -790,7 +790,7 @@ class ModelBuilder:
                         + solar_gen
                         + wind_gen
                         + imp_gen
-                        + arc_flow * line_efficiency
+                        + arc_flow
                         + mismatch
                         == demand_n_t
                     ),
@@ -1120,7 +1120,6 @@ class ModelBuilder:
         else:
             self.model.setParam("MIPGap", mip_gap)
 
-        
         if not timelimit:
             self.model.setParam("TimeLimit", get_timelimit())
         else:
