@@ -1,3 +1,10 @@
+""" This is the Record class.
+TODO:
+ - Remove the write methods and move them to a separate class.
+ - Remove the get_init_conds method and move it to a separate class.
+ - Remove the get_hydro_dispatch method and move it to a separate class.
+"""
+
 from __future__ import annotations
 import datetime
 import os
@@ -5,11 +12,10 @@ import re
 from typing import TYPE_CHECKING
 
 import gurobipy as gp
-import highspy
 import pandas as pd
 import numpy as np
 
-from pownet.model import PowerSystemModel
+from pownet.modeling import PowerSystemModel
 from pownet.data_utils import get_nodehour_flow
 from pownet.folder_utils import get_output_dir
 
@@ -51,7 +57,7 @@ def calc_min_on(
 
     for unit_g in thermal_units:
         df_unit = (
-            df[(df["node"] == unit_g) & (df["vartype"] == "start")]
+            df[(df["node"] == unit_g) & (df["vartype"] == "startup")]
             .set_index("hour")
             .drop(["vartype", "node"], axis=1)
         )
@@ -83,7 +89,7 @@ def calc_min_off(
 
     for unit_g in thermal_units:
         df_unit = (
-            df[(df["node"] == unit_g) & (df["vartype"] == "shut")]
+            df[(df["node"] == unit_g) & (df["vartype"] == "shutdown")]
             .set_index("hour")
             .drop(["vartype", "node"], axis=1)
         )
@@ -158,9 +164,9 @@ class SystemRecord:
     """
 
     def __init__(self, system_input: SystemInput) -> None:
-        self.sim_horizon: int = system_input.T
-        self.model_name: str = system_input.model_name
-        self.thermal_units: list = system_input.thermal_units
+        self.model_name = system_input.model_name
+        self.sim_horizon = system_input.sim_horizon
+        self.thermal_units = list(system_input.thermal_unit_node.keys())
         self.TD: dict[str, int] = system_input.TD
         self.TU: dict[str, int] = system_input.TU
 
@@ -269,14 +275,14 @@ class SystemRecord:
         )
 
         self.current_v = (
-            current_node_vars[current_node_vars["vartype"] == "start"]
+            current_node_vars[current_node_vars["vartype"] == "startup"]
             .drop("vartype", axis=1)
             .set_index(["node", "hour"])
             .to_dict()["value"]
         )
 
         self.current_w = (
-            current_node_vars[current_node_vars["vartype"] == "shut"]
+            current_node_vars[current_node_vars["vartype"] == "shutdown"]
             .drop("vartype", axis=1)
             .set_index(["node", "hour"])
             .to_dict()["value"]

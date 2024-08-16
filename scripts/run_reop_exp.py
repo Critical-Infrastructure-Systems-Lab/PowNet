@@ -38,7 +38,10 @@ def main():
         reop_timestep=reop_timestep,
     )
 
-    record = simulator.run(steps=STEPS, solver="highs")
+    record = simulator.run(
+        steps=STEPS,
+        solver="gurobi",
+    )
     results = record.get_node_variables()
 
     if save_result:

@@ -27,15 +27,15 @@ def get_dates(year):
     return dates
 
 
-def create_init_condition(thermal_units: list, T: int) -> dict[(str, int), dict]:
-    "Return dicts of system statuses in the format {unit: {t:value}}"
-    # If the user does not specify the initial condition, then we assume
-    # the system will start from a blank state with every units off.
-    initial_p = {(unit_g, t): 0 for unit_g in thermal_units for t in range(1, T + 1)}
+def create_init_condition(thermal_units: list) -> dict[(str, int), dict]:
+    """Return dicts of system statuses in the format {(unit, hour): value}"""
+    # Assume thermal units in the systems are offline at the beginning
+    initial_p = {unit_g: 0 for unit_g in thermal_units}
     initial_u = initial_p.copy()
     initial_v = initial_p.copy()
     initial_w = initial_p.copy()
 
+    # Thermal units do not carry any minimum up and down time at the beginning
     initial_min_on = {unit_g: 0 for unit_g in thermal_units}
     initial_min_off = initial_min_on.copy()
 
@@ -49,14 +49,20 @@ def create_init_condition(thermal_units: list, T: int) -> dict[(str, int), dict]
     }
 
 
-def get_fuel_prices(df: pd.DataFrame) -> pd.DataFrame:
-    fuel_types = df.columns.to_list()
-    fuel_prices = {
-        (fuel_type, t): df.loc[t, fuel_type]
-        for t in range(1, 25)
-        for fuel_type in fuel_types
-    }
-    return fuel_prices
+def get_sim_period(step_k: int, sim_horizon: int) -> range:
+    """
+    Generates indices for a rolling horizon simulation.
+
+    Args:
+        k: The current simulation step.
+        T: The simulation horizon.
+
+    Returns:
+        A range of indices for the current step.
+    """
+    start_index = (step_k - 1) * sim_horizon + 1
+    end_index = step_k * sim_horizon
+    return range(start_index, end_index + 1)
 
 
 def get_nodehour(df: pd.DataFrame) -> pd.DataFrame:

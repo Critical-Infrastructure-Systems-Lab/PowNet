@@ -1,3 +1,5 @@
+""" input.py: SystemInput class loads and checks the input data. It is used by other PowNet objects to access the input data. """
+
 from datetime import datetime
 import json
 import os
@@ -14,18 +16,27 @@ class SystemInput:
         model_name: str,
         year: int,
         sim_horizon: int,
-        line_flow: str = "kirchhoff",
+        use_spin_var: bool = True,
+        dc_opf: str = "kirchhoff",
         spin_reserve_factor: float = 0.15,
         line_loss_factor: float = 0.075,
         line_capacity_factor: float = 0.9,
-        shortfall_penalty: float = 1000,
-        reserve_penalty: float = 1000,
+        load_shortfall_penalty_factor: float = 1000,
+        spin_shortfall_penalty_factor: float = 1000,
     ) -> None:
         """This class reads the input data for the power system model."""
 
         self.model_name = model_name
         self.year = year
         self.sim_horizon = sim_horizon
+        self.use_spin_var = use_spin_var
+
+        # DC representation of the power flow model
+        if dc_opf not in ["kirchhoff", "voltage_angle"]:
+            raise ValueError(
+                "PowNet: Line flow must be either 'kirchhoff' or 'voltage_angle'."
+            )
+        self.dc_opf = dc_opf
 
         # The spin reserve factor is a fraction of total demand
         self.spin_reserve_factor = spin_reserve_factor
@@ -40,19 +51,14 @@ class SystemInput:
         self.line_capacity_factor = line_capacity_factor
 
         # The shortfall penalty is the cost of not meeting the demand. (USD/MWh)
-        self.shortfall_penalty = shortfall_penalty
+        self.load_shortfall_penalty_factor = load_shortfall_penalty_factor
 
         # The reserve penalty is the cost of not meeting the reserve requirement. (USD/MWh)
-        self.reserve_penalty = reserve_penalty
-
-        if line_flow not in ["kirchhoff", "voltage_angle"]:
-            raise ValueError(
-                "PowNet: Line flow must be either 'kirchhoff' or 'voltage_angle'."
-            )
-        self.line_flow = line_flow
+        self.spin_shortfall_penalty_factor = spin_shortfall_penalty_factor
 
         # The timestamp is used to create a unique folder for the model
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+
         # folder structure: pownet_root/model_library/
         self.model_dir = os.path.join(get_model_dir(), model_name)
 
@@ -62,9 +68,10 @@ class SystemInput:
 
         # Thermal units
         self.thermal_unit_node: dict[str, str] = {}
+        self.thermal_fuel_cost: dict[str, str] = {}
 
-        self.thermal_opex: dict[str, float] = {}
         self.thermal_fixed_cost: dict[str, float] = {}
+        self.thermal_opex: dict[str, float] = {}
         self.thermal_startup_cost: dict[str, float] = {}
         self.thermal_heat_rate: dict[str, float] = {}
 
@@ -107,6 +114,21 @@ class SystemInput:
         self.max_line_capacity: int = 0
         self.spin_requirement: pd.DataFrame = pd.DataFrame()
 
+        self.fuelmap: dict[str, str] = {}  # Maps each unit to its fuel type
+
+        # List of units
+        self.thermal_units: list[str] = []
+        self.hydro_units: list[str] = []
+        self.solar_units: list[str] = []
+        self.wind_units: list[str] = []
+        self.import_units: list[str] = []
+
+        # Generators by node
+        self.node_generator: dict[str, list[str]] = {}
+
+        # Edges by node
+        self.node_edge: dict[str, list[str]] = {}
+
     def _load_csv(self, filename: str, header_levels: int) -> pd.DataFrame:
         """Helper function to load CSV with default options.
         Note:
@@ -144,12 +166,12 @@ class SystemInput:
         thermal_unit_df = pd.read_csv(
             os.path.join(self.model_dir, "thermal_unit.csv"), header=0, index_col="name"
         )
-
-        self.thermal_units = thermal_unit_df.index.tolist()
         self.thermal_unit_node = thermal_unit_df["node"].to_dict()
 
-        self.thermal_opex = thermal_unit_df["operation_cost"].to_dict()
+        self.thermal_fuel_cost = thermal_unit_df["fuel_cost"].to_dict()
+
         self.thermal_fixed_cost = thermal_unit_df["fixed_cost"].to_dict()
+        self.thermal_opex = thermal_unit_df["operation_cost"].to_dict()
         self.thermal_startup_cost = thermal_unit_df["startup_cost"].to_dict()
         self.thermal_heat_rate = thermal_unit_df["heat_rate"].to_dict()
 
@@ -178,6 +200,48 @@ class SystemInput:
             "pownet_derated_capacity.csv", header_levels=0
         )
         self.thermal_derated_capacity.index += 1
+
+        # The fuel type of each thermal unit
+        self.fuelmap.update(thermal_unit_df["fuel_type"].to_dict())
+
+    def _store_generators_by_node(self):
+        """
+        Store the generators by node in a dictionary : {
+        node1:['generator1', 'gen2'],
+        node2:['gen3', 'gen4']
+        }
+        Generators include thermal, hydro, solar, wind, and import units.
+        """
+        self.node_generator = {}
+        for node in self.nodes:
+            self.node_generator[node] = []
+            self._add_units_to_node(node, self.thermal_unit_node)
+            self._add_units_to_node(node, self.hydro_unit_node)
+            self._add_units_to_node(node, self.solar_unit_node)
+            self._add_units_to_node(node, self.wind_unit_node)
+            self._add_units_to_node(node, self.import_unit_node)
+
+    def _store_edges_by_node(self):
+        """
+        Store the edges by node in a dictionary : {
+        node1:['edge1', 'edge2'],
+        node2:['edge3', 'edge4']
+        }
+        """
+        self.node_edge = {}
+        for node in self.nodes:
+            self.node_edge[node] = []
+            for edge in self.edges:
+                if node in edge:
+                    self.node_edge[node].append(edge)
+
+    def _add_units_to_node(self, node, unit_node_dict):
+        """
+        Helper method to add units to the node_generator dictionary.
+        """
+        for unit, unit_node in unit_node_dict.items():
+            if unit_node == node:
+                self.node_generator[node].append(unit)
 
     def load_data(self):
         """Load the input data for the power system model.
@@ -248,6 +312,8 @@ class SystemInput:
                 "PowNet: Hydropower timeseries must be either of length 8760 or 365."
             )
 
+        self.fuelmap.update({k: "hydro" for k in self.hydro_unit_node.keys()})
+
         #################
         # Renewables (timeseries)
         #################
@@ -258,6 +324,7 @@ class SystemInput:
         self.solar_unit_node = {
             k: v for k, v in self._get_columns_if_not_empty(self.solar_capacity)
         }
+        self.fuelmap.update({k: "solar" for k in self.solar_unit_node.keys()})
 
         # Wind
         self.wind_capacity = self._check_and_load_timeseries(
@@ -266,6 +333,7 @@ class SystemInput:
         self.wind_unit_node = {
             k: v for k, v in self._get_columns_if_not_empty(self.wind_capacity)
         }
+        self.fuelmap.update({k: "wind" for k in self.wind_unit_node.keys()})
 
         # Import
         self.import_capacity = self._check_and_load_timeseries(
@@ -274,6 +342,7 @@ class SystemInput:
         self.import_unit_node = {
             k: v for k, v in self._get_columns_if_not_empty(self.import_capacity)
         }
+        self.fuelmap.update({k: "import" for k in self.import_unit_node.keys()})
 
         #################
         # Transmission
@@ -319,7 +388,7 @@ class SystemInput:
         self.max_line_capacity = self.line_capacity.max().max()
 
         # A user can use DataProcessor to generate pownet_cycle_map.json
-        if self.line_flow == "kirchhoff":
+        if self.dc_opf == "kirchhoff":
             with open(os.path.join(self.model_dir, "pownet_cycle_map.json")) as f:
                 self.cycle_map = json.load(f)
 
@@ -327,14 +396,32 @@ class SystemInput:
         # System requirements
         #################
 
-        # The first index of spin_req is already at 1
         self.spin_requirement = self.demand.sum(axis=1) * self.spin_reserve_factor
 
+        #################
+        # List of units
+        #################
+        self.thermal_units = list(self.thermal_unit_node.keys())
+        self.hydro_units = list(self.hydro_unit_node.keys())
+        self.solar_units = list(self.solar_units)
+        self.wind_units = list(self.wind_units)
+        self.import_units = list(self.import_unit_node.keys())
+
+        #################
+        # Node information
+        #################
+        self._store_generators_by_node()
+        self._store_edges_by_node()
+
     def check_data(self):
-        #################
-        # Perform checks and prints the input data summary
-        #################
-        # Demand nodes must be connected to the grid
+        """
+        Perform checks on the input data to ensure consistency and correctness.
+        """
+
+        ##################################
+        # Nodes are connected to the grid
+        ##################################
+
         if not set(self.demand_nodes).issubset(self.nodes):
             raise ValueError(
                 f"PowNet: Demand nodes must be connected to the grid: {set(self.demand_nodes) - self.nodes}"
@@ -357,7 +444,10 @@ class SystemInput:
                 f"PowNet: Import units must be connected to the grid: {set(self.import_unit_node.values()) - self.nodes}"
             )
 
-        # Check that factors are between 0 and 1
+        ##################################
+        # Factors are between 0 and 1
+        ##################################
+
         if not 0 <= self.spin_reserve_factor <= 1:
             raise ValueError("PowNet: Spin reserve factor must be between 0 and 1.")
         if not 0 <= self.line_loss_factor <= 1:
@@ -365,15 +455,14 @@ class SystemInput:
         if not 0 <= self.line_capacity_factor <= 1:
             raise ValueError("PowNet: Line capacity factor must be between 0 and 1.")
 
+        ##################################
         # Timeseries are of length 8760
+        ##################################
+
         if len(self.demand) != 8760:
             raise ValueError("PowNet: Demand timeseries must be of length 8760.")
-        if len(self.unit_marginal_cost) != 8760:
+        if len(self.unit_marginal_cost) not in [0, 8760]:
             raise ValueError("PowNet: Marginal cost timeseries must be of length 8760.")
-        if len(self.hydro_capacity) not in [0, 8760, 365]:
-            raise ValueError(
-                "PowNet: Hydropower timeseries must be of length 8760 or 365."
-            )
         if len(self.solar_capacity) not in [0, 8760]:
             raise ValueError("PowNet: Solar timeseries must be of length 8760.")
         if len(self.wind_capacity) not in [0, 8760]:
@@ -386,6 +475,87 @@ class SystemInput:
         if len(self.line_capacity) != 8760:
             raise ValueError("PowNet: Line capacity must be of length 8760.")
 
+        # Hydropower is different
+        if len(self.hydro_capacity) not in [0, 8760, 365]:
+            raise ValueError(
+                "PowNet: Hydropower timeseries must be of length 8760 or 365."
+            )
+
+        ##################################
+        # The derated capacities of thermal units must be above its minimum capacity
+        ##################################
+
+        if not (self.thermal_derated_capacity >= self.thermal_min_capacity).all().all():
+            raise ValueError(
+                "PowNet: The derated capacity of thermal units must be above the minimum capacity."
+            )
+
+        ##################################
+        # Consistency in the number of units
+        ##################################
+
+        # The number of columns in self.marginal_cost must be equal to the number of units
+        # (thermal, hydro, solar, wind, import)
+        number_of_non_fossil_generators = len(
+            self.hydro_unit_node
+            | self.solar_unit_node
+            | self.wind_unit_node
+            | self.import_unit_node
+        )
+        if len(self.unit_marginal_cost.columns) != number_of_non_fossil_generators:
+            raise ValueError(
+                f"PowNet: The number of columns in marginal cost timeseries must be equal to the number of non-fossil generators. {len(self.unit_marginal_cost.columns)} != {number_of_non_fossil_generators}"
+            )
+
+        number_of_generators = (
+            len(self.thermal_unit_node) + number_of_non_fossil_generators
+        )
+        if len(self.fuelmap) != number_of_generators:
+            raise ValueError(
+                f"PowNet: The number of units in the fuelmap must be equal to the number of generators. {len(self.fuelmap)} != {number_of_generators}"
+            )
+
+        # Number of nodes in the node_generator dictionary must be equal to the number of nodes
+        if len(self.node_generator) != len(self.nodes):
+            raise ValueError(
+                f"PowNet: The number of nodes in the node_generator dictionary must be equal to the number of nodes. {len(self.node_generator)} != {len(self.nodes)}"
+            )
+
+        # Number of generators in the node_generator dictionary must be equal to the number of generators
+        if sum(len(v) for v in self.node_generator.values()) != number_of_generators:
+            raise ValueError(
+                f"PowNet: The number of generators in the node_generator dictionary must be equal to the number of generators. {sum(len(v) for v in self.node_generator.values())} != {number_of_generators}"
+            )
+
+        # Number of nodes in the node_edge dictionary must be equal to the number of nodes
+        if len(self.node_edge) != len(self.nodes):
+            raise ValueError(
+                f"PowNet: The number of nodes in the node_edge dictionary must be equal to the number of nodes. {len(self.node_edge)} != {len(self.nodes)}"
+            )
+
+        # Number of edges in the node_edge dictionary must be equal to TWICE the number of edges
+        if sum(len(v) for v in self.node_edge.values()) != 2 * len(self.edges):
+            raise ValueError(
+                f"PowNet: The number of edges in the node_edge dictionary must be equal to the number of edges. {sum(len(v) for v in self.node_edge.values())} != {2*len(self.edges)}"
+            )
+
+        ##################################
+        # Generator names cannot repeat across different types
+        ##################################
+        if (
+            len(
+                set(self.thermal_units)
+                | set(self.hydro_units)
+                | set(self.solar_units)
+                | set(self.wind_units)
+                | set(self.import_units)
+            )
+            != number_of_generators
+        ):
+            raise ValueError(
+                "PowNet: Generator names cannot repeat across different types."
+            )
+
     def print_summary(self):
         print("\n\n==== PowNet Input Data Summary ====")
         print(f"{'Timestamp':<25} = {self.timestamp}")
@@ -394,7 +564,7 @@ class SystemInput:
         print("---- System characteristics ----")
         print(f"{'No. of nodes':<25} = {len(self.nodes)}")
         print(f"{'No. of edges':<25} = {len(self.edges)}")
-        print(f"{'No. of thermal units':<25} = {len(self.thermal_units)}")
+        print(f"{'No. of thermal units':<25} = {len(self.thermal_unit_node)}")
         print(f"{'No. of demand nodes':<25} = {len(self.demand_nodes)}")
         print(f"{'Peak demand':<25} = {self.demand.max().max()} MW")
 
@@ -406,12 +576,15 @@ class SystemInput:
 
         print("---- Modeling parameters ----")
         print(f"{'Simulation horizon':<25} = {self.sim_horizon} hours")
-        print(f"{'Line flow model':<25} = {self.line_flow}")
+        print(f"{'Use spin variable':<25} = {self.use_spin_var}")
+        print(f"{'Power flow':<25} = {self.dc_opf}")
         print(f"{'Spin reserve factor':<25} = {self.spin_reserve_factor}")
         print(f"{'Line loss factor':<25} = {self.line_loss_factor}")
         print(f"{'Line capacity factor':<25} = {self.line_capacity_factor}")
-        print(f"{'Shortfall penalty':<25} = {self.shortfall_penalty}")
-        print(f"{'Reserve penalty':<25} = {self.reserve_penalty}")
+        print(f"{'Load shortfall penalty':<25} = {self.load_shortfall_penalty_factor}")
+        print(
+            f"{'Reserve shortfall penalty':<25} = {self.spin_shortfall_penalty_factor}"
+        )
         print("=====================================\n")
 
     def load_check_and_print_summary(self):

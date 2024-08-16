@@ -1,7 +1,7 @@
 ﻿name,color,co2_emission
 coal,#636363,
 gas,#08519c,
-hydro,#7bccc4,
+hydropower,#7bccc4,
 solar,#fdbb84,
 wind,#deebf7,
 oil,#252525,

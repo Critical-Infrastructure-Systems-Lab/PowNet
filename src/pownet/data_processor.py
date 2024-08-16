@@ -219,8 +219,7 @@ class DataProcessor:
         # If there are solar.csv, hydropower.csv, and wind.csv files, then we need to
         # include them in the fuel price file.
         hours_in_year = range(8760)
-        # self.marginal_costs = pd.DataFrame(0, index=hours_in_year, columns=[])
-        unit_types = ["solar", "wind", "hydro", "import"]
+        unit_types = ["solar", "wind", "hydropower", "import"]
         for unit_type in unit_types:
             filename = os.path.join(self.model_folder, f"{unit_type}.csv")
             if os.path.exists(filename):

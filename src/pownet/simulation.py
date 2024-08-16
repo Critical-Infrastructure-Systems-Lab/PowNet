@@ -45,7 +45,10 @@ class Simulator:
 
         # Extract model parameters from the model library directory
         self.system_input = SystemInput(
-            sim_horizon=T, formulation="kirchhoff", model_name=model_name, year=2016
+            model_name=model_name,
+            year=2016,
+            sim_horizon=T,
+            dc_opf="kirchhoff",
         )
 
         self.model: PowerSystemModel = None
@@ -58,8 +61,6 @@ class Simulator:
     def run(
         self,
         steps: int,
-        mip_gap: float = None,
-        timelimit: float = None,
         solver: str = "gurobi",
     ) -> SystemRecord:
         # Initialize objects
@@ -86,15 +87,11 @@ class Simulator:
                 self.model = builder.build(
                     k=k,
                     init_conds=init_conds,
-                    mip_gap=mip_gap,
-                    timelimit=timelimit,
                 )
             else:
                 self.model = builder.update(
                     k=k,
                     init_conds=init_conds,
-                    mip_gap=mip_gap,
-                    timelimit=timelimit,
                 )
 
             if self.write_model:
@@ -103,6 +100,7 @@ class Simulator:
                 self.model.write_mps(output_folder=output_folder, filename=filename)
 
             # Solve the model with either Gurobi or HiGHs
+            # TODO: Set mipgap, timelimit, log_to_console as arguments
             self.model.optimize(solver=solver)
 
             # In case when the model is infeasible, we generate ILP and MPS files
@@ -129,7 +127,7 @@ class Simulator:
 
             # Reoperate reservoirs
             if self.to_reoperate:
-                self.reoperate(k, builder, init_conds, mip_gap, timelimit)
+                self.reoperate(k, builder, init_conds, mipgap, timelimit)
 
             # Need k to increment the hours field
             system_record.keep(self.model, k)
