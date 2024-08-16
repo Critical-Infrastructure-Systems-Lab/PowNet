@@ -65,6 +65,42 @@ def get_sim_period(step_k: int, sim_horizon: int) -> range:
     return range(start_index, end_index + 1)
 
 
+def get_unit_hour_from_varnam(var_name: str) -> (str, int):
+    """Get the unit and hour from the variable name.
+
+    Args:
+        var_name: The name of the variable.
+
+    Returns:
+        The unit and hour.
+
+    """
+    var_name = var_name.replace("[", "").replace("]", "")
+    var_name = var_name.split(",")
+    unit = var_name[0]
+    hour = int(var_name[1])
+
+    return unit, hour
+
+
+def get_edge_hour_from_varname(var_name: str) -> (str, str, int):
+    """Get the edge and hour from the variable name: flow[a,b,t].
+
+    Args:
+        var_name: The name of the variable.
+
+    Returns:
+        The edge and hour.
+
+    """
+    var_name = var_name.replace("flow[", "").replace("]", "")
+    var_name = var_name.split(",")
+    edge = (var_name[0], var_name[1])
+    hour = int(var_name[2])
+
+    return edge, hour
+
+
 def get_nodehour(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     # Extract the node and hour information

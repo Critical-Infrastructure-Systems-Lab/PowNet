@@ -3,23 +3,9 @@
 
 from .model import PowerSystemModel
 from .variable import (
-    add_var_pthermal,
-    add_var_status,
-    add_var_spin,
-    add_var_vpower,
-    add_var_vpowerbar,
-    add_var_shutdown,
-    add_var_startup,
-    add_var_phydro,
-    add_var_phydro2,
-    add_var_pwind,
-    add_var_psolar,
-    add_var_pimp,
+    add_var_with_ub,
     add_var_flow,
     add_var_voltage_angle,
-    add_var_pos_pmismatch,
-    add_var_neg_pmismatch,
-    add_var_spin_shortfall,
 )
 
 from .objfunc import (

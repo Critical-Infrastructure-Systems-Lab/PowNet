@@ -3,15 +3,12 @@
 
 from __future__ import annotations
 
-import os
-
 from gurobipy import GRB
 import gurobipy as gp
 import pandas as pd
 
 import pownet.modeling as modeling
-from pownet.data_utils import create_init_condition
-from pownet.folder_utils import get_output_dir
+from pownet.data_utils import get_unit_hour_from_varnam, get_edge_hour_from_varname
 
 
 class ModelBuilder:
@@ -35,8 +32,6 @@ class ModelBuilder:
         self.inputs = inputs
 
         self.timesteps = range(1, self.inputs.sim_horizon + 1)
-        # Define the simulation horizon
-        self.T: int = self.inputs.sim_horizon
 
         # Initialize the model
         model_name: str = (
@@ -96,87 +91,156 @@ class ModelBuilder:
     def add_variables(self, step_k: int) -> None:
         """Add variables to the model. The variables are grouped into
         thermal units, renewable energy sources, and imports, nodes, and flows.
-        The bounds of some variables are time-dependent, so we will update them
-        at each iteration.
+
+        Thermal-unit variables:
+        -----------------
+        - `pthermal`: Power output by a thermal unit (also called dispatch). Unit: MW.
+        - `vpower`: Power output *ABOVE* the minimum capacity of a thermal unit. Unit: MW.
+        - `vpowerbar`: Maximum power output *ABOVE* the minimum capacity of a thermal unit. Unit: MW.
+        - `status`: Indicator of online status. On = 1 and off = 0. Unitless.
+        - `startup`: Indicator if a unit is shutting down. Unitless.
+        - `shutdown`: Indicator if a unit is starting up. Unitless.
+        - `spin` (optional): Spinning reserve. Unit: MW.
+
+        Renewable energy and import variables:
+        -----------------
+        - `psolar`: Solar power output. Unit: MW.
+        - `pwind`: Wind power output. Unit: MW.
+        - `pimp`: Import power output. Unit: MW.
+        - `phydro`: Hydropower output. Unit: MW.
+
+        Node variables:
+        -----------------
+        - `pos_pmismatch`: Positive power mismatch. Unit: MW.
+        - `neg_pmismatch`: Negative power mismatch. Unit: MW.
+
+        Flow variables:
+        -----------------
+        - `flow`: Power flow on transmission lines. Unit: MW/hr.
+        - `theta`: Voltage angle. Unit: Radians.
+
+        System variables:
+        -----------------
+        - `spin_shortfall`: Spinning reserve shortfall. Unit: MW.
+
+        Args:
+            step_k: The current step of the simulation.
+
+        Returns:
+            None
+
         """
 
         ################################
-        # Thermal-unit variables
+        # Variables without upper bounds
         ################################
-        self.pthermal = modeling.add_var_pthermal(
-            model=self.model,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            thermal_units=self.inputs.thermal_units,
-            thermal_derated_capacity=self.inputs.thermal_derated_capacity,
-        )
 
-        self.status = modeling.add_var_status(
-            model=self.model,
-            timesteps=self.timesteps,
-            thermal_units=self.inputs.thermal_units,
-        )
+        var_with_ub_tuples = [
+            ("pthermal", "thermal_units", self.inputs.thermal_derated_capacity),
+            ("vpower", "thermal_units", self.inputs.thermal_derated_capacity),
+            ["vpowerbar", "thermal_units", self.inputs.thermal_derated_capacity],
+            ("psolar", "solar_units", self.inputs.solar_capacity),
+            ("pwind", "wind_units", self.inputs.wind_capacity),
+            ("pimp", "import_units", self.inputs.import_capacity),
+        ]
 
-        self.startup = modeling.add_var_startup(
-            model=self.model,
-            timesteps=self.timesteps,
-            thermal_units=self.inputs.thermal_units,
-        )
-
-        self.shutdown = modeling.add_var_shutdown(
-            model=self.model,
-            timesteps=self.timesteps,
-            thermal_units=self.inputs.thermal_units,
-        )
-
-        self.vpower = modeling.add_var_vpower(
-            model=self.model,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            thermal_units=self.inputs.thermal_units,
-            thermal_derated_capacity=self.inputs.thermal_derated_capacity,
-        )
-
-        self.vpowerbar = modeling.add_var_vpowerbar(
-            model=self.model,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            thermal_units=self.inputs.thermal_units,
-            thermal_derated_capacity=self.inputs.thermal_derated_capacity,
-        )
-
-        if self.inputs.use_spin_var:
-            self.spin = modeling.add_var_spin(
-                model=self.model,
-                timesteps=self.timesteps,
-                step_k=step_k,
-                sim_horizon=self.inputs.sim_horizon,
-                thermal_units=self.inputs.thermal_units,
-                thermal_min_capacity=self.inputs.thermal_min_capacity,
-                thermal_derated_capacity=self.inputs.thermal_derated_capacity,
+        for varname, unit_type, capacity_df in var_with_ub_tuples:
+            # Update the self attribute directly
+            setattr(
+                self,
+                varname,
+                modeling.add_var_with_ub(
+                    model=self.model,
+                    varname=varname,
+                    timesteps=self.timesteps,
+                    step_k=step_k,
+                    sim_horizon=self.inputs.sim_horizon,
+                    units=getattr(self.inputs, unit_type),
+                    capacity_df=capacity_df,
+                ),
             )
 
         ################################
-        # Renewable energy and import variables
+        # Variables without upper bounds
+        ################################
+
+        vars_tuples = [
+            ("pos_pmismatch", "demand_nodes"),
+            ("neg_pmismatch", "demand_nodes"),
+        ]
+
+        for varname, unit_type in vars_tuples:
+            setattr(
+                self,
+                varname,
+                self.model.addVars(
+                    getattr(self.inputs, unit_type),
+                    self.timesteps,
+                    name=varname,
+                ),
+            )
+
+        # Spinning reserve can be modeled with or without
+        # the spin variable
+        if self.inputs.use_spin_var:
+            self.spin = self.model.addVars(
+                self.inputs.thermal_units,
+                self.timesteps,
+                name="spin",
+            )
+
+        # System-wide spinning reserve shortfall
+        self.spin_shortfall = self.model.addVars(
+            self.timesteps,
+            name="spin_shortfall",
+        )
+
+        ################################
+        # Binary variables of thermal units
+        ################################
+        var_binary_tuples = [
+            ("status", "thermal_units"),
+            ("startup", "thermal_units"),
+            ("shutdown", "thermal_units"),
+        ]
+        for varname, unit_type in var_binary_tuples:
+            setattr(
+                self,
+                varname,
+                self.model.addVars(
+                    self.inputs.thermal_units,
+                    self.timesteps,
+                    vtype=GRB.BINARY,
+                    name=varname,
+                ),
+            )
+
+        ################################
+        # Daily hydropower availability is limited by a constraint expression
+        # instead of an upper bound on the variables
         ################################
 
         if self.inputs.hydro_timestep == "hourly":
-            self.phydro = modeling.add_var_phydro(
-                model=self.model,
-                timesteps=self.timesteps,
-                step_k=step_k,
-                sim_horizon=self.inputs.sim_horizon,
-                hydro_units=self.inputs.hydro_units,
-                hydro_capacity=self.inputs.hydro_capacity,
+            setattr(
+                self,
+                "phydro",
+                modeling.add_var_with_ub(
+                    model=self.model,
+                    varname=varname,
+                    timesteps=self.timesteps,
+                    step_k=step_k,
+                    sim_horizon=self.inputs.sim_horizon,
+                    units=getattr(self.inputs, "hydro_units"),
+                    capacity_df=self.inputs.hydro_capacity,
+                ),
             )
         elif self.inputs.hydro_timestep == "daily":
-            self.phydro = modeling.add_var_phydro2(
-                model=self.model,
-                timesteps=self.timesteps,
-                hydro_units=self.inputs.hydro_units,
+            self.phydro = self.model.addVars(
+                self.inputs.hydro_units,
+                self.timesteps,
+                lb=0,
+                vtype=GRB.CONTINUOUS,
+                name="phydro",
             )
         elif self.inputs.hydro_timestep == "none":
             pass  # No hydropower
@@ -185,80 +249,30 @@ class ModelBuilder:
                 f"Invalid hydro_timestep parameter: {self.inputs.hydro_timestep}."
             )
 
-        self.psolar = modeling.add_var_psolar(
-            model=self.model,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            solar_units=self.inputs.solar_units,
-            solar_capacity=self.inputs.solar_capacity,
-        )
-
-        self.pwind = modeling.add_var_pwind(
-            model=self.model,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            wind_units=self.inputs.wind_units,
-            wind_capacity=self.inputs.wind_capacity,
-        )
-
-        self.pimp = modeling.add_var_pimp(
-            model=self.model,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            import_units=self.inputs.import_units,
-            import_capacity=self.inputs.import_capacity,
-        )
-
-        ################################
-        # Node variables
-        ################################
-
-        self.pos_pmismatch = modeling.add_var_pos_pmismatch(
-            model=self.model,
-            timesteps=self.timesteps,
-            demand_nodes=self.inputs.demand_nodes,
-        )
-
-        self.neg_pmismatch = modeling.add_var_neg_pmismatch(
-            model=self.model,
-            timesteps=self.timesteps,
-            demand_nodes=self.inputs.demand_nodes,
-        )
-
         ################################
         # Flow variables
         ################################
 
-        if self.inputs.dc_opf == "kirchhoff":
-            self.flow = modeling.add_var_flow(
-                model=self.model,
-                timesteps=self.timesteps,
-                step_k=step_k,
-                sim_horizon=self.inputs.sim_horizon,
-                edges=self.inputs.edges,
-                line_capacity_factor=self.inputs.line_capacity_factor,
-                line_capacity=self.inputs.line_capacity,
-            )
-        elif self.inputs.dc_opf == "voltage_angle":
+        self.flow = modeling.add_var_flow(
+            model=self.model,
+            timesteps=self.timesteps,
+            step_k=step_k,
+            sim_horizon=self.inputs.sim_horizon,
+            edges=self.inputs.edges,
+            line_capacity_factor=self.inputs.line_capacity_factor,
+            line_capacity=self.inputs.line_capacity,
+        )
+
+        if self.inputs.dc_opf == "voltage_angle":
             self.theta = modeling.add_var_voltage_angle(
                 model=self.model,
                 timesteps=self.timesteps,
                 nodes=self.inputs.nodes,
             )
-        else:
-            raise ValueError(f"Invalid DC-OPF parameter: {self.dc_opf}.")
 
         ################################
-        # System variables
+        # Other variables
         ################################
-
-        self.spin_shortfall = modeling.add_var_spin_shortfall(
-            model=self.model,
-            timesteps=self.timesteps,
-        )
 
         self.model.update()
 
@@ -269,7 +283,6 @@ class ModelBuilder:
         the unit variable cost.
 
         Args:
-            model: The Gurobi model instance.
             step_k: The current step of the simulation.
 
         Returns:
@@ -308,49 +321,8 @@ class ModelBuilder:
         self.thermal_startup_expr = self.startup.prod(thermal_startup_coeffs)
 
         ################################
-        # Renewables and import. These are time-dependent
+        # Shortfall penalties
         ################################
-
-        # Cost coefficients of hydro, solar, wind, and import
-        hydro_coeffs = modeling.get_marginal_cost_coeff(
-            inputs=self.inputs,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            units=self.inputs.hydro_units,
-            attribute="unit_marginal_cost",
-        )
-        hydro_expr = self.phydro.prod(hydro_coeffs)
-
-        solar_coeffs = modeling.get_marginal_cost_coeff(
-            inputs=self.inputs,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            units=self.inputs.solar_units,
-            attribute="unit_marginal_cost",
-        )
-        solar_expr = self.psolar.prod(solar_coeffs)
-
-        wind_coeffs = modeling.get_marginal_cost_coeff(
-            inputs=self.inputs,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            units=self.inputs.wind_units,
-            attribute="unit_marginal_cost",
-        )
-        wind_expr = self.pwind.prod(wind_coeffs)
-
-        import_coeffs = modeling.get_marginal_cost_coeff(
-            inputs=self.inputs,
-            timesteps=self.timesteps,
-            step_k=step_k,
-            sim_horizon=self.inputs.sim_horizon,
-            units=self.inputs.import_units,
-            attribute="unit_marginal_cost",
-        )
-        import_expr = self.pimp.prod(import_coeffs)
 
         # The cost of shortfall is the slack variable (pos_pmismatch) needed to meet demand
         self.load_shortfall_penalty_expr = self.inputs.load_shortfall_penalty_factor * (
@@ -362,17 +334,37 @@ class ModelBuilder:
             self.inputs.spin_shortfall_penalty_factor * gp.quicksum(self.spin_shortfall)
         )
 
+        ################################
+        # Renewables and import. These are dependent on step_k
+        ################################
+
+        variable_unit_pairs = [
+            (self.phydro, self.inputs.hydro_units),
+            (self.psolar, self.inputs.solar_units),
+            (self.pwind, self.inputs.wind_units),
+            (self.pimp, self.inputs.import_units),
+        ]
+
+        rnw_import_expr = gp.LinExpr()
+        for var_dict, units in variable_unit_pairs:
+            cost_coeffs = modeling.get_marginal_cost_coeff(
+                inputs=self.inputs,
+                timesteps=self.timesteps,
+                step_k=step_k,
+                sim_horizon=self.inputs.sim_horizon,
+                units=units,
+                attribute="unit_marginal_cost",
+            )
+            rnw_import_expr.add(var_dict.prod(cost_coeffs))
+
         self.model.setObjective(
             (
                 self.thermal_fixed_expr
                 + self.thermal_opex_expr
                 + self.thermal_startup_expr
-                + hydro_expr
-                + solar_expr
-                + wind_expr
-                + import_expr
                 + self.load_shortfall_penalty_expr
                 + self.spin_shortfall_penalty_expr
+                + rnw_import_expr
             ),
             sense=GRB.MINIMIZE,
         )
@@ -673,20 +665,105 @@ class ModelBuilder:
         init_conds: dict[str, dict],
     ) -> gp.Model:
         """Build the model for the unit commitment problem."""
-
         self.add_variables(step_k=step_k)
         self.set_objfunc(step_k=step_k)
         self.add_constraints(step_k=step_k, init_conds=init_conds)
 
         return self.model
 
-    def _update_variable_bounds(self) -> None:
-        pass
+    def _update_variables(self, step_k: int) -> None:
+        """
+        Update the lower/upper bounds of time-dependent variables based on
+        the current timestep, itereration, and capacity dataframes.
 
-    def _update_objective(self) -> None:
-        pass
+        This method dynamically adjusts the upper bounds (capacity limits)
+        for various types of variables in the optimization problem,
+        ensuring they reflect the available capacity at the given time step
+        within the simulation horizon.
 
-    def _update_constraint_bounds(self) -> None:
+        Variables updated include:
+
+        - Thermal units:
+            - `pthermal`: Thermal power output
+            - `vpower`: Thermal unit commitment status (on/off)
+            - `vpowerbar`: Thermal unit start-up status
+        - Hydropower:
+            - `phydro`: Hydropower output (if hydro_timestep is hourly)
+        - Renewables:
+            - `psolar`: Solar power output
+            - `pwind`: Wind power output
+        - Imports:
+            - `pimp`: Import power flow
+        - Flow variables (DC OPF with Kirchhoff's laws):
+            - `flow`: Power flow on transmission lines (updates both lower and upper bounds)
+
+        The upper bounds are retrieved from the corresponding capacity dataframes
+        (e.g., `thermal_derated_capacity`, `hydro_capacity`, etc.) based on
+        the current time step (`step_k`) and the simulation horizon.
+
+        Args:
+            step_k: The current time step within the simulation horizon.
+
+        """
+
+        def _update_ub(
+            variables: gp.tupledict,
+            capacity_df: pd.DataFrame,
+        ) -> None:
+            """Update the upper bounds of the variables based on the capacity dataframes"""
+            for v in variables.values():
+                unit_g, t = get_unit_hour_from_varnam(v.name)
+                v.ub = capacity_df.loc[
+                    t + (step_k - 1) * self.inputs.sim_horizon, unit_g
+                ]
+
+        def _update_flow_bounds(
+            flow_variables: gp.tupledict,
+            capacity_df: pd.DataFrame,
+        ) -> None:
+            """Update the lower and upper bounds of the flow variables based on the capacity dataframes"""
+            for flow_variable in flow_variables.values():
+                edge, t = get_edge_hour_from_varname(flow_variable.name)
+                line_capacity = capacity_df.loc[
+                    t + (step_k - 1) * self.inputs.sim_horizon, edge
+                ]
+                # Update the lower and upper bounds, respectively
+                flow_variable.lb = -line_capacity
+                flow_variable.ub = line_capacity
+
+        # Update variable bounds
+        thermal_unit_vars = [self.pthermal, self.vpower, self.vpowerbar]
+        for var_dict in thermal_unit_vars:
+            _update_ub(var_dict, self.inputs.thermal_derated_capacity)
+
+        # Renewables and import
+        variable_capacity_pairs = [
+            (self.psolar, self.inputs.solar_capacity),
+            (self.pwind, self.inputs.wind_capacity),
+            (self.pimp, self.inputs.import_capacity),
+        ]
+        for var_dict, capacity_df in variable_capacity_pairs:
+            _update_ub(var_dict, capacity_df)
+
+        # Hydropower variable with *daily* timestep does not have an upper bound
+        if self.inputs.hydro_timestep == "hourly":
+            _update_ub(self.phydro, self.inputs.hydro_capacity)
+
+        # Flow variables require updating both lower and upper bounds
+        if self.inputs.dc_opf == "kirchhoff":
+            _update_flow_bounds(self.flow, self.inputs.line_capacity)
+
+    def _update_objfunc(self) -> None:
+        self.model.setObjective(
+            self.thermal_fixed_expr
+            + self.thermal_opex_expr
+            + self.thermal_startup_expr
+            + self.load_shortfall_penalty_expr
+            + self.spin_shortfall_penalty_expr,
+            # Add the renewable and import costs here
+        )
+
+    def _update_constraints(self) -> None:
         pass
 
     def update(
@@ -697,14 +774,13 @@ class ModelBuilder:
         """Update the model instead of creating a new one
         so we can perform warm start
         """
+        # Update the variable bounds
+        self._update_variable_bounds(step_k=step_k)
+
         # Update the objective function
+        # self.set_objfunc(step_k=step_k)
 
-        # Change the upper bounds of variables that are dependent on step_k
-
-        # Remove and update constraints that are dependent on step_k
-        self.c_link_uvw_init
-
-        return model
+        return self.model
 
     def get_hydro_capacity(self) -> pd.DataFrame:
         raise NotImplementedError("Method not implemented yet.")
