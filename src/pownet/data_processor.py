@@ -37,10 +37,21 @@ class DataProcessor:
         self.model_folder = os.path.join(get_model_dir(), model_name)
 
     def load_data(self) -> None:
+        # User inputs of transmission data
         self.user_transmission = pd.read_csv(
             os.path.join(self.model_folder, "transmission.csv"),
             header=0,
         )
+
+        # First check that there are no repeated edges in the transmission data
+        # Here, only one direction is needed. If the reverse direction is also
+        # present, then it is a repeated edge.
+        edges = self.user_transmission[["source", "sink"]].values
+        reversed_edges = np.flip(edges, axis=1)
+        repeated_edges = np.intersect1d(edges, reversed_edges)
+        if len(repeated_edges) > 0:
+            raise ValueError("There are repeated edges in the transmission data.")
+
         # Generic transmission parameters for a power system
         self.transmission_params: dict = (
             pd.read_csv(
