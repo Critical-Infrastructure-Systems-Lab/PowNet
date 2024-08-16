@@ -219,13 +219,13 @@ class ModelBuilder:
         self.pos_pmismatch = modeling.add_var_pos_pmismatch(
             model=self.model,
             timesteps=self.timesteps,
-            demand_nodes=self.inputs.nodes,
+            demand_nodes=self.inputs.demand_nodes,
         )
 
         self.neg_pmismatch = modeling.add_var_neg_pmismatch(
             model=self.model,
             timesteps=self.timesteps,
-            demand_nodes=self.inputs.nodes,
+            demand_nodes=self.inputs.demand_nodes,
         )
 
         ################################

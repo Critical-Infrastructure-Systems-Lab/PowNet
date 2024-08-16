@@ -941,14 +941,14 @@ def add_c_flow_balance(
             arc_flow = 0
             for x, y in node_edge[node]:
                 if x == node:
-                    arc_flow -= flow[x, y, t] * 1 / line_efficiency
+                    arc_flow -= flow[x, y, t]
                 elif y == node:
-                    arc_flow += flow[x, y, t] * 1 / line_efficiency
+                    arc_flow += flow[x, y, t]
 
             # Given the above terms, we can specify the energy balance
             cname = f"flowBal[{node},{t}]"
             constraints[cname] = model.addConstr(
-                (generation + arc_flow + mismatch == demand_n_t),
+                (generation * line_efficiency + arc_flow + mismatch == demand_n_t),
                 name=cname,
             )
     return constraints
