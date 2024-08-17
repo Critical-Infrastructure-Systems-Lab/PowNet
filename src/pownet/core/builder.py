@@ -73,7 +73,7 @@ class ModelBuilder:
         self.load_shortfall_penalty_expr: gp.LinExpr = gp.LinExpr()
         self.spin_shortfall_penalty_expr: gp.LinExpr = gp.LinExpr()
 
-        # Time-dependent constraints that are removed and added at each iteration
+        # Constraints that must be updated at each itereration (step_k)
         self.c_link_uvw_init: gp.tupledict = None
         self.c_link_pu_upper: gp.tupledict = None
         self.c_min_down_init: gp.tupledict = None
@@ -276,6 +276,27 @@ class ModelBuilder:
 
         self.model.update()
 
+    def _build_rnw_import_objfunc_terms(self, step_k: int) -> gp.LinExpr:
+        """Build the objective function for renewable energy and import sources."""
+        variable_unit_pairs = [
+            (self.phydro, self.inputs.hydro_units),
+            (self.psolar, self.inputs.solar_units),
+            (self.pwind, self.inputs.wind_units),
+            (self.pimp, self.inputs.import_units),
+        ]
+        rnw_import_expr = gp.LinExpr()
+        for var_dict, units in variable_unit_pairs:
+            cost_coeffs = modeling.get_marginal_cost_coeff(
+                inputs=self.inputs,
+                timesteps=self.timesteps,
+                step_k=step_k,
+                sim_horizon=self.inputs.sim_horizon,
+                units=units,
+                attribute="unit_marginal_cost",
+            )
+            rnw_import_expr.add(var_dict.prod(cost_coeffs))
+        return rnw_import_expr
+
     def set_objfunc(self, step_k: int) -> None:
         """The objective function has four components: unit fixed cost, unit variable cost,
         unit start-up cost, and shortfall cost. THe objective function is to minimize the
@@ -335,27 +356,9 @@ class ModelBuilder:
         )
 
         ################################
-        # Renewables and import. These are dependent on step_k
+        # Renewable energy and import sources
         ################################
-
-        variable_unit_pairs = [
-            (self.phydro, self.inputs.hydro_units),
-            (self.psolar, self.inputs.solar_units),
-            (self.pwind, self.inputs.wind_units),
-            (self.pimp, self.inputs.import_units),
-        ]
-
-        rnw_import_expr = gp.LinExpr()
-        for var_dict, units in variable_unit_pairs:
-            cost_coeffs = modeling.get_marginal_cost_coeff(
-                inputs=self.inputs,
-                timesteps=self.timesteps,
-                step_k=step_k,
-                sim_horizon=self.inputs.sim_horizon,
-                units=units,
-                attribute="unit_marginal_cost",
-            )
-            rnw_import_expr.add(var_dict.prod(cost_coeffs))
+        rnw_import_expr = self._build_rnw_import_objfunc_terms(step_k=step_k)
 
         self.model.setObjective(
             (
@@ -694,7 +697,7 @@ class ModelBuilder:
             - `pwind`: Wind power output
         - Imports:
             - `pimp`: Import power flow
-        - Flow variables (DC OPF with Kirchhoff's laws):
+        - Flow variables:
             - `flow`: Power flow on transmission lines (updates both lower and upper bounds)
 
         The upper bounds are retrieved from the corresponding capacity dataframes
@@ -706,7 +709,7 @@ class ModelBuilder:
 
         """
 
-        def _update_ub(
+        def _update_var_ub(
             variables: gp.tupledict,
             capacity_df: pd.DataFrame,
         ) -> None:
@@ -734,7 +737,7 @@ class ModelBuilder:
         # Update variable bounds
         thermal_unit_vars = [self.pthermal, self.vpower, self.vpowerbar]
         for var_dict in thermal_unit_vars:
-            _update_ub(var_dict, self.inputs.thermal_derated_capacity)
+            _update_var_ub(var_dict, self.inputs.thermal_derated_capacity)
 
         # Renewables and import
         variable_capacity_pairs = [
@@ -743,28 +746,157 @@ class ModelBuilder:
             (self.pimp, self.inputs.import_capacity),
         ]
         for var_dict, capacity_df in variable_capacity_pairs:
-            _update_ub(var_dict, capacity_df)
+            _update_var_ub(var_dict, capacity_df)
 
         # Hydropower variable with *daily* timestep does not have an upper bound
         if self.inputs.hydro_timestep == "hourly":
-            _update_ub(self.phydro, self.inputs.hydro_capacity)
+            _update_var_ub(self.phydro, self.inputs.hydro_capacity)
 
         # Flow variables require updating both lower and upper bounds
-        if self.inputs.dc_opf == "kirchhoff":
-            _update_flow_bounds(self.flow, self.inputs.line_capacity)
+        _update_flow_bounds(self.flow, self.inputs.line_capacity)
 
-    def _update_objfunc(self) -> None:
+    def _update_objfunc(self, step_k: int) -> None:
+        """Update the objective function with time-dependent terms."""
+        rnw_import_expr = self._build_rnw_import_objfunc_terms(step_k=step_k)
         self.model.setObjective(
             self.thermal_fixed_expr
             + self.thermal_opex_expr
             + self.thermal_startup_expr
             + self.load_shortfall_penalty_expr
             + self.spin_shortfall_penalty_expr,
-            # Add the renewable and import costs here
+            +rnw_import_expr,
         )
 
-    def _update_constraints(self) -> None:
-        pass
+    def _update_constraints(self, step_k, init_conds: dict) -> None:
+        """Constraints to be updated include:
+        - c_link_uvw_init: initial_u is from the previous iteration
+        - c_link_pu_upper: thermal_derated_capacity is a timeseries
+        - c_min_down_init: initial_min_off is from the previous iteration
+        - c_min_up_init: initial_min_on is from the previous iteration
+        - c_ramp_down_init: initial vpower and u is from the previous iteration
+        - c_ramp_up_init: initial vpower is from the previous iteration
+        - c_angle_diff: susceptance is a timeseries
+        - c_kirchhoff: Susceptance is a timeseries
+        - c_flow_balance: Electricity demand is a timeseries
+        - c_hydro_capacity: Hydropower capacity is a timeseries
+        - c_reserve_req: Spinning reserve requirement is based on the electricity demand
+
+        """
+        self.model.remove(self.c_link_uvw_init)
+        self.c_link_uvw_init = modeling.add_c_link_uvw_init(
+            model=self.model,
+            u=self.status,
+            v=self.startup,
+            w=self.shutdown,
+            initial_u=init_conds["initial_u"],
+            thermal_units=self.inputs.thermal_units,
+        )
+
+        self.model.remove(self.c_link_pu_upper)
+        self.c_link_pu_upper = modeling.add_c_link_pu_upper(
+            model=self.model,
+            pbar=self.vpowerbar,
+            u=self.status,
+            timesteps=self.timesteps,
+            step_k=step_k,
+            sim_horizon=self.inputs.sim_horizon,
+            thermal_units=self.inputs.thermal_units,
+            thermal_min_capacity=self.inputs.thermal_min_capacity,
+            thermal_derated_capacity=self.inputs.thermal_derated_capacity,
+        )
+
+        self.model.remove(self.c_min_down_init)
+        self.c_min_down_init = modeling.add_c_min_down_init(
+            model=self.model,
+            u=self.status,
+            sim_horizon=self.inputs.sim_horizon,
+            thermal_units=self.inputs.thermal_units,
+            initial_min_off=init_conds["initial_min_off"],
+        )
+
+        self.model.remove(self.c_min_up_init)
+        self.c_min_up_init = modeling.add_c_min_up_init(
+            model=self.model,
+            u=self.status,
+            sim_horizon=self.inputs.sim_horizon,
+            thermal_units=self.inputs.thermal_units,
+            initial_min_on=init_conds["initial_min_on"],
+        )
+
+        self.model.remove(self.c_ramp_down_init)
+        self.c_ramp_down_init = modeling.add_c_ramp_down_init(
+            model=self.model,
+            p=self.vpower,
+            w=self.shutdown,
+            thermal_units=self.inputs.thermal_units,
+            initial_p=init_conds["initial_p"],
+            initial_u=init_conds["initial_u"],
+            thermal_min_capacity=self.inputs.thermal_min_capacity,
+            RD=self.inputs.RD,
+            SD=self.inputs.SD,
+        )
+
+        self.model.remove(self.c_ramp_up_init)
+        self.c_ramp_up_init = modeling.add_c_ramp_up_init(
+            model=self.model,
+            pbar=self.vpowerbar,
+            u=self.status,
+            v=self.startup,
+            thermal_units=self.inputs.thermal_units,
+            initial_p=init_conds["initial_p"],
+            thermal_min_capacity=self.inputs.thermal_min_capacity,
+            RU=self.inputs.RU,
+            SU=self.inputs.SU,
+        )
+
+        if self.inputs.dc_opf == "voltage_angle":
+            self.model.remove(self.c_angle_diff)
+            self.c_angle_diff = modeling.add_c_angle_diff(
+                model=self.model,
+                flow=self.flow,
+                theta=self.theta,
+                timesteps=self.timesteps,
+                sim_horizon=self.inputs.sim_horizon,
+                step_k=step_k,
+                edges=self.inputs.edges,
+                susceptance=self.inputs.susceptance,
+            )
+
+        elif self.inputs.dc_opf == "kirchhoff":
+            self.model.remove(self.c_kirchhoff)
+            self.c_kirchhoff = modeling.add_c_kirchhoff(
+                model=self.model,
+                flow=self.flow,
+                timesteps=self.timesteps,
+                sim_horizon=self.inputs.sim_horizon,
+                step_k=step_k,
+                edges=self.inputs.edges,
+                cycle_map=self.inputs.cycle_map,
+                susceptance=self.inputs.susceptance,
+            )
+
+        self.model.remove(self.c_flow_balance)
+        self.c_flow_balance = modeling.add_c_flow_balance(
+            model=self.model,
+            pthermal=self.pthermal,
+            phydro=self.phydro,
+            psolar=self.psolar,
+            pwind=self.pwind,
+            pimp=self.pimp,
+            pos_pmismatch=self.pos_pmismatch,
+            neg_pmismatch=self.neg_pmismatch,
+            flow=self.flow,
+            timesteps=self.timesteps,
+            sim_horizon=self.inputs.sim_horizon,
+            step_k=step_k,
+            inputs=self.inputs,
+            nodes=self.inputs.nodes,
+            node_edge=self.inputs.node_edge,
+            node_generator=self.inputs.node_generator,
+            demand_nodes=self.inputs.demand_nodes,
+            demand=self.inputs.demand,
+            line_loss_factor=self.inputs.line_loss_factor,
+        )
 
     def update(
         self,
@@ -774,45 +906,8 @@ class ModelBuilder:
         """Update the model instead of creating a new one
         so we can perform warm start
         """
-        # Update the variable bounds
-        self._update_variable_bounds(step_k=step_k)
-
-        # Update the objective function
-        # self.set_objfunc(step_k=step_k)
+        self._update_variables(step_k=step_k)
+        self._update_objfunc(step_k=step_k)
+        self._update_constraints(step_k=step_k, init_conds=init_conds)
 
         return self.model
-
-    def get_hydro_capacity(self) -> pd.DataFrame:
-        raise NotImplementedError("Method not implemented yet.")
-        if self.hydro_timestep == "daily":
-            return self.inputs.hydro_capacity.loc[
-                self.T * self.k + 1 : self.T * self.k + self.T
-            ]
-        else:
-            return self.inputs.hydro_capacity.loc[
-                self.T * self.k + 1 : self.T * self.k + self.T
-            ]
-
-    def update_hydro_capacity(self, new_hydro_capacity: pd.DataFrame) -> None:
-        raise NotImplementedError("Method not implemented yet.")
-        if self.hydro_timestep == "hourly":
-            # Divid new_hydro_capacity evenly across the day
-            hourly_hydro_capacity = new_hydro_capacity / 24
-            # Repeat the hourly hydro capacity for the entire day
-            hourly_hydro_capacity = pd.concat(
-                [hourly_hydro_capacity] * 24, ignore_index=True
-            )
-            # Indexing of timeseries for model building starts at 1
-            hourly_hydro_capacity.index += 1
-
-            start_idx = self.T * self.k + 1
-            end_idx = self.T * self.k + self.T
-            self.inputs.hydro_capacity.loc[
-                start_idx:end_idx, hourly_hydro_capacity.columns
-            ] = hourly_hydro_capacity.values
-
-        elif self.hydro_timestep == "daily":
-            day = new_hydro_capacity.index
-            self.inputs.hydro_capacity.loc[day, new_hydro_capacity.columns] = (
-                new_hydro_capacity.values
-            )
