@@ -209,7 +209,6 @@ def add_c_link_pu_upper(
     u=gp.tupledict,
     timesteps=range,
     step_k=int,
-    sim_horizon=int,
     thermal_units=list,
     thermal_min_capacity=dict,
     thermal_derated_capacity=pd.DataFrame,
@@ -223,7 +222,6 @@ def add_c_link_pu_upper(
         u (gp.tupledict): The status of the thermal unit
         timesteps (range): The range of timesteps
         step_k (int): The current iteration
-        sim_horizon (int): The simulation horizon
         thermal_units (list): The list of thermal units
         thermal_min_capacity (dict): The minimum capacity of the thermal unit
         thermal_derated_capacity (pd.DataFrame): The derated capacity of the thermal unit
@@ -422,10 +420,7 @@ def add_c_peak_down_bound(
                 - thermal_min_capacity[unit_g]
             )
             * u[unit_g, t]
-            - (
-                thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g]
-                - SD[unit_g]
-            )
+            - (thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g] - SD[unit_g])
             * w[unit_g, t + 1]
             - max(0, (SD[unit_g] - SU[unit_g])) * v[unit_g, t]
             for t in range(
@@ -486,10 +481,7 @@ def add_c_peak_up_bound(
                 - thermal_min_capacity[unit_g]
             )
             * u[unit_g, t]
-            - (
-                thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g]
-                - SU[unit_g]
-            )
+            - (thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g] - SU[unit_g])
             * v[unit_g, t]
             - max(0, (SU[unit_g] - SD[unit_g])) * w[unit_g, t + 1]
             for t in range(1, sim_horizon)  # The constraints index w at t+1
@@ -729,7 +721,6 @@ def add_c_angle_diff(
     flow: gp.tupledict,
     theta: gp.tupledict,
     timesteps: range,
-    sim_horizon: int,
     step_k: int,
     edges: list,
     susceptance: pd.DataFrame,
@@ -746,7 +737,6 @@ def add_c_angle_diff(
         flow (gp.tupledict): The power flow
         theta (gp.tupledict): The voltage angle
         timesteps (range): The range of timesteps
-        sim_horizon (int): The simulation horizon
         step_k (int): The current iteration
         edges (list): The list of edges
         susceptance (pd.DataFrame): The susceptance matrix
@@ -771,7 +761,6 @@ def add_c_kirchhoff(
     model: gp.Model,
     flow: gp.tupledict,
     timesteps: range,
-    sim_horizon: int,
     step_k: int,
     edges: list,
     cycle_map: dict,
@@ -786,7 +775,6 @@ def add_c_kirchhoff(
         model (gp.Model): The optimization model
         flow (gp.tupledict): The power flow variable
         timesteps (range): The range of timesteps
-        sim_horizon (int): The simulation horizon
         step_k (int): The current iteration
         edges (list): The list of edges
         cycle_map (dict): The cycle map (created by DataProcessor class)
@@ -835,9 +823,7 @@ def add_c_kirchhoff(
                     (
                         cycle_incidence.loc[(a, b), cycle_id]
                         * 1
-                        / cycle_susceptance.loc[
-                            t + (step_k - 1) * 24, [(a, b)]
-                        ]
+                        / cycle_susceptance.loc[t + (step_k - 1) * 24, [(a, b)]]
                         * flow[a, b, t]
                     ).iloc[0]
                     for (a, b) in cycle_susceptance.columns
@@ -860,7 +846,6 @@ def add_c_flow_balance(
     neg_pmismatch: gp.tupledict,
     flow: gp.tupledict,
     timesteps: range,
-    sim_horizon: int,
     step_k: int,
     inputs: "SystemInput",
     nodes: list,
@@ -884,7 +869,6 @@ def add_c_flow_balance(
         n_pmismatch (gp.tupledict): The negative power mismatch
         flow (gp.tupledict): The power flow
         timesteps (range): The range of timesteps
-        sim_horizon (int): The simulation horizon
         step_k (int): The current iteration
         inputs (SystemInput): The system input data
         nodes (list): The list of nodes
@@ -962,7 +946,6 @@ def add_c_reserve_req_1(
     spin: gp.tupledict,
     spin_shortfall: gp.tupledict,
     timesteps: range,
-    sim_horizon: int,
     step_k: int,
     thermal_units: list,
     spin_requirement: pd.DataFrame,
@@ -979,7 +962,6 @@ def add_c_reserve_req_1(
         spin (gp.tupledict): The spinning reserve
         spin_shortfall (gp.tupledict): The spinning reserve shortfall
         timesteps (range): The range of timesteps
-        sim_horizon (int): The simulation horizon
         step_k (int): The current iteration
         thermal_units (list): The list of thermal units
         spin_requirement (pd.DataFrame): The spinning reserve requirement at each hour (MW)
@@ -1005,7 +987,6 @@ def add_c_reserve_req_2(
     u: gp.tupledict,
     spin_shortfall: gp.tupledict,
     timesteps: range,
-    sim_horizon: int,
     step_k: int,
     thermal_units: list,
     thermal_min_capacity: dict,
@@ -1027,7 +1008,6 @@ def add_c_reserve_req_2(
         u (gp.tupledict): The status of the thermal unit
         spin_shortfall (gp.tupledict): The spinning reserve shortfall
         timesteps (range): The range of timesteps
-        sim_horizon (int): The simulation horizon
         step_k (int): The current iteration
         thermal_units (list): The list of thermal units
         thermal_min_capacity (dict): The minimum capacity of the thermal unit
@@ -1046,9 +1026,7 @@ def add_c_reserve_req_2(
                 for unit_g in thermal_units
             )
             + spin_shortfall[t]
-            >= gp.quicksum(
-                demand.loc[t + (step_k - 1) * 24, n] for n in demand_nodes
-            )
+            >= gp.quicksum(demand.loc[t + (step_k - 1) * 24, n] for n in demand_nodes)
             + spin_requirement[t + (step_k - 1) * 24]
             for t in timesteps
         ),
