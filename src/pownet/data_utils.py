@@ -1,5 +1,6 @@
-"""This script contains functions for processing user inputs"""
+"""data_utils.py: functions for processing user inputs"""
 
+import re
 import datetime
 
 import gurobipy as gp
@@ -49,23 +50,7 @@ def create_init_condition(thermal_units: list) -> dict[(str, int), dict]:
     }
 
 
-def get_sim_period(step_k: int, sim_horizon: int) -> range:
-    """
-    Generates indices for a rolling horizon simulation.
-
-    Args:
-        k: The current simulation step.
-        T: The simulation horizon.
-
-    Returns:
-        A range of indices for the current step.
-    """
-    start_index = (step_k - 1) * sim_horizon + 1
-    end_index = step_k * sim_horizon
-    return range(start_index, end_index + 1)
-
-
-def get_unit_hour_from_varnam(var_name: str) -> (str, int):
+def get_unit_hour_from_varnam(var_name: str) -> tuple[str, int]:
     """Get the unit and hour from the variable name.
 
     Args:
@@ -75,15 +60,17 @@ def get_unit_hour_from_varnam(var_name: str) -> (str, int):
         The unit and hour.
 
     """
-    var_name = var_name.replace("[", "").replace("]", "")
-    var_name = var_name.split(",")
-    unit = var_name[0]
-    hour = int(var_name[1])
+    node_var_pattern = re.compile(r"(\w+)\[(\w+),(\d+)\]")
+    match = node_var_pattern.match(var_name)
+    if match:
+        unit = match.group(2)
+        hour = int(match.group(3))
+        return unit, hour
+    else:
+        raise ValueError("Invalid variable name format")
 
-    return unit, hour
 
-
-def get_edge_hour_from_varname(var_name: str) -> (str, str, int):
+def get_edge_hour_from_varname(var_name: str) -> tuple[tuple[str, str], int]:
     """Get the edge and hour from the variable name: flow[a,b,t].
 
     Args:
@@ -93,12 +80,14 @@ def get_edge_hour_from_varname(var_name: str) -> (str, str, int):
         The edge and hour.
 
     """
-    var_name = var_name.replace("flow[", "").replace("]", "")
-    var_name = var_name.split(",")
-    edge = (var_name[0], var_name[1])
-    hour = int(var_name[2])
-
-    return edge, hour
+    edge_var_pattern = re.compile(r"flow\[(\w+),(\w+),(\d+)\]")
+    match = edge_var_pattern.match(var_name)
+    if match:
+        edge = (match.group(1), match.group(2))
+        hour = int(match.group(3))
+        return edge, hour
+    else:
+        raise ValueError("Invalid variable name format")
 
 
 def get_nodehour(df: pd.DataFrame) -> pd.DataFrame:

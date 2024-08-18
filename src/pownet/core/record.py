@@ -1,191 +1,210 @@
-""" This is the Record class.
-TODO:
- - Remove the write methods and move them to a separate class.
- - Remove the get_init_conds method and move it to a separate class.
- - Remove the get_hydro_dispatch method and move it to a separate class.
+""" record.py: This module contains the SystemRecord class, which processes stores the modeling outputs from each iteration.
 """
 
 from __future__ import annotations
-import datetime
 import os
-import re
-from typing import TYPE_CHECKING
 
-import gurobipy as gp
 import pandas as pd
 import numpy as np
 
 from pownet.modeling import PowerSystemModel
-from pownet.data_utils import get_nodehour_flow
 from pownet.folder_utils import get_output_dir
 
-if TYPE_CHECKING:
-    from pownet.core import SystemInput
 
-
-def write_df(
+def write_df_to_output_dir(
     df: pd.DataFrame,
     output_name: str,
-    model_name: str,
-    sim_horizon: int,
+    model_id: str,
 ) -> None:
-    """Write a dataframe to the output folder."""
+    """Write a dataframe to the output folder.
+
+    Args:
+        df: The dataframe to write.
+        output_name: The name of the output file.
+        model_id: The model ID.
+
+    Returns:
+        None
+    """
     df.to_csv(
         os.path.join(
             get_output_dir(),
-            f'{datetime.datetime.now().strftime("%Y%m%d_%H%M")}_{model_name}_{sim_horizon}_{output_name}.csv',
+            f"{model_id}_{output_name}.csv",
         ),
         index=False,
     )
 
 
-def increment_hour(df: pd.DataFrame, sim_horizon: int, step_k: int):
-    """Since the model is solved in a rolling horizon manner, we need to increment the hour"""
-    df = df.copy()
-    df["hour"] = df["hour"] + sim_horizon * step_k
-    return df
+def calc_remaining_duration(
+    solution: pd.DataFrame,
+    sim_horizon: int,
+    thermal_units: list[str],
+    duration_dict: dict[str, int],  # Generic for TU or TD
+    vartype: str,  # 'startup' or 'shutdown'
+) -> dict[str, int]:
+    """Calculates the remaining duration (on or off) for each thermal unit.
+
+    This function analyzes the provided solution DataFrame to determine the latest
+    timestep at which a specified event (startup or shutdown) occurred for each
+    thermal unit. It then calculates the remaining duration based on the simulation
+    horizon and the unit's minimum required duration.
+
+    Args:
+        solution: A DataFrame containing the solution of the optimization model.
+        sim_horizon: The length of the simulation horizon.
+        thermal_units: A list of thermal unit names.
+        duration_dict: A dictionary mapping unit names to their respective minimum durations.
+        vartype: The type of event to analyze. Either 'startup' or 'shutdown'.
+
+    Returns:
+        A dictionary mapping unit names to their remaining durations.
+
+    Raises:
+        ValueError: If the simulation horizon is shorter than the maximum duration of any thermal unit.
+    """
+
+    # This logic does not work if sim_horizon is shorter than the duration
+    if sim_horizon < max(duration_dict.values()):
+        raise ValueError(
+            "The simulation horizon is shorter than the maximum duration of the thermal units."
+        )
+
+    remaining_durations = {}
+
+    for unit in thermal_units:
+        subset = (
+            solution[(solution["node"] == unit) & (solution["vartype"] == vartype)]
+            .set_index("timestep")
+            .drop(["vartype", "node"], axis=1)
+        )
+
+        filtered_df = subset[subset["value"] == 1]
+        if len(filtered_df) > 0:
+            latest_event_timestep = filtered_df.index.max()
+        else:
+            latest_event_timestep = -sim_horizon
+
+        remaining_durations[unit] = max(
+            0, duration_dict[unit] - (sim_horizon - latest_event_timestep) - 1
+        )
+
+    return remaining_durations
 
 
-def calc_min_on(
-    df: pd.DataFrame,
+def calc_remaining_on_duration(
+    solution: pd.DataFrame,
     sim_horizon: int,
     thermal_units: list[str],
     TU: dict[str, int],
 ) -> dict[str, int]:
-    """Calculate the remaining minimum online duration for each thermal unit."""
-    init_min_on = {}
-
-    for unit_g in thermal_units:
-        df_unit = (
-            df[(df["node"] == unit_g) & (df["vartype"] == "startup")]
-            .set_index("hour")
-            .drop(["vartype", "node"], axis=1)
-        )
-
-        # Check if there are non-zero elements.
-        if len(np.where(df_unit["value"])[0]) > 0:
-            # np.argmax returns the index starting at zero, so we need to add 1
-            time_last_off = np.max(np.where(df_unit["value"])) + 1
-        else:
-            # Taking the negative of T will ensure the calculation is negative
-            # such that max(0, calculation) = 0
-            time_last_off = -sim_horizon
-
-        # The calculated remaining shutdown duration can be negative,
-        # which should be converted to
-        init_min_on[unit_g] = max(0, TU[unit_g] - (sim_horizon - time_last_off))
-
-    return init_min_on
+    """Calculate the remaining online duration for each thermal unit."""
+    return calc_remaining_duration(solution, sim_horizon, thermal_units, TU, "startup")
 
 
-def calc_min_off(
-    df: pd.DataFrame,
+def calc_remaining_off_duration(
+    solution: pd.DataFrame,
     sim_horizon: int,
     thermal_units: list[str],
     TD: dict[str, int],
 ) -> dict[str, int]:
-    """Calculate the remaining minimum shutdown duration for each thermal unit."""
-    init_min_off = {}
-
-    for unit_g in thermal_units:
-        df_unit = (
-            df[(df["node"] == unit_g) & (df["vartype"] == "shutdown")]
-            .set_index("hour")
-            .drop(["vartype", "node"], axis=1)
-        )
-
-        # Check if there are non-zero elements.
-        if len(np.where(df_unit["value"])[0]) > 0:
-            # np.argmax returns the index starting at zero, so we need to add 1
-            time_last_on = np.max(np.where(df_unit["value"])) + 1
-        else:
-            # Taking the negative of T will ensure the calculation is negative
-            # such that max(0, calculation) = 0
-            time_last_on = -sim_horizon
-
-        # The calculated remaining shutdown duration can be negative,
-        # which should be converted to
-        init_min_off[unit_g] = max(0, TD[unit_g] - (sim_horizon - time_last_on))
-
-    return init_min_off
-
-
-def get_hydro_from_model(model: gp.Model, k: int) -> tuple[pd.DataFrame, int, int]:
-    """Extract the hydro dispatch from the model. The model is assumed to have
-    variables named as "phydro[reservoir,t]". The function returns a dataframe
-    with the columns: reservoir, hour, dispatch. The hour is incremented by the
-    simulation period, and the dataframe is pivoted such that the reservoirs are
-    the columns and the hours are the index. The function also returns the start
-    and end day of the hydro dispatch.
-    """
-    hydropower_dispatch = []
-    pattern = "phydro\[(\w+),(\d+)\]"
-    for v in model.getVars():
-        if re.match(pattern, v.varName):
-            reservoir = re.search(pattern, v.varName).group(1)
-            hour = int(re.search(pattern, v.varName).group(2))
-            hydropower_dispatch.append((reservoir, hour, v.x))
-    df = pd.DataFrame(hydropower_dispatch, columns=["reservoir", "hour", "dispatch"])
-    # Pivot to have the hour as the index and reservoir as the columns
-    df = df.pivot(index="hour", columns="reservoir", values="dispatch")
-    # Update the index to reflect the hour index in a year
-    df.index = df.index + k * 24
-    start_day = df.index[0] // 24 + 1
-    end_day = df.index[-1] // 24 + 1
-    return df, start_day, end_day
-
-
-def get_hydro_from_df(df: pd.DataFrame):
-    df = df[df["vartype"] == "phydro"]
-    df = df.set_index(["hour", "node"])
-    df = df["value"].unstack().reset_index()
-    df = df.pivot(index="hour", columns="node", values="value")
-    start_day = df.index[0] // 24
-    end_day = df.index[-1] // 24
-    return df, start_day, end_day
-
-
-def convert_to_daily_hydro(
-    df: pd.DataFrame, start_day: int, end_day: int
-) -> pd.DataFrame:
-    daily_hydro = df.groupby((df.index - 1) // 24).sum()
-    daily_hydro.index = range(start_day, end_day)
-    return daily_hydro
+    """Calculate the remaining shutdown duration for each thermal unit."""
+    return calc_remaining_duration(solution, sim_horizon, thermal_units, TD, "shutdown")
 
 
 class SystemRecord:
-    """This class is used to store the results of the model. The results are stored
-    in three dataframes: node_vars, flow_vars, and syswide_vars. The node_vars dataframe
-    stores the node-specific variables such as dispatch, unit status, unit switching, etc.
-    The flow_vars dataframe stores the flow variables. The syswide_vars dataframe stores
-    the system variables. The class also stores the current state of the system such as
-    the current dispatch, unit status, unit switching, etc. The class also stores
-    the minimum time on/off for each thermal unit.
+    """This class stores modeling outputs from each iteration. The results are stored
+    in three dataframes: node_vars, flow_vars, and syswide_vars. The initial conditions
+    are also stored in the class.
     """
 
-    def __init__(self, system_input: SystemInput) -> None:
-        self.model_name = system_input.model_name
-        self.sim_horizon = system_input.sim_horizon
-        self.thermal_units = list(system_input.thermal_unit_node.keys())
-        self.TD: dict[str, int] = system_input.TD
-        self.TU: dict[str, int] = system_input.TU
+    def __init__(self, system_input: "SystemInput") -> None:
 
-        # The model results are separated into three types based on
-        # the formating of their index: var(node, t), var(node, node, t), var(t)
-        self.node_vars: pd.DataFrame = None
-        self.flow_vars: pd.DataFrame = None
-        self.syswide_vars: pd.DataFrame = None
+        self.inputs = system_input
 
-        self.objvals = []
-        self.runtimes = []
+        # Format of variable name: var(node, t)
+        self.node_vars: pd.DataFrame = pd.DataFrame()
+        # Format of variable name: flow(node_a, node_b, t)
+        self.flow_vars: pd.DataFrame = pd.DataFrame()
+        # Format of variable name: var(t)
+        self.syswide_vars: pd.DataFrame = pd.DataFrame()
 
-        # These are dispatch, unit status, unit switching, etc.
-        self.current_p = None
-        self.current_u = None
-        self.current_v = None
-        self.current_w = None
-        self.current_min_on = None
-        self.current_min_off = None
+        self.objvals: list = []
+        self.runtimes: list = []
+
+        # These are vpower, unit status, unit switching, etc.
+        self.current_p: dict[str, float] = {}
+        self.current_u: dict[str, int] = {}
+        self.current_v: dict[str, int] = {}
+        self.current_w: dict[str, int] = {}
+        self.current_min_on: dict[str, int] = {}
+        self.current_min_off: dict[str, int] = {}
+
+    def _parse_node_variables(
+        self, solution: pd.DataFrame, step_k: int
+    ) -> pd.DataFrame:
+        """Node variables are in the (node, t) format."""
+
+        node_var_pattern = r"(\w+)\[(\w+),(\d+)\]"
+        current_node_vars = solution[
+            solution["varname"].str.match(node_var_pattern)
+        ].copy()
+
+        current_node_vars[["node", "timestep"]] = current_node_vars[
+            "varname"
+        ].str.extract(node_var_pattern, expand=True)[[1, 2]]
+
+        current_node_vars["timestep"] = current_node_vars["timestep"].astype(int)
+
+        current_node_vars["hour"] = current_node_vars[
+            "timestep"
+        ] + self.inputs.sim_horizon * (step_k - 1)
+
+        # Rounding binary values
+        current_node_vars.loc[
+            np.isclose(current_node_vars["value"], 0, atol=1e-4), "value"
+        ] = 0
+        current_node_vars.loc[
+            np.isclose(current_node_vars["value"], 1, atol=1e-4), "value"
+        ] = 1
+        return current_node_vars
+
+    def _parse_flow_variables(
+        self, solution: pd.DataFrame, step_k: int
+    ) -> pd.DataFrame:
+        """
+        The flow variables are in the (node, node, t) format.
+        """
+        flow_var_pattern = r"flow\[(\w+),(\w+),(\d+)\]"
+        cur_flow_vars = solution[solution["varname"].str.match(flow_var_pattern)].copy()
+
+        cur_flow_vars[["node_a", "node_b", "hour"]] = cur_flow_vars[
+            "varname"
+        ].str.extract(flow_var_pattern, expand=True)
+
+        cur_flow_vars["hour"] = cur_flow_vars["hour"].astype(int)
+        cur_flow_vars["hour"] = cur_flow_vars["hour"] + self.inputs.sim_horizon * (
+            step_k - 1
+        )
+        return cur_flow_vars
+
+    def _parse_syswide_variables(
+        self, solution: pd.DataFrame, step_k: int
+    ) -> pd.DataFrame:
+        """
+        The system-wide variables are in the (t) format.
+        """
+        syswide_var_pattern = r"(\w+)\[(\d+)\]"
+        cur_syswide_vars = solution[
+            solution["varname"].str.match(syswide_var_pattern)
+        ].copy()
+
+        cur_syswide_vars["hour"] = cur_syswide_vars["varname"].str.extract(
+            syswide_var_pattern, expand=True
+        )[1]
+        cur_syswide_vars["hour"] = cur_syswide_vars["hour"].astype(int)
+        cur_syswide_vars["hour"] = cur_syswide_vars[
+            "hour"
+        ] + self.inputs.sim_horizon * (step_k - 1)
 
     def keep(
         self,
@@ -193,6 +212,18 @@ class SystemRecord:
         step_k: int,
     ) -> None:
         """Keep the simulation results at the current simulation period step_k"""
+
+        def _extract_vartype_data(df: pd.DataFrame, vartype: str) -> dict[str, float]:
+            """Extracts data for a specific 'vartype' from the DataFrame and converts it to a dictionary."""
+            return (
+                df[
+                    (df["vartype"] == vartype)
+                    & (df["timestep"] == self.inputs.sim_horizon)
+                ]  # Only considers values of the last hour
+                .drop("vartype", axis=1)
+                .set_index(["node", "timestep"])
+                .to_dict()["value"]
+            )
 
         self.runtimes.append(power_system_model.get_runtime())
         self.objvals.append(power_system_model.get_objval())
@@ -204,102 +235,49 @@ class SystemRecord:
             pat_vartype, expand=True
         )
 
-        ##################
-        # Node variables are in the (node, t) format.
-        ##################
-        pat_node_var = r"(\w+)\[(\w+),(\d+)\]"
-        # Filter to only variables that are node-specific
-        current_node_vars = solution[solution["varname"].str.match(pat_node_var)].copy()
-        current_node_vars[["node", "hour"]] = current_node_vars["varname"].str.extract(
-            pat_node_var, expand=True
-        )[[1, 2]]
-        # Convert the hour to an integer
-        current_node_vars["hour"] = current_node_vars["hour"].astype(int)
-        # The extracted hour is across the entire simulation period, so we need to increment it
-        # by the simulation horizon to get the actual hour of the year.
-        current_node_vars = increment_hour(
-            current_node_vars, sim_horizon=self.sim_horizon, step_k=step_k
-        )
-        # The solver may return binary values that are are not exactly zero or one, so we need to round them
-        current_node_vars.loc[
-            np.isclose(current_node_vars["value"], 0, atol=1e-4), "value"
-        ] = 0
-        current_node_vars.loc[
-            np.isclose(current_node_vars["value"], 1, atol=1e-4), "value"
-        ] = 1
-
-        self.node_vars = pd.concat([self.node_vars, current_node_vars], axis=0)
+        current_node_vars = self._parse_node_variables(solution, step_k)
 
         ##################
-        # The flow variables are in the (node, node, t) format.
+        # Initial conditions: vpower (p), commitment (u),
+        # startup (v), and shutdown (w).
         ##################
-        pat_flow_var = r"flow\[(\w+),(\w+),(\d+)\]"
-        cur_flow_vars = solution[solution["varname"].str.match(pat_flow_var)].copy()
-        cur_flow_vars[["node_a", "node_b", "hour"]] = cur_flow_vars[
-            "varname"
-        ].str.extract(pat_flow_var, expand=True)
-        cur_flow_vars["hour"] = cur_flow_vars["hour"].astype(int)
-        cur_flow_vars = increment_hour(
-            cur_flow_vars, sim_horizon=self.sim_horizon, step_k=step_k
-        )
-        self.flow_vars = pd.concat([self.flow_vars, cur_flow_vars], axis=0)
-
-        ##################
-        # The system-wide variables are in the (t) format
-        ##################
-        pat_syswide = r"(\w+)\[(\d+)\]"
-        cur_syswide_vars = solution[solution["varname"].str.match(pat_syswide)].copy()
-        cur_syswide_vars["hour"] = cur_syswide_vars["varname"].str.extract(
-            pat_syswide, expand=True
-        )[1]
-        cur_syswide_vars["hour"] = cur_syswide_vars["hour"].astype(int)
-        cur_syswide_vars = increment_hour(
-            cur_syswide_vars, sim_horizon=self.sim_horizon, step_k=step_k
-        )
-        self.syswide_vars = pd.concat([self.syswide_vars, cur_syswide_vars], axis=0)
-
-        ##################
-        # Initial conditions are dispatch (p), commitment (u), startup (v), and shutdown (w).
-        ##################
-        self.current_p = (
-            current_node_vars[current_node_vars["vartype"] == "p"]
-            .drop("vartype", axis=1)
-            .set_index(["node", "hour"])
-            .to_dict()["value"]
-        )
-        self.current_u = (
-            current_node_vars[current_node_vars["vartype"] == "status"]
-            .drop("vartype", axis=1)
-            .set_index(["node", "hour"])
-            .to_dict()["value"]
-        )
-
-        self.current_v = (
-            current_node_vars[current_node_vars["vartype"] == "startup"]
-            .drop("vartype", axis=1)
-            .set_index(["node", "hour"])
-            .to_dict()["value"]
-        )
-
-        self.current_w = (
-            current_node_vars[current_node_vars["vartype"] == "shutdown"]
-            .drop("vartype", axis=1)
-            .set_index(["node", "hour"])
-            .to_dict()["value"]
-        )
+        self.current_p = _extract_vartype_data(current_node_vars, "vpower")
+        self.current_u = _extract_vartype_data(current_node_vars, "status")
+        self.current_v = _extract_vartype_data(current_node_vars, "startup")
+        self.current_w = _extract_vartype_data(current_node_vars, "shutdown")
 
         # Need to calculate the minimum time on/off
-        self.current_min_on = calc_min_on(
+        self.current_min_on = calc_remaining_on_duration(
             current_node_vars,
-            sim_horizon=self.sim_horizon,
-            thermal_units=self.thermal_units,
-            TU=self.TU,
+            sim_horizon=self.inputs.sim_horizon,
+            thermal_units=self.inputs.thermal_units,
+            TU=self.inputs.TU,
         )
-        self.current_min_off = calc_min_off(
+        self.current_min_off = calc_remaining_off_duration(
             current_node_vars,
-            sim_horizon=self.sim_horizon,
-            thermal_units=self.thermal_units,
-            TD=self.TD,
+            sim_horizon=self.inputs.sim_horizon,
+            thermal_units=self.inputs.thermal_units,
+            TD=self.inputs.TD,
+        )
+
+        ##################
+        # Append results to the existing dataframes
+        ##################
+        current_node_vars = current_node_vars.drop("timestep", axis=1)
+        self.node_vars = pd.concat([self.node_vars, current_node_vars], axis=0)
+        self.flow_vars = pd.concat(
+            [
+                self.flow_vars,
+                self._parse_flow_variables(solution=solution, step_k=step_k),
+            ],
+            axis=0,
+        )
+        self.syswide_vars = pd.concat(
+            [
+                self.syswide_vars,
+                self._parse_syswide_variables(solution=solution, step_k=step_k),
+            ],
+            axis=0,
         )
 
     def get_init_conds(self) -> dict[str, dict]:
@@ -335,64 +313,22 @@ class SystemRecord:
         return self.objvals
 
     def write_simulation_results(self) -> None:
-        write_df(
-            self.node_vars,
-            output_name="node_variables",
-            model_name=self.model_name,
-            sim_horizon=self.sim_horizon,
-        )
-        write_df(
-            self.flow_vars,
-            output_name="flow_variables",
-            model_name=self.model_name,
-            sim_horizon=self.sim_horizon,
-        )
-        write_df(
-            self.syswide_vars,
-            output_name="system_variables",
-            model_name=self.model_name,
-            sim_horizon=self.sim_horizon,
-        )
-        objvals = pd.DataFrame({"objval": self.objvals})
-        write_df(
-            objvals,
-            output_name="objvals",
-            model_name=self.model_name,
-            sim_horizon=self.sim_horizon,
-        )
-        runtimes = pd.DataFrame({"runtime": self.runtimes})
-
-    def get_hydro_dispatch(self) -> pd.DataFrame:
-        # TODO: This function should not convert to daily hydro dispatch
-        # because a function should only do one thing.
-        df = self.node_vars[self.node_vars["vartype"] == "phydro"]
-        df = df[["node", "hour", "value"]]
-        df = df.rename(columns={"node": "reservoir", "value": "dispatch"})
-        # Columns: reservoir, hour, v.x
-        df = df.pivot(index="hour", columns="reservoir", values="dispatch")
-        start_day = df.index[0] // 24
-        end_day = df.index[-1] // 24
-        df = convert_to_daily_hydro(df, start_day, end_day)
-        return df
-
-    @staticmethod
-    def get_hydro_from_model(model: gp.Model) -> dict:
-        """The output of the hydro dispatch is a dictionary of the form
-        {
-            "reservoir1": {t1: value1, t2: value2, ...},
-            "reservoir2": {t1: value1, t2: value2, ...},
-        }
         """
-        hydro_dispatch = {}
-        # Variables are named as "phydro[reservoir,t]"
-        pattern = r"phydro\[(\w+),(\d+)\]"
-        for v in model.getVars():
-            varname = v.varName
-            match = re.match(pattern, varname)
-            if match:
-                reservoir, t = match.groups()
-                t = int(t)
-                if reservoir not in hydro_dispatch:
-                    hydro_dispatch[reservoir] = {}
-                hydro_dispatch[reservoir][t] = v.X
-        return hydro_dispatch
+        Write 4 CSV files containing modeling results to the output directory.
+        """
+        data_to_write = [
+            (self.node_vars, "node_variables"),
+            (self.flow_vars, "flow_variables"),
+            (self.syswide_vars, "system_variables"),
+            (
+                pd.DataFrame({"objval": self.objvals, "runtime": self.runtimes}),
+                "model_stats",
+            ),
+        ]
+
+        for df, output_name in data_to_write:
+            write_df_to_output_dir(
+                df,
+                output_name=output_name,
+                model_id=self.inputs.model_id,  # Use model_name as the identifier
+            )

@@ -31,6 +31,11 @@ class SystemInput:
         self.sim_horizon = sim_horizon
         self.use_spin_var = use_spin_var
 
+        # The timestamp is used to create a unique folder for the model
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+
+        self.model_id: str = f"{self.timestamp}_{self.model_name}_{self.sim_horizon}"
+
         # DC representation of the power flow model
         if dc_opf not in ["kirchhoff", "voltage_angle"]:
             raise ValueError(
@@ -55,9 +60,6 @@ class SystemInput:
 
         # The reserve penalty is the cost of not meeting the reserve requirement. (USD/MWh)
         self.spin_shortfall_penalty_factor = spin_shortfall_penalty_factor
-
-        # The timestamp is used to create a unique folder for the model
-        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 
         # folder structure: pownet_root/model_library/
         self.model_dir = os.path.join(get_model_dir(), model_name)

@@ -33,11 +33,7 @@ class ModelBuilder:
 
         self.timesteps = range(1, self.inputs.sim_horizon + 1)
 
-        # Initialize the model
-        model_name: str = (
-            f"{self.inputs.timestamp}_{self.inputs.model_name}_{self.inputs.sim_horizon}"
-        )
-        self.model: gp.Model = gp.Model(model_name)
+        self.model: gp.Model = gp.Model(self.inputs.model_id)
 
         # Variables
         # Thermal units
@@ -715,10 +711,15 @@ class ModelBuilder:
         ) -> None:
             """Update the upper bounds of the variables based on the capacity dataframes"""
             for v in variables.values():
-                unit_g, t = get_unit_hour_from_varnam(v.name)
-                v.ub = capacity_df.loc[
+                unit_g, t = get_unit_hour_from_varnam(v.VarName)
+                capacity_value = capacity_df.loc[
                     t + (step_k - 1) * self.inputs.sim_horizon, unit_g
                 ]
+                # Check if capacity_value is a Series or DataFrame and use .iloc[0] if necessary
+                if isinstance(capacity_value, (pd.Series, pd.DataFrame)):
+                    capacity_value = capacity_value.iloc[0]
+
+                v.ub = capacity_value
 
         def _update_flow_bounds(
             flow_variables: gp.tupledict,
@@ -726,7 +727,7 @@ class ModelBuilder:
         ) -> None:
             """Update the lower and upper bounds of the flow variables based on the capacity dataframes"""
             for flow_variable in flow_variables.values():
-                edge, t = get_edge_hour_from_varname(flow_variable.name)
+                edge, t = get_edge_hour_from_varname(flow_variable.VarName)
                 line_capacity = capacity_df.loc[
                     t + (step_k - 1) * self.inputs.sim_horizon, edge
                 ]
@@ -763,8 +764,8 @@ class ModelBuilder:
             + self.thermal_opex_expr
             + self.thermal_startup_expr
             + self.load_shortfall_penalty_expr
-            + self.spin_shortfall_penalty_expr,
-            +rnw_import_expr,
+            + self.spin_shortfall_penalty_expr
+            + rnw_import_expr
         )
 
     def _update_constraints(self, step_k, init_conds: dict) -> None:
@@ -863,17 +864,19 @@ class ModelBuilder:
             )
 
         elif self.inputs.dc_opf == "kirchhoff":
-            self.model.remove(self.c_kirchhoff)
-            self.c_kirchhoff = modeling.add_c_kirchhoff(
-                model=self.model,
-                flow=self.flow,
-                timesteps=self.timesteps,
-                sim_horizon=self.inputs.sim_horizon,
-                step_k=step_k,
-                edges=self.inputs.edges,
-                cycle_map=self.inputs.cycle_map,
-                susceptance=self.inputs.susceptance,
-            )
+            # There might not be a cycle in the network
+            if self.c_kirchhoff is not None:
+                self.model.remove(self.c_kirchhoff)
+                self.c_kirchhoff = modeling.add_c_kirchhoff(
+                    model=self.model,
+                    flow=self.flow,
+                    timesteps=self.timesteps,
+                    sim_horizon=self.inputs.sim_horizon,
+                    step_k=step_k,
+                    edges=self.inputs.edges,
+                    cycle_map=self.inputs.cycle_map,
+                    susceptance=self.inputs.susceptance,
+                )
 
         self.model.remove(self.c_flow_balance)
         self.c_flow_balance = modeling.add_c_flow_balance(

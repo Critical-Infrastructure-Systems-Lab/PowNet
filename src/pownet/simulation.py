@@ -10,7 +10,7 @@ from pownet.data_utils import (
     get_current_time,
 )
 from pownet.core import ModelBuilder, SystemInput, SystemRecord
-from pownet.model import PowerSystemModel
+from pownet.modeling import PowerSystemModel
 from pownet.core.record import (
     get_hydro_from_model,
     convert_to_daily_hydro,
@@ -22,41 +22,27 @@ from pownet.folder_utils import get_output_dir
 class Simulator:
     def __init__(
         self,
-        model_name: str,
-        T: int,
-        write_model: bool = False,
+        inputs: SystemInput,
         use_gurobi: bool = True,
+        write_model: bool = False,
         to_reoperate: bool = False,
         reop_timestep: str = "hourly",
     ) -> None:
 
-        self.model_name = model_name
-        self.T = T
-        self.write_model = write_model
         self.use_gurobi = use_gurobi
+        self.write_model = write_model
         self.to_reoperate = to_reoperate
         self.reop_timestep = reop_timestep
-
-        # Simulate reservoir operation based on provided rule curve to get pownet_hydropower.csv
-        if self.to_reoperate:
-            self.reservoir_operator = ReservoirOperator(model_name, num_days=365)
-            self.reservoir_operator.simulate()
-            self.reservoir_operator.export_hydropower_csv(timestep=reop_timestep)
-
-        # Extract model parameters from the model library directory
-        self.system_input = SystemInput(
-            model_name=model_name,
-            year=2016,
-            sim_horizon=T,
-            dc_opf="kirchhoff",
-        )
 
         self.model: PowerSystemModel = None
 
         # Statistics
-        self.runtimes: float = []  # Total runtime of each instance
-        self.reop_iter: int = []  # Number of reoperation iterations
-        self.reop_opt_time: float = 0  # Total runtime of reoperation
+        self.wallclock_times: float = []  # Total runtime of each instance
+
+    def create_hydropower_csv(self):
+        self.reservoir_operator = ReservoirOperator(self.model_name, num_days=365)
+        self.reservoir_operator.simulate()
+        self.reservoir_operator.export_hydropower_csv(timestep=reop_timestep)
 
     def run(
         self,
@@ -196,9 +182,6 @@ class Simulator:
 
         # Record the number of iterations after convergence
         self.reop_iter.append(reop_k)
-
-    def get_system_input(self):
-        return self.system_input
 
     def export_reservoir_outputs(self):
         return self.reservoir_operator.export_reservoir_outputs()

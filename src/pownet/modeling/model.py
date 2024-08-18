@@ -1,5 +1,5 @@
 """
-This script defines a class object that wraps around Gurobi Model class
+model.py: PowerSystemModel is wrapper of gurobipy.Model and highspy.Highs
 to provide a more user-friendly interface while compatible with HiGHs solver.
 """
 
