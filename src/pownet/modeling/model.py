@@ -49,26 +49,58 @@ class PowerSystemModel:
             os.makedirs(output_folder)
         self.model.write(os.path.join(output_folder, f"{filename}.mps"))
 
-    def _optimize_gurobi(self):
+    def _optimize_gurobi(
+        self,
+        log_to_console: bool,
+        mipgap: float,
+        timelimit: int,
+        num_threads: int,
+    ):
+
+        self.model.Params.LogToConsole = log_to_console
+        self.model.Params.MIPGap = mipgap
+        self.model.Params.TimeLimit = timelimit
+        self.model.Params.Threads = num_threads
+
         self.model.optimize()
 
-    def _optimize_highs(self):
+    def _optimize_highs(
+        self, log_to_console: bool, mipgap: float, timelimit: int, num_threads: int
+    ):
         # Export the instance to MPS and solve with HiGHs
         mps_file = "temp_instance_for_HiGHs.mps"
         self.model.write(mps_file)
         self.model = highspy.Highs()
         self.model.readModel(mps_file)
+
+        self.model.setOptionValue("log_to_console", log_to_console)
+        self.model.setOptionValue("mip_rel_gap", mipgap)
+        self.model.setOptionValue("time_limit", timelimit)
+        self.model.setOptionValue("threads", num_threads)
+
         self.model.run()
         # Delete the MPS file
         os.remove(mps_file)
 
-    def optimize(self, solver: str = "gurobi"):
+    def optimize(
+        self,
+        solver: str = "gurobi",
+        log_to_console: bool = True,
+        mipgap: float = 1e-3,
+        timelimit: int = 600,
+        num_threads: int = 0,
+    ):
         if solver not in ["gurobi", "highs"]:
             raise ValueError("The solver must be either 'gurobi' or 'highs'")
 
         # Update the solver attribute for referencing in other methods
         self.solver = solver
-        self.optimize_functions[self.solver]()
+        self.optimize_functions[self.solver](
+            log_to_console=log_to_console,
+            mipgap=mipgap,
+            timelimit=timelimit,
+            num_threads=num_threads,
+        )
 
     def _check_feasible_gurobi(self) -> bool:
         return self.model.status == gp.GRB.Status.OPTIMAL
