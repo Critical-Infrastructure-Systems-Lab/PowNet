@@ -33,7 +33,7 @@ class ModelBuilder:
 
         self.timesteps = range(1, self.inputs.sim_horizon + 1)
 
-        self.model: gp.Model = gp.Model(self.inputs.model_id)
+        self.model: gp.Model = None
 
         # Variables
         # Thermal units
@@ -664,6 +664,7 @@ class ModelBuilder:
         init_conds: dict[str, dict],
     ) -> gp.Model:
         """Build the model for the unit commitment problem."""
+        self.model = gp.Model(self.inputs.model_id)
         self.add_variables(step_k=step_k)
         self.set_objfunc(step_k=step_k)
         self.add_constraints(step_k=step_k, init_conds=init_conds)
@@ -726,9 +727,7 @@ class ModelBuilder:
             """Update the lower and upper bounds of the flow variables based on the capacity dataframes"""
             for flow_variable in flow_variables.values():
                 edge, t = get_edge_hour_from_varname(flow_variable.VarName)
-                line_capacity = capacity_df.loc[
-                    t + (step_k - 1) * 24, edge
-                ]
+                line_capacity = capacity_df.loc[t + (step_k - 1) * 24, edge]
                 # Update the lower and upper bounds, respectively
                 flow_variable.lb = -line_capacity
                 flow_variable.ub = line_capacity
