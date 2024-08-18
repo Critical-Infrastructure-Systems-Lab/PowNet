@@ -419,6 +419,14 @@ class SystemInput:
         """
         Perform checks on the input data to ensure consistency and correctness.
         """
+        ##################################
+        # Simulation horizon is a multiple of 24 and greater than 24
+        ##################################
+
+        if self.sim_horizon < 24 or self.sim_horizon % 24 != 0:
+            raise ValueError(
+                "PowNet: Simulation horizon must be a multiple of 24 and greater than 24."
+            )
 
         ##################################
         # Nodes are connected to the grid
