@@ -712,9 +712,7 @@ class ModelBuilder:
             """Update the upper bounds of the variables based on the capacity dataframes"""
             for v in variables.values():
                 unit_g, t = get_unit_hour_from_varnam(v.VarName)
-                capacity_value = capacity_df.loc[
-                    t + (step_k - 1) * self.inputs.sim_horizon, unit_g
-                ]
+                capacity_value = capacity_df.loc[t + (step_k - 1) * 24, unit_g]
                 # Check if capacity_value is a Series or DataFrame and use .iloc[0] if necessary
                 if isinstance(capacity_value, (pd.Series, pd.DataFrame)):
                     capacity_value = capacity_value.iloc[0]
@@ -729,7 +727,7 @@ class ModelBuilder:
             for flow_variable in flow_variables.values():
                 edge, t = get_edge_hour_from_varname(flow_variable.VarName)
                 line_capacity = capacity_df.loc[
-                    t + (step_k - 1) * self.inputs.sim_horizon, edge
+                    t + (step_k - 1) * 24, edge
                 ]
                 # Update the lower and upper bounds, respectively
                 flow_variable.lb = -line_capacity

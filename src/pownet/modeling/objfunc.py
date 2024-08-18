@@ -75,7 +75,7 @@ def get_marginal_cost_coeff(
         A dictionary mapping (unit, t) tuples to the calculated coefficients
     """
     return {
-        (unit, t): getattr(inputs, attribute).loc[t + (step_k - 1) * sim_horizon, unit]
+        (unit, t): getattr(inputs, attribute).loc[t + (step_k - 1) * 24, unit]
         for t in timesteps
         for unit in units
     }

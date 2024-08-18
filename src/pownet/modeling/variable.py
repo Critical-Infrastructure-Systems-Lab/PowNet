@@ -27,7 +27,7 @@ def add_var_with_ub(
         timesteps,
         lb=0,
         ub={
-            (unit_g, t): capacity_df.loc[t + (step_k - 1) * sim_horizon, unit_g]
+            (unit_g, t): capacity_df.loc[t + (step_k - 1) * 24, unit_g]
             for t in timesteps
             for unit_g in units
         },
@@ -67,13 +67,13 @@ def add_var_flow(
         lb={
             (source, sink, t): -1
             * line_capacity_factor
-            * line_capacity.loc[t + (step_k - 1) * sim_horizon, (source, sink)]
+            * line_capacity.loc[t + (step_k - 1) * 24, (source, sink)]
             for t in timesteps
             for source, sink in edges
         },
         ub={
             (source, sink, t): line_capacity_factor
-            * line_capacity.loc[t + (step_k - 1) * sim_horizon, (source, sink)]
+            * line_capacity.loc[t + (step_k - 1) * 24, (source, sink)]
             for t in timesteps
             for source, sink in edges
         },

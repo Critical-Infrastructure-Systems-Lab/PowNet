@@ -155,9 +155,7 @@ class SystemRecord:
 
         current_node_vars["timestep"] = current_node_vars["timestep"].astype(int)
 
-        current_node_vars["hour"] = current_node_vars[
-            "timestep"
-        ] + self.inputs.sim_horizon * (step_k - 1)
+        current_node_vars["hour"] = current_node_vars["timestep"] + 24 * (step_k - 1)
 
         # Rounding binary values
         current_node_vars.loc[
@@ -202,9 +200,7 @@ class SystemRecord:
             syswide_var_pattern, expand=True
         )[1]
         cur_syswide_vars["hour"] = cur_syswide_vars["hour"].astype(int)
-        cur_syswide_vars["hour"] = cur_syswide_vars[
-            "hour"
-        ] + self.inputs.sim_horizon * (step_k - 1)
+        cur_syswide_vars["hour"] = cur_syswide_vars["hour"] + 24 * (step_k - 1)
 
     def keep(
         self,

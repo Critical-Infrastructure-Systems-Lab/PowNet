@@ -235,7 +235,7 @@ def add_c_link_pu_upper(
     return model.addConstrs(
         (
             pbar[unit_g, t] + thermal_min_capacity[unit_g] * u[unit_g, t]
-            <= thermal_derated_capacity.loc[t + (step_k - 1) * sim_horizon, unit_g]
+            <= thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g]
             * u[unit_g, t]
             for t in timesteps
             for unit_g in thermal_units
@@ -418,12 +418,12 @@ def add_c_peak_down_bound(
         (
             p[unit_g, t] + spin[unit_g, t]
             <= (
-                thermal_derated_capacity.loc[t + (step_k - 1) * sim_horizon, unit_g]
+                thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g]
                 - thermal_min_capacity[unit_g]
             )
             * u[unit_g, t]
             - (
-                thermal_derated_capacity.loc[t + (step_k - 1) * sim_horizon, unit_g]
+                thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g]
                 - SD[unit_g]
             )
             * w[unit_g, t + 1]
@@ -482,12 +482,12 @@ def add_c_peak_up_bound(
         (
             p[unit_g, t] + spin[unit_g, t]
             <= (
-                thermal_derated_capacity.loc[t + (step_k - 1) * sim_horizon, unit_g]
+                thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g]
                 - thermal_min_capacity[unit_g]
             )
             * u[unit_g, t]
             - (
-                thermal_derated_capacity.loc[t + (step_k - 1) * sim_horizon, unit_g]
+                thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g]
                 - SU[unit_g]
             )
             * v[unit_g, t]
@@ -758,7 +758,7 @@ def add_c_angle_diff(
     return model.addConstrs(
         (
             flow[a, b, t]
-            == susceptance.loc[t + (step_k - 1) * sim_horizon, (a, b)]
+            == susceptance.loc[t + (step_k - 1) * 24, (a, b)]
             * (theta[a, t] - theta[b, t])
             for (a, b) in edges
             for t in timesteps
@@ -836,7 +836,7 @@ def add_c_kirchhoff(
                         cycle_incidence.loc[(a, b), cycle_id]
                         * 1
                         / cycle_susceptance.loc[
-                            t + (step_k - 1) * sim_horizon, [(a, b)]
+                            t + (step_k - 1) * 24, [(a, b)]
                         ]
                         * flow[a, b, t]
                     ).iloc[0]
@@ -929,7 +929,7 @@ def add_c_flow_balance(
 
             # Get the demand of node n at time t
             if node in demand_nodes:
-                demand_n_t = demand.loc[t + (step_k - 1) * sim_horizon, node]
+                demand_n_t = demand.loc[t + (step_k - 1) * 24, node]
                 mismatch = pos_pmismatch[node, t] - neg_pmismatch[node, t]
             else:
                 demand_n_t = 0
@@ -992,7 +992,7 @@ def add_c_reserve_req_1(
     return model.addConstrs(
         (
             gp.quicksum(spin[unit_g, t] for unit_g in thermal_units) + spin_shortfall[t]
-            >= spin_requirement[t + (step_k - 1) * sim_horizon]
+            >= spin_requirement[t + (step_k - 1) * 24]
             for t in timesteps
         ),
         name="reserveReq1",
@@ -1047,9 +1047,9 @@ def add_c_reserve_req_2(
             )
             + spin_shortfall[t]
             >= gp.quicksum(
-                demand.loc[t + (step_k - 1) * sim_horizon, n] for n in demand_nodes
+                demand.loc[t + (step_k - 1) * 24, n] for n in demand_nodes
             )
-            + spin_requirement[t + (step_k - 1) * sim_horizon]
+            + spin_requirement[t + (step_k - 1) * 24]
             for t in timesteps
         ),
         name="reserveReq2",
