@@ -17,7 +17,6 @@ def add_var_with_ub(
     varname: str,
     timesteps: range,
     step_k: int,
-    sim_horizon: int,
     units: list,
     capacity_df: pd.DataFrame,
 ) -> gp.tupledict:
@@ -40,7 +39,6 @@ def add_var_flow(
     model: gp.Model,
     timesteps: range,
     step_k: int,
-    sim_horizon: int,
     edges: list,
     line_capacity_factor: float,
     line_capacity: pd.DataFrame,

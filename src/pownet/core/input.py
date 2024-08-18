@@ -159,9 +159,18 @@ class SystemInput:
             return df
         return pd.DataFrame()
 
-    def _get_columns_if_not_empty(self, df: pd.DataFrame) -> list:
-        """Return the columns of the DataFrame if it's not empty, otherwise return an empty list."""
-        return df.columns.tolist() if not df.empty else []
+    def _get_column_pairs_as_dict(self, df: pd.DataFrame) -> list:
+        """
+        Extracts dictionary pairs from the DataFrame's multi-index columns.
+
+        Args:
+            df: The DataFrame with multi-index columns.
+
+        Returns:
+            A dictionary where keys are the first-level column values and values are the second-level column values.
+        """
+        column_pairs = df.columns.to_flat_index().tolist()
+        return dict(column_pairs)
 
     def load_thermal_unit_params(self):
         """Load the techno-economic parameters of thermal units from thermal_unit.csv"""
@@ -245,6 +254,29 @@ class SystemInput:
             if unit_node == node:
                 self.node_generator[node].append(unit)
 
+    def _load_capacity_and_update_fuelmap(
+        self, csv_filename: str, fuel_type: str
+    ) -> tuple[pd.DataFrame, dict[str, str]]:
+        """
+        Loads capacity data from a CSV file, extracts unit-node mapping, and updates the fuelmap.
+
+        Args:
+            csv_filename: The name of the CSV file to load.
+            fuel_type: The fuel type to associate with the loaded units.
+
+        Returns:
+            The loaded capacity DataFrame with a single-level column index.
+        """
+        capacity_data = self._check_and_load_timeseries(csv_filename, header_levels=1)
+        unit_node_map = self._get_column_pairs_as_dict(capacity_data)
+        capacity_data.columns = (
+            capacity_data.columns.droplevel(1)
+            if len(capacity_data.columns) > 1
+            else capacity_data.columns
+        )
+        self.fuelmap.update({k: fuel_type for k in unit_node_map.keys()})
+        return capacity_data, unit_node_map
+
     def load_data(self):
         """Load the input data for the power system model.
         Timeseries are loaded as dataframes with the index starting at 1.
@@ -284,20 +316,21 @@ class SystemInput:
         # the former is created from the reservoir module in PowNet
 
         if os.path.exists(os.path.join(self.model_dir, "pownet_hydropower.csv")):
-            self.hydro_capacity = self._load_csv(
-                "pownet_hydropower.csv", header_levels=1
+            self.hydro_capacity, self.hydro_unit_node = (
+                self._load_capacity_and_update_fuelmap(
+                    "pownet_hydropower.csv", fuel_type="hydropower"
+                )
             )
 
         elif os.path.exists(os.path.join(self.model_dir, "hydropower.csv")):
-            self.hydro_capacity = self._load_csv("hydropower.csv", header_levels=1)
+            self.hydro_capacity, self.hydro_unit_node = (
+                self._load_capacity_and_update_fuelmap(
+                    "hydropower.csv", fuel_type="hydropower"
+                )
+            )
 
         else:
             self.hydro_capacity = pd.DataFrame()
-
-        # Covert the multi-index columns to dict of {unit: node}
-        self.hydro_unit_node = {
-            k: v for k, v in self._get_columns_if_not_empty(self.hydro_capacity)
-        }
 
         # Hydropower can be given at hourly or daily resolution,
         # which the optimization model must match.
@@ -314,37 +347,19 @@ class SystemInput:
                 "PowNet: Hydropower timeseries must be either of length 8760 or 365."
             )
 
-        self.fuelmap.update({k: "hydro" for k in self.hydro_unit_node.keys()})
-
         #################
         # Renewables (timeseries)
         #################
-        # Solar
-        self.solar_capacity = self._check_and_load_timeseries(
-            "solar.csv", header_levels=1
-        )
-        self.solar_unit_node = {
-            k: v for k, v in self._get_columns_if_not_empty(self.solar_capacity)
-        }
-        self.fuelmap.update({k: "solar" for k in self.solar_unit_node.keys()})
 
-        # Wind
-        self.wind_capacity = self._check_and_load_timeseries(
-            "wind.csv", header_levels=1
+        self.solar_capacity, self.solar_unit_node = (
+            self._load_capacity_and_update_fuelmap("solar.csv", "solar")
         )
-        self.wind_unit_node = {
-            k: v for k, v in self._get_columns_if_not_empty(self.wind_capacity)
-        }
-        self.fuelmap.update({k: "wind" for k in self.wind_unit_node.keys()})
-
-        # Import
-        self.import_capacity = self._check_and_load_timeseries(
-            "import.csv", header_levels=1
+        self.wind_capacity, self.wind_unit_node = (
+            self._load_capacity_and_update_fuelmap("wind.csv", "wind")
         )
-        self.import_unit_node = {
-            k: v for k, v in self._get_columns_if_not_empty(self.import_capacity)
-        }
-        self.fuelmap.update({k: "import" for k in self.import_unit_node.keys()})
+        self.import_capacity, self.import_unit_node = (
+            self._load_capacity_and_update_fuelmap("import.csv", "import")
+        )
 
         #################
         # Transmission
@@ -405,8 +420,8 @@ class SystemInput:
         #################
         self.thermal_units = list(self.thermal_unit_node.keys())
         self.hydro_units = list(self.hydro_unit_node.keys())
-        self.solar_units = list(self.solar_units)
-        self.wind_units = list(self.wind_units)
+        self.solar_units = list(self.solar_unit_node.keys())
+        self.wind_units = list(self.wind_unit_node.keys())
         self.import_units = list(self.import_unit_node.keys())
 
         #################

@@ -48,9 +48,13 @@ class DataProcessor:
         # present, then it is a repeated edge.
         edges = self.user_transmission[["source", "sink"]].values
         reversed_edges = np.flip(edges, axis=1)
-        repeated_edges = np.intersect1d(edges, reversed_edges)
+        edges_set = set(map(tuple, edges))
+        reversed_edges_set = set(map(tuple, reversed_edges))
+        repeated_edges = edges_set.intersection(reversed_edges_set)
         if len(repeated_edges) > 0:
-            raise ValueError("There are repeated edges in the transmission data.")
+            raise ValueError(
+                f"There are repeated edges in the transmission data: {repeated_edges}"
+            )
 
         # Generic transmission parameters for a power system
         self.transmission_params: dict = (
@@ -181,7 +185,14 @@ class DataProcessor:
         thermal_units = pd.read_csv(os.path.join(model_dir, "thermal_unit.csv"))[
             "name"
         ].values
-        self.thermal_derate_factors[thermal_units] = derate_factor
+        temp_df = pd.DataFrame(
+            derate_factor,
+            index=self.thermal_derate_factors.index,
+            columns=thermal_units,
+        )
+        self.thermal_derate_factors = pd.concat(
+            [get_dates(year=self.year), temp_df], axis=1
+        )
 
     def write_thermal_derate_factors(self) -> None:
         self.thermal_derate_factors.to_csv(
@@ -198,7 +209,9 @@ class DataProcessor:
             usecols=["name", "max_capacity"],
         ).to_dict()["max_capacity"]
 
-        self.derated_max_cap = pd.DataFrame()
+        self.derated_max_cap = pd.DataFrame(
+            0, columns=max_cap.keys(), index=range(0, 8760)
+        )
         for thermal_unit in max_cap.keys():
             self.derated_max_cap[thermal_unit] = (
                 self.thermal_derate_factors[thermal_unit] * max_cap[thermal_unit]
@@ -207,9 +220,8 @@ class DataProcessor:
         self.derated_max_cap = pd.concat(
             [get_dates(year=self.year), self.derated_max_cap], axis=1
         )
-        # Pownet indexing starts at 1 and usually ends at 8760.
         self.derated_max_cap.index += 1
-
+        
     def write_derated_capacity(self) -> None:
         self.derated_max_cap.to_csv(
             os.path.join(self.model_folder, "pownet_derated_capacity.csv"), index=False
@@ -281,7 +293,7 @@ class DataProcessor:
 
 
 if __name__ == "__main__":
-    data_processor = DataProcessor(model_name="dummy_trade", year=2016, frequency=50)
+    data_processor = DataProcessor(model_name="thailand", year=2016, frequency=50)
     data_processor.load_data()
     data_processor.process_data()
     data_processor.write_data()

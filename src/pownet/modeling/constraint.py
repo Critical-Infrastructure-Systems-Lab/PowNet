@@ -1,4 +1,5 @@
-"""constraint.py: Contains functions for constructing the objective function and constraints of the optimization model."""
+"""constraint.py: Contains functions for constructing the objective function and constraints of the optimization model.
+Throughout this module, the number 24 is the number of hours in a day. This number is used to calculate the index of the next day in the optimization model."""
 
 from __future__ import annotations
 import gurobipy as gp
@@ -801,18 +802,18 @@ def add_c_kirchhoff(
 
         # We also need the reactance (susceptance) to calculate the factors in the cycle-incidence
         cycle_susceptance = pd.DataFrame()
-        for flow in cycle_edges:
-            if flow in edges:
-                cycle_incidence.loc[flow, cycle_id] = 1
+        for cycle_edge in cycle_edges:
+            if cycle_edge in edges:
+                cycle_incidence.loc[cycle_edge, cycle_id] = 1
                 cycle_susceptance = pd.concat(
-                    [cycle_susceptance, susceptance[flow]], axis=1
+                    [cycle_susceptance, susceptance[cycle_edge]], axis=1
                 )
             else:
-                cycle_incidence.loc[(flow[1], flow[0]), cycle_id] = -1
+                cycle_incidence.loc[(cycle_edge[1], cycle_edge[0]), cycle_id] = -1
                 cycle_susceptance = pd.concat(
                     [
                         cycle_susceptance,
-                        susceptance[(flow[1], flow[0])],
+                        susceptance[(cycle_edge[1], cycle_edge[0])],
                     ],
                     axis=1,
                 )
@@ -823,9 +824,11 @@ def add_c_kirchhoff(
                     (
                         cycle_incidence.loc[(a, b), cycle_id]
                         * 1
-                        / cycle_susceptance.loc[t + (step_k - 1) * 24, [(a, b)]]
+                        / cycle_susceptance.loc[t + (step_k - 1) * 24, [(a, b)]].values[
+                            0
+                        ]
                         * flow[a, b, t]
-                    ).iloc[0]
+                    )
                     for (a, b) in cycle_susceptance.columns
                 )
                 == 0

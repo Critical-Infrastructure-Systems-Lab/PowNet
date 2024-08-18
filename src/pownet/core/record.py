@@ -217,7 +217,7 @@ class SystemRecord:
                     & (df["timestep"] == self.inputs.sim_horizon)
                 ]  # Only considers values of the last hour
                 .drop("vartype", axis=1)
-                .set_index(["node", "timestep"])
+                .set_index(["node"])  # Generator names do not repeat
                 .to_dict()["value"]
             )
 
