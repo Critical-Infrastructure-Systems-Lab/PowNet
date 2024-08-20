@@ -4,8 +4,6 @@
 import os
 import unittest
 from unittest.mock import patch, MagicMock
-import numpy as np
-import pandas as pd
 from pownet.data_processor import (
     DataProcessor,
 )

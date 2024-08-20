@@ -6,80 +6,70 @@ import unittest
 from unittest.mock import patch, MagicMock, call
 
 import gurobipy as gp
-import highspy
-from pownet.model import PowerSystemModel
+import pandas as pd
+from pownet.modeling import PowerSystemModel
 
 
 class TestPowerSystemModel(unittest.TestCase):
     def setUp(self):
-        self.mock_gurobi_model = MagicMock(spec=gp.Model)
-        self.mock_gurobi_instance = self.mock_gurobi_model.return_value
+        """Create a simple optimization problem of two variables and a constraint
+        min -x - 2y
+        s.t. x + y >= 1
+        x, y >= 0
 
-        self.mock_highs = MagicMock(spec=highspy.Highs)
-        self.mock_highs_instance = self.mock_highs.return_value
+        solution: x = 0, y = 1, objval = -2
+        """
+        self.gurobi_instance = gp.Model()
+        x = self.gurobi_instance.addVar(name="x", lb=0)
+        y = self.gurobi_instance.addVar(name="y", lb=0)
+        self.gurobi_instance.setObjective(-x - 2 * y, gp.GRB.MINIMIZE)
+        self.gurobi_instance.addConstr(x + y <= 1)
+        self.gurobi_instance.update()
+        self.psm = PowerSystemModel(self.gurobi_instance)
 
-        # Create an instance of the PowerSystemModel class
-        self.psm = PowerSystemModel(self.mock_gurobi_model)
+        self.infeasible_gurobi_instance = gp.Model()
+        x = self.infeasible_gurobi_instance.addVar(name="x", lb=0)
+        y = self.infeasible_gurobi_instance.addVar(name="y", lb=0)
+        self.infeasible_gurobi_instance.setObjective(x + y, gp.GRB.MINIMIZE)
+        self.infeasible_gurobi_instance.addConstr(x + y <= -1)
+        self.infeasible_gurobi_instance.update()
+        self.infeasible_psm = PowerSystemModel(self.infeasible_gurobi_instance)
 
-    @patch("pownet.model.os.path.exists")
-    @patch("pownet.model.os.makedirs")
-    def test_write_mps(self, mock_makedirs, mock_exists):
-        output_folder = "test_output"
-        filename = "test_model"
-        expected_path = os.path.join(output_folder, f"{filename}.mps")
-        # Assume the directory does not exist and create it
-        mock_exists.return_value = False
-        # Call the write_mps method
-        self.psm.write_mps(output_folder, filename)
-        # Check if the directory was created
-        mock_makedirs.assert_called_once_with(output_folder)
-        # Check if the model was written to the correct path
-        self.mock_gurobi_model.write.assert_called_once_with(expected_path)
+        self.expected_solution = pd.DataFrame(
+            {"varname": ["x", "y"], "value": [0.0, 1.0]}
+        )
 
     def test_optimize_gurobi(self):
-        self.psm.optimize(solver="gurobi")
-        self.mock_gurobi_model.optimize.assert_called_once()
+        self.psm.optimize(solver="gurobi", log_to_console=False)
+        self.psm.check_feasible()
+        self.assertEqual(self.psm.get_objval(), -2)
+
+    def test_optimize_highs(self):
+        self.psm.optimize(solver="highs", log_to_console=False)
+        info = self.psm.model.getInfo()
+        self.psm.check_feasible()
+        self.assertEqual(info.objective_function_value, -2)
 
     def test_optimize_invalid_solver(self):
         with self.assertRaises(ValueError):
             self.psm.optimize(solver="invalid_solver")
 
-    def test_check_feasible_gurobi(self):
-        self.mock_gurobi_model.status = gp.GRB.Status.OPTIMAL
-        self.assertTrue(self.psm.check_feasible())
+    def test_check_infeasible_gurobi(self):
+        self.infeasible_psm.optimize(solver="gurobi", log_to_console=False)
+        self.assertFalse(self.infeasible_psm.check_feasible())
 
-    @patch("pownet.model.highspy.Highs")
-    def test_check_feasible_highs(self, mock_highs):
-        # Create a mock Highs instance
-        mock_highs_instance = mock_highs.return_value
-        mock_highs_instance.getModelStatus.return_value = (
-            1  # Set return value for getModelStatus
+    def test_get_solution_gurobi(self):
+
+        self.psm.optimize(solver="gurobi", log_to_console=False)
+        pd.testing.assert_frame_equal(
+            pd.DataFrame(self.psm.get_solution()), self.expected_solution
         )
-        # Ensure that modelStatusToString returns "Optimal" for the mocked status code
-        mock_highs_instance.modelStatusToString.return_value = "Optimal"
-        # Replace the current model with the mock Highs instance
-        self.psm.model = mock_highs_instance
-        self.psm.solver = "highs"
-        # Assert the result of check_feasible()
-        self.assertTrue(self.psm.check_feasible())
 
-    # test writing ilp
-    @patch("pownet.model.os.path.join")
-    @patch("pownet.model.os.makedirs")
-    def test_write_ilp_mps(self, mock_makedirs, mock_join):
-        output_folder = "test_output"
-        instance_name = "test_instance"
-        self.psm.write_ilp_mps(output_folder, instance_name)
-        calls = [
-            call("test_output", "infeasible_test_instance.ilp"),
-            call().replace(".ilp", ".mps"),
-        ]
-        mock_join.assert_has_calls(calls)
-
-    def test_get_objval_gurobi(self):
-        self.solver = "gurobi"
-        self.mock_gurobi_model.objVal = 100
-        self.assertEqual(self.psm.get_objval(), 100)
+    def test_get_solution_highs(self):
+        self.psm.optimize(solver="highs", log_to_console=False)
+        pd.testing.assert_frame_equal(
+            pd.DataFrame(self.psm.get_solution()), self.expected_solution
+        )
 
 
 if __name__ == "__main__":
