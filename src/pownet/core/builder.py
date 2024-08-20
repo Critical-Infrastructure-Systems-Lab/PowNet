@@ -221,7 +221,7 @@ class ModelBuilder:
                 "phydro",
                 modeling.add_var_with_ub(
                     model=self.model,
-                    varname=varname,
+                    varname="phydro",
                     timesteps=self.timesteps,
                     step_k=step_k,
                     units=getattr(self.inputs, "hydro_units"),

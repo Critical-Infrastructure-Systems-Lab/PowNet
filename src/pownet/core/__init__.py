@@ -3,5 +3,6 @@
 
 from .builder import ModelBuilder
 from .input import SystemInput
-from .output import OutputProcessor, Visualizer
+from .output import OutputProcessor
+from .visualizer import Visualizer
 from .record import SystemRecord

@@ -20,13 +20,18 @@ def add_var_with_ub(
     units: list,
     capacity_df: pd.DataFrame,
 ) -> gp.tupledict:
+    def get_capacity_value(t, unit_g):
+        value = capacity_df.loc[t + (step_k - 1) * 24, unit_g]
+        if isinstance(value, pd.Series):
+            return value.iloc[0]
+        return value
 
     return model.addVars(
         units,
         timesteps,
         lb=0,
         ub={
-            (unit_g, t): capacity_df.loc[t + (step_k - 1) * 24, unit_g]
+            (unit_g, t): get_capacity_value(t, unit_g)
             for t in timesteps
             for unit_g in units
         },
