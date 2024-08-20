@@ -1,13 +1,17 @@
 """ input.py: SystemInput class loads and checks the input data. It is used by other PowNet objects to access the input data. """
 
 from datetime import datetime
+import logging
 import json
 import os
+import textwrap
 
 import gurobipy as gp
 import pandas as pd
 
 from pownet.folder_utils import get_model_dir
+
+logger = logging.getLogger(__name__)
 
 
 class SystemInput:
@@ -581,41 +585,42 @@ class SystemInput:
                 "PowNet: Generator names cannot repeat across different types."
             )
 
-    def print_summary(self):
-        print("\n\n==== PowNet Input Data Summary ====")
-        print(f"{'Timestamp':<25} = {self.timestamp}")
-        print(f"{'Model name':<25} = {self.model_name}")
-        print(f"{'Year':<25} = {self.year}")
-        print("---- System characteristics ----")
-        print(f"{'No. of nodes':<25} = {len(self.nodes)}")
-        print(f"{'No. of edges':<25} = {len(self.edges)}")
-        print(f"{'No. of thermal units':<25} = {len(self.thermal_unit_node)}")
-        print(f"{'No. of demand nodes':<25} = {len(self.demand_nodes)}")
-        print(f"{'Peak demand':<25} = {self.demand.max().max()} MW")
+        input_summary = textwrap.dedent(
+            f"""
+        \n\nPowNet Input Data Summary:
+        {'Timestamp':<25} = {self.timestamp}
+        {'Model name':<25} = {self.model_name}
+        {'Year':<25} = {self.year}
+        ---- System characteristics ----
+        {'No. of nodes':<25} = {len(self.nodes)}
+        {'No. of edges':<25} = {len(self.edges)}
+        {'No. of thermal units':<25} = {len(self.thermal_unit_node)}
+        {'No. of demand nodes':<25} = {len(self.demand_nodes)}
+        {'Peak demand':<25} = {self.demand.max().max()} MW
 
-        print("---- Renewable capacities ----")
-        print(f"{'Hydropower units':<25} = {len(self.hydro_unit_node)}")
-        print(f"{'Solar units':<25} = {len(self.solar_unit_node)}")
-        print(f"{'Wind units':<25} = {len(self.wind_unit_node)}")
-        print(f"{'Import units':<25} = {len(self.import_unit_node)}")
+        ---- Renewable capacities ----
+        {'Hydropower units':<25} = {len(self.hydro_unit_node)}
+        {'Solar units':<25} = {len(self.solar_unit_node)}
+        {'Wind units':<25} = {len(self.wind_unit_node)}
+        {'Import units':<25} = {len(self.import_unit_node)}
 
-        print("---- Modeling parameters ----")
-        print(f"{'Simulation horizon':<25} = {self.sim_horizon} hours")
-        print(f"{'Use spin variable':<25} = {self.use_spin_var}")
-        print(f"{'Power flow':<25} = {self.dc_opf}")
-        print(f"{'Spin reserve factor':<25} = {self.spin_reserve_factor}")
-        print(f"{'Line loss factor':<25} = {self.line_loss_factor}")
-        print(f"{'Line capacity factor':<25} = {self.line_capacity_factor}")
-        print(f"{'Load shortfall penalty':<25} = {self.load_shortfall_penalty_factor}")
-        print(
-            f"{'Reserve shortfall penalty':<25} = {self.spin_shortfall_penalty_factor}"
+        ---- Modeling parameters ----
+        {'Simulation horizon':<25} = {self.sim_horizon} hours
+        {'Use spin variable':<25} = {self.use_spin_var}
+        {'Power flow':<25} = {self.dc_opf}
+        {'Spin reserve factor':<25} = {self.spin_reserve_factor}
+        {'Line loss factor':<25} = {self.line_loss_factor}
+        {'Line capacity factor':<25} = {self.line_capacity_factor}
+        {'Load shortfall penalty':<25} = {self.load_shortfall_penalty_factor}
+        {'Reserve shortfall penalty':<25} = {self.spin_shortfall_penalty_factor}\n
+
+        """
         )
-        print("=====================================\n")
+        logger.info(input_summary)
 
-    def load_check_and_print_summary(self):
+    def load_and_check_data(self):
         self.load_data()
         self.check_data()
-        self.print_summary()
 
 
 if __name__ == "__main__":
@@ -624,4 +629,4 @@ if __name__ == "__main__":
     sim_horizon = 24
 
     system_input = SystemInput(model_name, year, sim_horizon)
-    system_input.load_check_and_print_summary()
+    system_input.load_and_check_data()

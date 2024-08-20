@@ -2,6 +2,7 @@
 """
 
 from __future__ import annotations
+import logging
 
 from gurobipy import GRB
 import gurobipy as gp
@@ -9,6 +10,8 @@ import pandas as pd
 
 import pownet.modeling as modeling
 from pownet.data_utils import get_unit_hour_from_varnam, get_edge_hour_from_varname
+
+logger = logging.getLogger(__name__)
 
 
 class ModelBuilder:
@@ -71,17 +74,27 @@ class ModelBuilder:
 
         # Constraints that must be updated at each itereration (step_k)
         self.c_link_uvw_init: gp.tupledict = None
+        self.c_link_uvw: gp.tupledict = None
+        self.c_link_pthermal: gp.tupledict = None
+        self.c_link_pu_lower: gp.tupledict = None
         self.c_link_pu_upper: gp.tupledict = None
         self.c_min_down_init: gp.tupledict = None
         self.c_min_up_init: gp.tupledict = None
-        # self.c_peak_down_bound: gp.tupledict = None
-        # self.c_peak_up_bound: gp.tupledict = None
+        self.c_min_down: gp.tupledict = None
+        self.c_min_up: gp.tupledict = None
+        self.c_peak_down_bound: gp.tupledict = None
+        self.c_peak_up_bound: gp.tupledict = None
         self.c_ramp_down_init: gp.tupledict = None
         self.c_ramp_up_init: gp.tupledict = None
+        self.c_ramp_down: gp.tupledict = None
+        self.c_ramp_up: gp.tupledict = None
+        self.c_ref_node: gp.tupledict = None
         self.c_angle_diff: gp.tupledict = None
         self.c_kirchhoff: gp.tupledict = None
         self.c_flow_balance: gp.tupledict = None
         self.c_hydro_capacity: gp.tupledict = None
+        self.c_link_spin: gp.tupledict = None
+        self.c_link_ppbar: gp.tupledict = None
         self.c_reserve_req: gp.tupledict = None
 
     def add_variables(self, step_k: int) -> None:
@@ -379,7 +392,7 @@ class ModelBuilder:
             initial_u=init_conds["initial_u"],
             thermal_units=self.inputs.thermal_units,
         )
-        modeling.add_c_link_uvw(
+        self.c_link_uvw = modeling.add_c_link_uvw(
             model=self.model,
             u=self.status,
             v=self.startup,
@@ -387,7 +400,7 @@ class ModelBuilder:
             sim_horizon=self.inputs.sim_horizon,
             thermal_units=self.inputs.thermal_units,
         )
-        modeling.add_c_link_pthermal(
+        self.c_link_pthermal = modeling.add_c_link_pthermal(
             model=self.model,
             pthermal=self.pthermal,
             p=self.vpower,
@@ -396,7 +409,7 @@ class ModelBuilder:
             thermal_units=self.inputs.thermal_units,
             thermal_min_capacity=self.inputs.thermal_min_capacity,
         )
-        modeling.add_c_link_pu_lower(
+        self.c_link_pu_lower = modeling.add_c_link_pu_lower(
             model=self.model,
             pthermal=self.pthermal,
             u=self.status,
@@ -428,7 +441,7 @@ class ModelBuilder:
             thermal_units=self.inputs.thermal_units,
             initial_min_on=init_conds["initial_min_on"],
         )
-        modeling.add_c_min_down(
+        self.c_min_down = modeling.add_c_min_down(
             model=self.model,
             u=self.status,
             w=self.shutdown,
@@ -436,7 +449,7 @@ class ModelBuilder:
             thermal_units=self.inputs.thermal_units,
             TD=self.inputs.TD,
         )
-        modeling.add_c_min_up(
+        self.c_min_up = modeling.add_c_min_up(
             model=self.model,
             u=self.status,
             v=self.startup,
@@ -502,7 +515,7 @@ class ModelBuilder:
             RU=self.inputs.RU,
             SU=self.inputs.SU,
         )
-        modeling.add_c_ramp_down(
+        self.c_ramp_down = modeling.add_c_ramp_down(
             model=self.model,
             p=self.vpower,
             u=self.status,
@@ -513,7 +526,7 @@ class ModelBuilder:
             RD=self.inputs.RD,
             SD=self.inputs.SD,
         )
-        modeling.add_c_ramp_up(
+        self.c_ramp_up = modeling.add_c_ramp_up(
             model=self.model,
             p=self.vpower,
             pbar=self.vpowerbar,
@@ -531,7 +544,7 @@ class ModelBuilder:
         ################################
 
         if self.inputs.dc_opf == "voltage_angle":
-            modeling.add_c_ref_node(
+            self.c_ref_node = modeling.add_c_ref_node(
                 model=self.model,
                 theta=self.theta,
                 timesteps=self.timesteps,
@@ -607,7 +620,7 @@ class ModelBuilder:
             )
 
         if self.inputs.use_spin_var:
-            modeling.add_c_link_spin(
+            self.c_link_spin = modeling.add_c_link_spin(
                 model=self.model,
                 p=self.vpower,
                 pbar=self.vpowerbar,
@@ -625,7 +638,7 @@ class ModelBuilder:
                 spin_requirement=self.inputs.spin_requirement,
             )
         else:
-            modeling.add_c_link_ppbar(
+            self.c_link_ppbar = modeling.add_c_link_ppbar(
                 model=self.model,
                 p=self.vpower,
                 pbar=self.vpowerbar,
@@ -899,3 +912,46 @@ class ModelBuilder:
         self._update_constraints(step_k=step_k, init_conds=init_conds)
 
         return self.model
+
+    def print_added_constraints(self):
+        added_constrs = []
+        not_added_constrs = []
+
+        constraints_list = [
+            "c_link_uvw_init",
+            "c_link_uvw",
+            "c_link_pthermal",
+            "c_link_pu_lower",
+            "c_link_pu_upper",
+            "c_min_down_init",
+            "c_min_up_init",
+            "c_min_down",
+            "c_min_up",
+            "c_peak_down_bound",
+            "c_peak_up_bound",
+            "c_ramp_down_init",
+            "c_ramp_up_init",
+            "c_ramp_down",
+            "c_ramp_up",
+            "c_ref_node",
+            "c_angle_diff",
+            "c_kirchhoff",
+            "c_flow_balance",
+            "c_hydro_capacity",
+            "c_link_spin",
+            "c_link_ppbar",
+            "c_reserve_req",
+        ]
+
+        for attr_name in constraints_list:
+            if getattr(self, attr_name) is not None:
+                added_constrs.append(attr_name)
+            else:
+                not_added_constrs.append(attr_name)
+
+        log_message = "\nAdded constraints:\n"
+        log_message += "\n".join(added_constrs)
+        log_message += "\n\nNot added constraints:\n"
+        log_message += "\n".join(not_added_constrs)
+
+        logger.info(log_message)
