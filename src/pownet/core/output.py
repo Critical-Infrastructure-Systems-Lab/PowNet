@@ -214,19 +214,17 @@ class OutputProcessor:
 
         return co2_emissions
 
-    def get_fuel_cost(self, time_interval: str) -> pd.DataFrame:
-        """Return the system cost for each timestep."""
-        cost_map = {
-            "coal": 5,
-            "gas": 5.85,
-            "oil": 8,
-            "import": 10,
-            "shortfall": 1000,
-            "curtailment": 1000,
-            "biomass": 3.02,
-            "wsth": 3.02,
-            "slack": 1000,
-        }
+    def get_system_fuel_cost(self, time_interval: str, cost_map: dict) -> pd.DataFrame:
+        """Return the system's fuel cost for each timestep.
+
+        Args:
+            time_interval (str): The time interval for the cost calculation.
+            cost_map (dict): The cost of each fuel type. Example: {"coal": 5, "gas": 5.85}
+
+        Returns:
+            pd.DataFrame: The system's fuel cost by fuel type for each timestep.
+
+        """
 
         if time_interval == "monthly":
             df = self.get_monthly_thermal_dispatch()
