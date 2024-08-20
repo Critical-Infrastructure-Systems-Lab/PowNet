@@ -15,9 +15,12 @@ from pownet.data_utils import create_init_condition
 logging.basicConfig(level=logging.INFO)
 
 ##### User inputs #####
+to_process_inputs = True
 sim_horizon = 24
 model_name = "RegionB"
-to_process_inputs = True
+has_import = False
+steps_to_run = None  # Default is None
+do_plot = True
 #######################
 
 if to_process_inputs:
@@ -40,7 +43,8 @@ init_conditions = create_init_condition(inputs.thermal_units)
 
 record = SystemRecord(inputs)
 
-steps_to_run = 4  # 365 - (sim_horizon // 24 - 1)
+if steps_to_run is None:
+    steps_to_run = 365 - (sim_horizon // 24 - 1)
 build_times = []
 for step_k in range(1, steps_to_run):
     start_time = datetime.now()
@@ -67,15 +71,28 @@ for step_k in range(1, steps_to_run):
 # Process the results
 output_processor = OutputProcessor(inputs)
 node_var_df = record.get_node_variables()
-output_processor.load(node_var_df)
+output_processor.load_from_dataframe(node_var_df)
 
-# # Visualize the results
-visualizer = Visualizer(inputs.model_id)
-visualizer.plot_fuelmix_bar(
-    dispatch=output_processor.get_hourly_dispatch(),
-    demand=output_processor.get_hourly_demand(),
-    to_save=False,
-)
+if has_import:
+    import_values = output_processor.get_import_values()
+
+
+# Visualize the results
+if do_plot:
+    visualizer = Visualizer(inputs.model_id)
+    if steps_to_run <= 3:
+        visualizer.plot_fuelmix_bar(
+            dispatch=output_processor.get_hourly_dispatch(),
+            demand=output_processor.get_hourly_demand(),
+            to_save=False,
+        )
+    else:
+        visualizer = Visualizer(inputs.model_id)
+        visualizer.plot_fuelmix_area(
+            dispatch=output_processor.get_daily_dispatch(),
+            demand=output_processor.get_daily_demand(),
+            to_save=False,
+        )
 
 
 # record.write_simulation_results()
