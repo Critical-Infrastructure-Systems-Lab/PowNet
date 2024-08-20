@@ -1,4 +1,5 @@
 """ record.py: This module contains the SystemRecord class, which processes stores the modeling outputs from each iteration.
+TODO: self.current_hydro, self.current_import for model coupling
 """
 
 from __future__ import annotations
@@ -201,6 +202,7 @@ class SystemRecord:
         )[1]
         cur_syswide_vars["hour"] = cur_syswide_vars["hour"].astype(int)
         cur_syswide_vars["hour"] = cur_syswide_vars["hour"] + 24 * (step_k - 1)
+        return cur_syswide_vars
 
     def keep(
         self,
@@ -259,19 +261,26 @@ class SystemRecord:
         ##################
         # Append results to the existing dataframes
         ##################
-        current_node_vars = current_node_vars.drop("timestep", axis=1)
+        # Remove varname column from the three dataframes
+        # move the value column to the end
+        current_node_vars = current_node_vars.drop(["varname", "timestep"], axis=1)
         self.node_vars = pd.concat([self.node_vars, current_node_vars], axis=0)
+
         self.flow_vars = pd.concat(
             [
                 self.flow_vars,
-                self._parse_flow_variables(solution=solution, step_k=step_k),
+                self._parse_flow_variables(solution=solution, step_k=step_k).drop(
+                    "varname", axis=1
+                ),
             ],
             axis=0,
         )
         self.syswide_vars = pd.concat(
             [
                 self.syswide_vars,
-                self._parse_syswide_variables(solution=solution, step_k=step_k),
+                self._parse_syswide_variables(solution=solution, step_k=step_k).drop(
+                    "varname", axis=1
+                ),
             ],
             axis=0,
         )

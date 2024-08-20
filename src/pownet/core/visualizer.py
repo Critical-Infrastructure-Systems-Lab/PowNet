@@ -60,7 +60,7 @@ class Visualizer:
             linestyle=":",
             label="demand",
         )
-        ax.set_xlabel("Hour")
+        ax.set_xlabel(dispatch.index.name)
 
         # Plot formatting
         legend = fig.legend(
@@ -115,7 +115,7 @@ class Visualizer:
             linestyle=":",
             label="demand",
         )
-        ax.set_xlabel("")
+        ax.set_xlabel(dispatch.index.name)
 
         legend = fig.legend(
             loc="outside lower center",

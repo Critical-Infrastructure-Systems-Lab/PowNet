@@ -42,7 +42,7 @@ class OutputProcessor:
 
         self.unit_status: pd.DataFrame = None
 
-    def load(
+    def load_from_dataframe(
         self,
         node_var_df: pd.DataFrame,
     ) -> None:
@@ -86,6 +86,7 @@ class OutputProcessor:
         ).T.reset_index(drop=True)
         # PowNet indexing starts at 1
         self.total_dispatch.index += 1
+        self.total_dispatch.index.name = "Hour"
 
         # Reorder the columns of total dispatch in case we want to plot
         self.fuel_mix_order = get_fuel_mix_order()
@@ -103,6 +104,7 @@ class OutputProcessor:
         self.monthly_dispatch["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_dispatch = self.monthly_dispatch.groupby("month").sum()
         self.monthly_dispatch.index = self.monthly_dispatch.index.strftime("%b")
+        self.monthly_dispatch.index.name = "Month"
 
         # Sum across 24 hours to get the daily dispatch.
         self.daily_dispatch = self.total_dispatch.copy()
@@ -110,12 +112,12 @@ class OutputProcessor:
             (self.daily_dispatch.index - 1) // 24
         ).sum()
         self.daily_dispatch.index += 1
-        self.daily_dispatch.index.name = "day"
+        self.daily_dispatch.index.name = "Day"
 
         # Demand is an input to the simulation
         self.total_demand = self.inputs.demand.sum(axis=1).to_frame()
         self.total_demand.columns = ["demand"]
-        self.total_demand.index.name = "hour"
+        self.total_demand.index.name = "Hour"
 
         # Sum across each month to get the monthly demand
         self.monthly_demand = self.total_demand.copy()
@@ -154,6 +156,10 @@ class OutputProcessor:
 
     def get_unit_status(self) -> pd.DataFrame:
         return self.unit_status
+
+    def get_import_values(self) -> pd.DataFrame:
+        """Return the import values for each timestep."""
+        return self.node_variables[self.node_variables["vartype" == "pimp"]].to_frame()
 
     def load_from_csv(
         self,
