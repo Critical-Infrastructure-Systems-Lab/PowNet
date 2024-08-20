@@ -1,0 +1,3 @@
+source,sink,user_line_cap,type,n_circuits,source_kv,sink_kv,distance
+pBiomass,Node2,,acsr,2,275,275,150
+pHydro,Node2,,acsr,2,275,275,100
