@@ -221,7 +221,7 @@ class DataProcessor:
             [get_dates(year=self.year), self.derated_max_cap], axis=1
         )
         self.derated_max_cap.index += 1
-        
+
     def write_derated_capacity(self) -> None:
         self.derated_max_cap.to_csv(
             os.path.join(self.model_folder, "pownet_derated_capacity.csv"), index=False
@@ -275,7 +275,7 @@ class DataProcessor:
         """
         pass
 
-    def process_data(self) -> None:
+    def run_all_processing_steps(self) -> None:
         """Run all the data processing steps"""
         self.calc_line_capacity()
         self.calc_line_susceptance()
@@ -291,9 +291,7 @@ class DataProcessor:
         self.write_derated_capacity()
         self.write_marginal_costs()
 
-
-if __name__ == "__main__":
-    data_processor = DataProcessor(model_name="thailand", year=2016, frequency=50)
-    data_processor.load_data()
-    data_processor.process_data()
-    data_processor.write_data()
+    def execute_data_pipeline(self) -> None:
+        self.load_data()
+        self.run_all_processing_steps()
+        self.write_data()
