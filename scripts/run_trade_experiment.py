@@ -17,82 +17,172 @@ logging.basicConfig(level=logging.INFO)
 ##### User inputs #####
 to_process_inputs = True
 sim_horizon = 24
-model_name = "RegionB"
-has_import = False
-steps_to_run = None  # Default is None
+steps_to_run = 3  # Default is None
 do_plot = True
-#######################
 
+
+def subtract_hydro_capacity(import_values_A, inputs_B):
+    inputs_B.hydro_capacity -= import_values_A
+    return
+
+
+def separate_node_variables(node_var_df):
+    """Return the node variables for each region."""
+    pass
+
+
+#########################################
+############### Region A ################
+#########################################
 if to_process_inputs:
-    data_processor = DataProcessor(model_name=model_name, year=2016, frequency=50)
-    data_processor.execute_data_pipeline()
+    data_processor_A = DataProcessor(
+        model_name="RegionA",
+        year=2016,
+        frequency=50,
+    )
+    data_processor_A.execute_data_pipeline()
 
-inputs = SystemInput(
-    model_name=model_name,
+inputs_A = SystemInput(
+    model_name="RegionA",
     year=2016,
     sim_horizon=sim_horizon,
     spin_reserve_factor=0.15,
     load_shortfall_penalty_factor=1000,
     spin_shortfall_penalty_factor=1000,
 )
-inputs.load_and_check_data()
+inputs_A.load_and_check_data()
 
 
-model_builder = ModelBuilder(inputs)
-init_conditions = create_init_condition(inputs.thermal_units)
+model_builder_A = ModelBuilder(inputs_A)
+init_conditions_A = create_init_condition(inputs_A.thermal_units)
 
-record = SystemRecord(inputs)
+record_A = SystemRecord(inputs_A)
 
 if steps_to_run is None:
     steps_to_run = 365 - (sim_horizon // 24 - 1)
-build_times = []
+
 for step_k in range(1, steps_to_run):
-    start_time = datetime.now()
     if step_k == 1:
-        model = model_builder.build(
+        model_A = model_builder_A.build(
             step_k=step_k,
-            init_conds=init_conditions,
+            init_conds=init_conditions_A,
+        )
+    else:
+        # model_A = model_builder_A.update(
+        #     step_k=step_k,
+        #     init_conds=init_conditions_A,
+        # )
+        model_A = model_builder_A.build(
+            step_k=step_k,
+            init_conds=init_conditions_A,
+        )
+
+    power_system_model_A = PowerSystemModel(model_A)
+    power_system_model_A.optimize()
+
+    record_A.keep(power_system_model_A, step_k)
+    init_conditions_A = record_A.get_init_conds()
+# Process the results
+output_processor_A = OutputProcessor(inputs_A)
+node_var_df_A = record_A.get_node_variables()
+output_processor_A.load_from_dataframe(node_var_df_A)
+
+import_values_A = output_processor_A.get_import_values()
+
+
+# # Visualize the results
+# if do_plot:
+#     visualizer_A = Visualizer(inputs_A.model_id)
+#     if steps_to_run <= 3:
+#         visualizer_A.plot_fuelmix_bar(
+#             dispatch=output_processor_A.get_hourly_dispatch(),
+#             demand=output_processor_A.get_hourly_demand(),
+#             to_save=False,
+#         )
+#     else:
+#         visualizer = Visualizer(inputs_A.model_id)
+#         visualizer.plot_fuelmix_area(
+#             dispatch=output_processor_A.get_daily_dispatch(),
+#             demand=output_processor_A.get_daily_demand(),
+#             to_save=False,
+#         )
+
+#########################################
+############### Region B ################
+#########################################
+
+if to_process_inputs:
+    data_processor_B = DataProcessor(
+        model_name="RegionB",
+        year=2016,
+        frequency=50,
+    )
+    data_processor_B.execute_data_pipeline()
+
+inputs_B = SystemInput(
+    model_name="RegionB",
+    year=2016,
+    sim_horizon=sim_horizon,
+    spin_reserve_factor=0.15,
+    load_shortfall_penalty_factor=1000,
+    spin_shortfall_penalty_factor=1000,
+)
+inputs_B.load_and_check_data()
+
+# Subtract hydropower_capacity from what Region A is importing
+subtract_hydro_capacity(import_values_A, inputs_B)
+
+model_builder_B = ModelBuilder(inputs_B)
+init_conditions_B = create_init_condition(inputs_B.thermal_units)
+
+record_B = SystemRecord(inputs_B)
+
+if steps_to_run is None:
+    steps_to_run = 365 - (sim_horizon // 24 - 1)
+
+for step_k in range(1, steps_to_run):
+    if step_k == 1:
+        model_B = model_builder_B.build(
+            step_k=step_k,
+            init_conds=init_conditions_B,
         )
     else:
         # model = model_builder.update(step_k=step_k, init_conds=init_conditions)
-        model = model_builder.build(
+        model_B = model_builder_B.build(
             step_k=step_k,
-            init_conds=init_conditions,
+            init_conds=init_conditions_B,
         )
-    build_time = datetime.now() - start_time
 
-    power_system_model = PowerSystemModel(model)
-    power_system_model.optimize(log_to_console=False)
+    power_system_model_B = PowerSystemModel(model_B)
+    power_system_model_B.optimize(log_to_console=False)
 
-    record.keep(power_system_model, step_k)
-    init_conditions = record.get_init_conds()
-    build_times.append(build_time.total_seconds())
-
+    record_B.keep(power_system_model_B, step_k)
+    init_conditions_B = record_B.get_init_conds()
 # Process the results
-output_processor = OutputProcessor(inputs)
-node_var_df = record.get_node_variables()
-output_processor.load_from_dataframe(node_var_df)
-
-if has_import:
-    import_values = output_processor.get_import_values()
-
+output_processor_B = OutputProcessor(inputs_B)
+node_var_df_B = record_B.get_node_variables()
+output_processor_B.load_from_dataframe(node_var_df_B)
 
 # Visualize the results
 if do_plot:
-    visualizer = Visualizer(inputs.model_id)
+    visualizer_B = Visualizer(inputs_B.model_id)
     if steps_to_run <= 3:
-        visualizer.plot_fuelmix_bar(
-            dispatch=output_processor.get_hourly_dispatch(),
-            demand=output_processor.get_hourly_demand(),
+        visualizer_B.plot_fuelmix_bar(
+            dispatch=output_processor_B.get_hourly_dispatch(),
+            demand=output_processor_B.get_hourly_demand(),
             to_save=False,
         )
     else:
-        visualizer = Visualizer(inputs.model_id)
+        visualizer = Visualizer(inputs_B.model_id)
         visualizer.plot_fuelmix_area(
-            dispatch=output_processor.get_daily_dispatch(),
-            demand=output_processor.get_daily_demand(),
+            dispatch=output_processor_B.get_daily_dispatch(),
+            demand=output_processor_B.get_daily_demand(),
             to_save=False,
         )
 
 
-# record.write_simulation_results()
+######### Print the results #########
+# Total objective value of Region A
+print(f"Total objective value of Region A: {int(sum(record_A.get_objvals()))}")
+print(record_A.get_objvals())
+# print(f"Total objective value of Region A: {int(sum(record_B.get_objvals()))}")
