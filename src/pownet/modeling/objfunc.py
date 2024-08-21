@@ -60,7 +60,6 @@ def get_marginal_cost_coeff(
     inputs: "SystemInput",
     step_k: int,
     timesteps: range,
-    sim_horizon: int,
     units: list,
     attribute: str,
 ) -> dict:

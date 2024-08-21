@@ -158,8 +158,13 @@ class OutputProcessor:
         return self.unit_status
 
     def get_import_values(self) -> pd.DataFrame:
-        """Return the import values for each timestep."""
-        return self.node_variables[self.node_variables["vartype" == "pimp"]].to_frame()
+        """Return the import values for each timestep. Columns are generators.
+        Index is the hour in the simulation year"""
+        import_values = self.node_variables[self.node_variables["vartype"] == "pimp"]
+        import_values = import_values.pivot(
+            columns="node", index="hour", values="value"
+        )
+        return import_values
 
     def load_from_csv(
         self,

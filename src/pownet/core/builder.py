@@ -49,10 +49,10 @@ class ModelBuilder:
         self.spin: gp.tupledict = {}
 
         # Renewable energy and import sources
-        self.phydro: gp.tupledict = {}
-        self.psolar: gp.tupledict = {}
-        self.pwind: gp.tupledict = {}
-        self.pimp: gp.tupledict = {}  # import
+        self.phydro: gp.tupledict = gp.tupledict()
+        self.psolar: gp.tupledict = gp.tupledict()
+        self.pwind: gp.tupledict = gp.tupledict()
+        self.pimp: gp.tupledict = gp.tupledict()  # import
 
         # Node variables
         self.pos_pmismatch: gp.tupledict = {}
@@ -277,7 +277,7 @@ class ModelBuilder:
             )
 
         ################################
-        # Other variables
+        # End of adding variables
         ################################
 
         self.model.update()
@@ -296,7 +296,6 @@ class ModelBuilder:
                 inputs=self.inputs,
                 timesteps=self.timesteps,
                 step_k=step_k,
-                sim_horizon=self.inputs.sim_horizon,
                 units=units,
                 attribute="unit_marginal_cost",
             )
@@ -733,8 +732,8 @@ class ModelBuilder:
                 edge, t = get_edge_hour_from_varname(flow_variable.VarName)
                 line_capacity = capacity_df.loc[t + (step_k - 1) * 24, edge]
                 # Update the lower and upper bounds, respectively
-                flow_variable.lb = -line_capacity
-                flow_variable.ub = line_capacity
+                flow_variable.lb = -line_capacity * self.inputs.line_capacity_factor
+                flow_variable.ub = line_capacity * self.inputs.line_capacity_factor
 
         # Update variable bounds
         thermal_unit_vars = [self.pthermal, self.vpower, self.vpowerbar]
@@ -899,6 +898,45 @@ class ModelBuilder:
             line_loss_factor=self.inputs.line_loss_factor,
         )
 
+        if self.inputs.hydro_timestep == "daily":
+            self.model.remove(self.c_hydro_capacity)
+            self.c_hydro_capacity = modeling.add_c_hydro_capacity(
+                model=self.model,
+                phydro=self.phydro,
+                timesteps=self.timesteps,
+                step_k=step_k,
+                sim_horizon=self.inputs.sim_horizon,
+                hydro_units=self.inputs.hydro_units,
+                hydro_capacity=self.inputs.hydro_capacity,
+            )
+
+        # Reserve requirement
+        self.model.remove(self.c_reserve_req)
+        if self.inputs.use_spin_var:
+            self.c_reserve_req = modeling.add_c_reserve_req_1(
+                model=self.model,
+                spin=self.spin,
+                spin_shortfall=self.spin_shortfall,
+                timesteps=self.timesteps,
+                step_k=step_k,
+                thermal_units=self.inputs.thermal_units,
+                spin_requirement=self.inputs.spin_requirement,
+            )
+        else:
+            self.c_reserve_req = modeling.add_c_reserve_req_2(
+                model=self.model,
+                pbar=self.vpowerbar,
+                u=self.status,
+                spin_shortfall=self.spin_shortfall,
+                timesteps=self.timesteps,
+                step_k=step_k,
+                thermal_units=self.inputs.thermal_units,
+                thermal_min_capacity=self.inputs.thermal_min_capacity,
+                demand_nodes=self.inputs.demand_nodes,
+                demand=self.inputs.demand,
+                spin_requirement=self.inputs.spin_requirement,
+            )
+
     def update(
         self,
         step_k: int,
@@ -910,6 +948,7 @@ class ModelBuilder:
         self._update_variables(step_k=step_k)
         self._update_objfunc(step_k=step_k)
         self._update_constraints(step_k=step_k, init_conds=init_conds)
+        self.model.update()
 
         return self.model
 
