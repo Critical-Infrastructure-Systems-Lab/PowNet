@@ -275,7 +275,7 @@ class SystemInput:
         unit_node_map = self._get_column_pairs_as_dict(capacity_data)
         capacity_data.columns = (
             capacity_data.columns.droplevel(1)
-            if len(capacity_data.columns) > 1
+            if len(capacity_data.columns) >= 1
             else capacity_data.columns
         )
         self.fuelmap.update({k: fuel_type for k in unit_node_map.keys()})
