@@ -22,9 +22,20 @@ def get_fuel_mix_order() -> list[str]:
 
 
 class OutputProcessor:
-    def __init__(self, system_input: "SystemInput"):
-        self.inputs = system_input
-        self.dates: pd.DataFrame = None
+    def __init__(
+        self,
+        year: int,
+        fuelmap: dict,
+        demand: pd.DataFrame,
+    ) -> None:
+        self.year: int = year
+        self.fuelmap: dict = fuelmap
+        self.demand: pd.DataFrame = demand
+
+        # Sum across each month to get the monthly dispatch
+        # For processing dataframes
+        self.dates: pd.DataFrame = get_dates(year=self.year)
+        self.dates.index += 1
 
         self.node_variables: pd.DataFrame = None
 
@@ -61,7 +72,7 @@ class OutputProcessor:
             node_var_df["vartype"].isin(dispatch_vars)
         ].reset_index(drop=True)
         self.node_variables["fuel_type"] = self.node_variables.apply(
-            lambda x: self.inputs.fuelmap.get(x["node"], None), axis=1
+            lambda x: self.fuelmap.get(x["node"], None), axis=1
         )
         # Assign import and slack fuel types as they are not in the fuelmap dictionary
         self.node_variables.loc[
@@ -95,11 +106,6 @@ class OutputProcessor:
         ]
         self.total_dispatch = self.total_dispatch[self.fuel_mix_order]
 
-        # Sum across each month to get the monthly dispatch
-        # For processing dataframes
-        self.dates = get_dates(year=self.inputs.year)
-        self.dates.index += 1
-
         self.monthly_dispatch = self.total_dispatch.copy()
         self.monthly_dispatch["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_dispatch = self.monthly_dispatch.groupby("month").sum()
@@ -115,7 +121,7 @@ class OutputProcessor:
         self.daily_dispatch.index.name = "Day"
 
         # Demand is an input to the simulation
-        self.total_demand = self.inputs.demand.sum(axis=1).to_frame()
+        self.total_demand = self.demand.sum(axis=1).to_frame()
         self.total_demand.columns = ["demand"]
         self.total_demand.index.name = "Hour"
 

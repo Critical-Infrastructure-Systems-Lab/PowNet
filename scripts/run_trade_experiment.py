@@ -1,5 +1,4 @@
 from datetime import datetime
-import logging
 from pownet.core import (
     SystemInput,
     ModelBuilder,
@@ -10,9 +9,6 @@ from pownet.core import (
 from pownet.modeling import PowerSystemModel
 from pownet.data_processor import DataProcessor
 from pownet.data_utils import create_init_condition
-
-# Print INFO level logs
-logging.basicConfig(level=logging.INFO)
 
 ##### User inputs #####
 to_process_inputs = True
@@ -83,7 +79,11 @@ for step_k in range(1, steps_to_run):
     record_A.keep(power_system_model_A, step_k)
     init_conditions_A = record_A.get_init_conds()
 # Process the results
-output_processor_A = OutputProcessor(inputs_A)
+output_processor_A = OutputProcessor(
+    year=inputs_A.year,
+    fuelmap=inputs_A.fuelmap,
+    demand=inputs_A.demand,
+)
 node_var_df_A = record_A.get_node_variables()
 output_processor_A.load_from_dataframe(node_var_df_A)
 
@@ -159,7 +159,11 @@ for step_k in range(1, steps_to_run):
     record_B.keep(power_system_model_B, step_k)
     init_conditions_B = record_B.get_init_conds()
 # Process the results
-output_processor_B = OutputProcessor(inputs_B)
+output_processor_B = OutputProcessor(
+    year=inputs_B.year,
+    fuelmap=inputs_B.fuelmap,
+    demand=inputs_B.demand,
+)
 node_var_df_B = record_B.get_node_variables()
 output_processor_B.load_from_dataframe(node_var_df_B)
 
@@ -184,5 +188,22 @@ if do_plot:
 ######### Print the results #########
 # Total objective value of Region A
 print(f"Total objective value of Region A: {int(sum(record_A.get_objvals()))}")
-print(record_A.get_objvals())
-# print(f"Total objective value of Region A: {int(sum(record_B.get_objvals()))}")
+print(f"Total objective value of Region B: {int(sum(record_B.get_objvals()))}")
+
+#### Combine the total dispatch from both regions
+import pandas as pd
+
+year = 2016
+fuelmap = inputs_A.fuelmap.copy()
+fuelmap.update(inputs_B.fuelmap)
+demand_AB = pd.concat([output_processor_A.demand, output_processor_B.demand], axis=1)
+
+output_processor = OutputProcessor(year=year, fuelmap=fuelmap, demand=demand_AB)
+
+node_var_df_A = record_A.get_node_variables()
+node_var_df_B = record_B.get_node_variables()
+node_var_df = pd.concat([node_var_df_A, node_var_df_B], axis=0)
+
+output_processor.load_from_dataframe(node_var_df)
+
+output_processor = OutputProcessor(inputs_A)

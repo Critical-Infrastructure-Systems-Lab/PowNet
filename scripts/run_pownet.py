@@ -13,12 +13,10 @@ from pownet.data_utils import create_init_condition
 ##### User inputs #####
 to_process_inputs = True
 sim_horizon = 24
-model_name = "thailand"
-steps_to_run = None  # Default is None
+model_name = "RegionA"
+steps_to_run = 3  # Default is None
 do_plot = True
 #######################
-
-############### Region A ################
 
 if to_process_inputs:
     data_processor = DataProcessor(model_name=model_name, year=2016, frequency=50)
@@ -77,7 +75,11 @@ print(f"Objvals: {' '.join([str(int(objval)) for objval in record.get_objvals()]
 
 
 # Process the results
-output_processor = OutputProcessor(inputs)
+output_processor = OutputProcessor(
+    year=inputs.year,
+    fuelmap=inputs.fuelmap,
+    demand=inputs.demand,
+)
 node_var_df = record.get_node_variables()
 output_processor.load_from_dataframe(node_var_df)
 
@@ -101,23 +103,23 @@ if do_plot:
 
 # record.write_simulation_results()
 
-# Save build_times and objvals
-import os
-from pownet.folder_utils import get_output_dir
-import pandas as pd
+# # Save build_times and objvals
+# import os
+# from pownet.folder_utils import get_output_dir
+# import pandas as pd
 
-folder_dir = get_output_dir()
-prefix_name = "warmstart"
-df = pd.DataFrame(
-    {
-        "build_time": build_times,
-        "opt_time": opt_times,
-        "objval": objvals,
-    }
-)
-df.to_csv(
-    os.path.join(
-        folder_dir, f"{prefix_name}_{inputs.model_name}_{sim_horizon}_modelstats.csv"
-    ),
-    index=False,
-)
+# folder_dir = get_output_dir()
+# prefix_name = "warmstart"
+# df = pd.DataFrame(
+#     {
+#         "build_time": build_times,
+#         "opt_time": opt_times,
+#         "objval": objvals,
+#     }
+# )
+# df.to_csv(
+#     os.path.join(
+#         folder_dir, f"{prefix_name}_{inputs.model_name}_{sim_horizon}_modelstats.csv"
+#     ),
+#     index=False,
+# )

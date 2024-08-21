@@ -1,0 +1,5 @@
+source,sink,source_kv,sink_kv,stability_limit,thermal_limit,line_capacity,max_kv,reactance_per_km,reactance_pu,susceptance
+pGas,Node1,275,275,3958,504,504,275,0.365,18.25,4143
+pHydro,Node1,275,275,3958,504,504,275,0.365,18.25,4143
+pBiomass,Node2,275,275,2648,1009,1009,275,0.365,54.75,1381
+pHydro,Node2,275,275,3964,1009,1009,275,0.365,36.5,2071
