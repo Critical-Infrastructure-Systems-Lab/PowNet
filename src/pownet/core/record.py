@@ -206,7 +206,9 @@ class SystemRecord:
 
     def keep(
         self,
-        power_system_model: PowerSystemModel,
+        runtime: float,
+        objval: float,
+        solution: pd.DataFrame,
         step_k: int,
     ) -> None:
         """Keep the simulation results at the current simulation period step_k"""
@@ -223,10 +225,9 @@ class SystemRecord:
                 .to_dict()["value"]
             )
 
-        self.runtimes.append(power_system_model.get_runtime())
-        self.objvals.append(power_system_model.get_objval())
+        self.runtimes.append(runtime)
+        self.objvals.append(objval)
 
-        solution = pd.DataFrame(power_system_model.get_solution())
         # Create a col of variable types for filtering
         pat_vartype = r"(\w+)\["
         solution[["vartype"]] = solution["varname"].str.extract(
@@ -261,9 +262,13 @@ class SystemRecord:
         ##################
         # Append results to the existing dataframes
         ##################
+        # Only keep the first 24-hours of the simulation
+        current_node_vars = current_node_vars[current_node_vars["timestep"] <= 24]
         # Remove varname column from the three dataframes
         # move the value column to the end
         current_node_vars = current_node_vars.drop(["varname", "timestep"], axis=1)
+        # Only keep th
+
         self.node_vars = pd.concat([self.node_vars, current_node_vars], axis=0)
 
         self.flow_vars = pd.concat(
