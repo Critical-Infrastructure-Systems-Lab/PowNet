@@ -210,7 +210,9 @@ class DataProcessor:
         ).to_dict()["max_capacity"]
 
         self.derated_max_cap = pd.DataFrame(
-            0, columns=max_cap.keys(), index=range(0, 8760)
+            0,
+            columns=max_cap.keys(),
+            index=range(0, 8760),  # match index with get_dates
         )
         for thermal_unit in max_cap.keys():
             self.derated_max_cap[thermal_unit] = (

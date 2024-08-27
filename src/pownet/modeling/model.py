@@ -7,6 +7,7 @@ import os
 
 import gurobipy as gp
 import highspy
+import pandas as pd
 
 from pownet.folder_utils import get_output_dir
 
@@ -160,8 +161,8 @@ class PowerSystemModel:
             "value": self.model.getSolution().col_value,
         }
 
-    def get_solution(self) -> dict:
-        return self.get_solution_functions[self.solver]()
+    def get_solution(self) -> pd.DataFrame:
+        return pd.DataFrame(self.get_solution_functions[self.solver]())
 
     def get_runtime_gurobi(self) -> float:
         return self.model.Runtime

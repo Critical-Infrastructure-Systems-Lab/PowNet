@@ -72,7 +72,7 @@ class ModelBuilder:
         self.load_shortfall_penalty_expr: gp.LinExpr = gp.LinExpr()
         self.spin_shortfall_penalty_expr: gp.LinExpr = gp.LinExpr()
 
-        # Constraints that must be updated at each itereration (step_k)
+        # Constraints
         self.c_link_uvw_init: gp.tupledict = None
         self.c_link_uvw: gp.tupledict = None
         self.c_link_pthermal: gp.tupledict = None
@@ -993,4 +993,4 @@ class ModelBuilder:
         log_message += "\n\nNot added constraints:\n"
         log_message += "\n".join(not_added_constrs)
 
-        logger.info(log_message)
+        logger.warning(log_message)

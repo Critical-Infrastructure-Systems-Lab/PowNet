@@ -74,8 +74,8 @@ def add_c_link_uvw(
     return model.addConstrs(
         (
             u[unit_g, t] - u[unit_g, t - 1] == v[unit_g, t] - w[unit_g, t]
-            for t in range(2, sim_horizon + 1)
             for unit_g in thermal_units
+            for t in range(2, sim_horizon + 1)
         ),
         name="link_uvw",
     )
@@ -110,8 +110,8 @@ def add_c_link_pthermal(
         (
             pthermal[unit_g, t]
             == p[unit_g, t] + thermal_min_capacity[unit_g] * u[unit_g, t]
-            for t in timesteps
             for unit_g in thermal_units
+            for t in timesteps
         ),
         name="link_pthermal",
     )
@@ -144,8 +144,8 @@ def add_c_link_spin(
     return model.addConstrs(
         (
             pbar[unit_g, t] == p[unit_g, t] + spin[unit_g, t]
-            for t in timesteps
             for unit_g in thermal_units
+            for t in timesteps
         ),
         name="link_spin",
     )
@@ -197,8 +197,8 @@ def add_c_link_pu_lower(
     return model.addConstrs(
         (
             thermal_min_capacity[unit_g] * u[unit_g, t] <= pthermal[unit_g, t]
-            for t in timesteps
             for unit_g in thermal_units
+            for t in timesteps
         ),
         name="pthermal_lb",
     )
@@ -236,8 +236,8 @@ def add_c_link_pu_upper(
             pbar[unit_g, t] + thermal_min_capacity[unit_g] * u[unit_g, t]
             <= thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g]
             * u[unit_g, t]
-            for t in timesteps
             for unit_g in thermal_units
+            for t in timesteps
         ),
         name="pthermal_ub",
     )

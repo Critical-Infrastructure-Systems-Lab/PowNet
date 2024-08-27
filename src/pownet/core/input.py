@@ -569,20 +569,26 @@ class SystemInput:
             )
 
         ##################################
-        # Generator names cannot repeat across different types
+        # Generator names cannot repeat across different generator types and slack units (demand nodes)
         ##################################
-        if (
-            len(
-                set(self.thermal_units)
-                | set(self.hydro_units)
-                | set(self.solar_units)
-                | set(self.wind_units)
-                | set(self.import_units)
-            )
-            != number_of_generators
-        ):
+        generators = (
+            set(self.thermal_units)
+            | set(self.hydro_units)
+            | set(self.solar_units)
+            | set(self.wind_units)
+            | set(self.import_units)
+        )
+        if len(generators) != number_of_generators:
             raise ValueError(
                 "PowNet: Generator names cannot repeat across different types."
+            )
+
+        ##################################
+        # Generator names cannot be the same as the name of demand nodes
+        ##################################
+        if generators.intersection(self.demand_nodes):
+            raise ValueError(
+                "PowNet: Generator names cannot be the same as the name of demand nodes."
             )
 
         input_summary = textwrap.dedent(
@@ -621,12 +627,3 @@ class SystemInput:
     def load_and_check_data(self):
         self.load_data()
         self.check_data()
-
-
-if __name__ == "__main__":
-    model_name = "dummy_trade"
-    year = 2016
-    sim_horizon = 24
-
-    system_input = SystemInput(model_name, year, sim_horizon)
-    system_input.load_and_check_data()
