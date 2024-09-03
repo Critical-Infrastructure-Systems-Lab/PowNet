@@ -352,8 +352,8 @@ class ModelBuilder:
 
         # The cost of shortfall is the slack variable (pos_pmismatch) needed to meet demand
         self.load_shortfall_penalty_expr = self.inputs.load_shortfall_penalty_factor * (
-            gp.quicksum(self.pos_pmismatch) + gp.quicksum(self.neg_pmismatch)
-        )
+            gp.quicksum(self.pos_pmismatch)
+        ) + (self.inputs.load_curtail_penalty_factor * gp.quicksum(self.neg_pmismatch))
 
         # Penalize the system if it cannot meet the spinning reserve requirement
         self.spin_shortfall_penalty_expr = (

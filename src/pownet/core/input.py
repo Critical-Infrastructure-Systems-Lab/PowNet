@@ -26,6 +26,7 @@ class SystemInput:
         line_loss_factor: float = 0.075,
         line_capacity_factor: float = 0.9,
         load_shortfall_penalty_factor: float = 1000,
+        load_curtail_penalty_factor: float = 0,
         spin_shortfall_penalty_factor: float = 1000,
     ) -> None:
         """This class reads the input data for the power system model."""
@@ -61,6 +62,7 @@ class SystemInput:
 
         # The shortfall penalty is the cost of not meeting the demand. (USD/MWh)
         self.load_shortfall_penalty_factor = load_shortfall_penalty_factor
+        self.load_curtail_penalty_factor = load_curtail_penalty_factor
 
         # The reserve penalty is the cost of not meeting the reserve requirement. (USD/MWh)
         self.spin_shortfall_penalty_factor = spin_shortfall_penalty_factor
