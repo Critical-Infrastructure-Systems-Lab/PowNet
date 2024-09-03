@@ -4,10 +4,10 @@ import os
 import matplotlib.pyplot as plt
 
 from pypolp.parser import parse_mps_dec
-from pownet.folder_sys import get_output_dir
+from pownet.folder_utils import get_output_dir
 
 
-MODEL_NAME = "cambodia"
+MODEL_NAME = "RegionAB"
 SAVE_FIGURE = True
 
 # %% Reorder the A matrix according to the .dec file

@@ -11,9 +11,9 @@ from pownet.data_processor import DataProcessor
 from pownet.data_utils import create_init_condition
 
 ##### User inputs #####
-to_process_inputs = False
-sim_horizon = 48
-model_name = "RegionAB"
+to_process_inputs = True
+sim_horizon = 24
+model_name = "laos"
 steps_to_run = 3  # Default is None
 do_plot = True
 #######################
@@ -72,6 +72,7 @@ for step_k in range(1, steps_to_run):
         runtime=power_system_model.get_runtime(),
         objval=power_system_model.get_objval(),
         solution=power_system_model.get_solution(),
+        lmp=power_system_model.get_lmp(),
         step_k=step_k,
     )
     init_conditions = record.get_init_conds()
@@ -103,27 +104,30 @@ if do_plot:
             to_save=False,
         )
 
+# Plot LMP
+lmp_df = record.get_lmp()
+visualizer.plot_lmp(lmp_df, to_save=False)
 
 # record.write_simulation_results()
 
-# Save build_times and objvals
-import os
-from pownet.folder_utils import get_output_dir
-import pandas as pd
+# # Save build_times and objvals
+# import os
+# from pownet.folder_utils import get_output_dir
+# import pandas as pd
 
-folder_dir = get_output_dir()
-prefix_name = "warmstart"
-df = pd.DataFrame(
-    {
-        "build_time": build_times,
-        "opt_time": opt_times,
-        "objval": objvals,
-    }
-)
-df.to_csv(
-    os.path.join(
-        folder_dir,
-        f"branch{prefix_name}_{inputs.model_name}_{sim_horizon}_modelstats.csv",
-    ),
-    index=False,
-)
+# folder_dir = get_output_dir()
+# prefix_name = "warmstart"
+# df = pd.DataFrame(
+#     {
+#         "build_time": build_times,
+#         "opt_time": opt_times,
+#         "objval": objvals,
+#     }
+# )
+# df.to_csv(
+#     os.path.join(
+#         folder_dir,
+#         f"branch{prefix_name}_{inputs.model_name}_{sim_horizon}_modelstats.csv",
+#     ),
+#     index=False,
+# )
