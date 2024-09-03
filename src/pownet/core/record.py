@@ -3,113 +3,18 @@ TODO: self.current_hydro, self.current_import for model coupling
 """
 
 from __future__ import annotations
-import os
 
 import pandas as pd
-import numpy as np
 
-from pownet.modeling import PowerSystemModel
-from pownet.folder_utils import get_output_dir
-
-
-def write_df_to_output_dir(
-    df: pd.DataFrame,
-    output_name: str,
-    model_id: str,
-) -> None:
-    """Write a dataframe to the output folder.
-
-    Args:
-        df: The dataframe to write.
-        output_name: The name of the output file.
-        model_id: The model ID.
-
-    Returns:
-        None
-    """
-    df.to_csv(
-        os.path.join(
-            get_output_dir(),
-            f"{model_id}_{output_name}.csv",
-        ),
-        index=False,
-    )
-
-
-def calc_remaining_duration(
-    solution: pd.DataFrame,
-    sim_horizon: int,
-    thermal_units: list[str],
-    duration_dict: dict[str, int],  # Generic for TU or TD
-    vartype: str,  # 'startup' or 'shutdown'
-) -> dict[str, int]:
-    """Calculates the remaining duration (on or off) for each thermal unit.
-
-    This function analyzes the provided solution DataFrame to determine the latest
-    timestep at which a specified event (startup or shutdown) occurred for each
-    thermal unit. It then calculates the remaining duration based on the simulation
-    horizon and the unit's minimum required duration.
-
-    Args:
-        solution: A DataFrame containing the solution of the optimization model.
-        sim_horizon: The length of the simulation horizon.
-        thermal_units: A list of thermal unit names.
-        duration_dict: A dictionary mapping unit names to their respective minimum durations.
-        vartype: The type of event to analyze. Either 'startup' or 'shutdown'.
-
-    Returns:
-        A dictionary mapping unit names to their remaining durations.
-
-    Raises:
-        ValueError: If the simulation horizon is shorter than the maximum duration of any thermal unit.
-    """
-
-    # This logic does not work if sim_horizon is shorter than the duration
-    if sim_horizon < max(duration_dict.values()):
-        raise ValueError(
-            "The simulation horizon is shorter than the maximum duration of the thermal units."
-        )
-
-    remaining_durations = {}
-
-    for unit in thermal_units:
-        subset = (
-            solution[(solution["node"] == unit) & (solution["vartype"] == vartype)]
-            .set_index("timestep")
-            .drop(["vartype", "node"], axis=1)
-        )
-
-        filtered_df = subset[subset["value"] == 1]
-        if len(filtered_df) > 0:
-            latest_event_timestep = filtered_df.index.max()
-        else:
-            latest_event_timestep = -sim_horizon
-
-        remaining_durations[unit] = max(
-            0, duration_dict[unit] - (sim_horizon - latest_event_timestep) - 1
-        )
-
-    return remaining_durations
-
-
-def calc_remaining_on_duration(
-    solution: pd.DataFrame,
-    sim_horizon: int,
-    thermal_units: list[str],
-    TU: dict[str, int],
-) -> dict[str, int]:
-    """Calculate the remaining online duration for each thermal unit."""
-    return calc_remaining_duration(solution, sim_horizon, thermal_units, TU, "startup")
-
-
-def calc_remaining_off_duration(
-    solution: pd.DataFrame,
-    sim_horizon: int,
-    thermal_units: list[str],
-    TD: dict[str, int],
-) -> dict[str, int]:
-    """Calculate the remaining shutdown duration for each thermal unit."""
-    return calc_remaining_duration(solution, sim_horizon, thermal_units, TD, "shutdown")
+from pownet.data_utils import (
+    parse_node_variables,
+    parse_flow_variables,
+    parse_syswide_variables,
+    parse_lmp,
+    calc_remaining_on_duration,
+    calc_remaining_off_duration,
+    write_df_to_output_dir,
+)
 
 
 class SystemRecord:
@@ -143,77 +48,6 @@ class SystemRecord:
         self.current_min_on: dict[str, int] = {}
         self.current_min_off: dict[str, int] = {}
 
-    def _parse_node_variables(
-        self, solution: pd.DataFrame, step_k: int
-    ) -> pd.DataFrame:
-        """Node variables are in the (node, t) format."""
-
-        node_var_pattern = r"(\w+)\[(\w+),(\d+)\]"
-        current_node_vars = solution[
-            solution["varname"].str.match(node_var_pattern)
-        ].copy()
-
-        current_node_vars[["node", "timestep"]] = current_node_vars[
-            "varname"
-        ].str.extract(node_var_pattern, expand=True)[[1, 2]]
-
-        current_node_vars["timestep"] = current_node_vars["timestep"].astype(int)
-
-        current_node_vars["hour"] = current_node_vars[
-            "timestep"
-        ] + self.inputs.sim_horizon * (step_k - 1)
-
-        # Rounding binary values
-        current_node_vars.loc[
-            np.isclose(current_node_vars["value"], 0, atol=1e-4), "value"
-        ] = 0
-        current_node_vars.loc[
-            np.isclose(current_node_vars["value"], 1, atol=1e-4), "value"
-        ] = 1
-        return current_node_vars
-
-    def _parse_flow_variables(
-        self, solution: pd.DataFrame, step_k: int
-    ) -> pd.DataFrame:
-        """
-        The flow variables are in the (node, node, t) format.
-        """
-        flow_var_pattern = r"flow\[(\w+),(\w+),(\d+)\]"
-        cur_flow_vars = solution[solution["varname"].str.match(flow_var_pattern)].copy()
-
-        cur_flow_vars[["node_a", "node_b", "timestep"]] = cur_flow_vars[
-            "varname"
-        ].str.extract(flow_var_pattern, expand=True)
-
-        cur_flow_vars["timestep"] = cur_flow_vars["timestep"].astype(int)
-        cur_flow_vars["hour"] = cur_flow_vars["timestep"] + self.inputs.sim_horizon * (
-            step_k - 1
-        )
-        cur_flow_vars = cur_flow_vars.drop("varname", axis=1)
-        return cur_flow_vars
-
-    def _parse_syswide_variables(
-        self, solution: pd.DataFrame, step_k: int
-    ) -> pd.DataFrame:
-        """
-        The system-wide variables are in the (t) format.
-        """
-        syswide_var_pattern = r"(\w+)\[(\d+)\]"
-        cur_syswide_vars = solution[
-            solution["varname"].str.match(syswide_var_pattern)
-        ].copy()
-
-        cur_syswide_vars["timestep"] = cur_syswide_vars["varname"].str.extract(
-            syswide_var_pattern, expand=True
-        )[1]
-        cur_syswide_vars["timestep"] = cur_syswide_vars["timestep"].astype(int)
-        cur_syswide_vars["hour"] = cur_syswide_vars[
-            "timestep"
-        ] + self.inputs.sim_horizon * (step_k - 1)
-
-        cur_syswide_vars = cur_syswide_vars.drop("varname", axis=1)
-        return cur_syswide_vars
-
     def keep(
         self,
         runtime: float,
@@ -245,7 +79,9 @@ class SystemRecord:
             pat_vartype, expand=True
         )
 
-        current_node_vars = self._parse_node_variables(solution, step_k)
+        current_node_vars = parse_node_variables(
+            solution, self.inputs.sim_horizon, step_k
+        )
 
         ##################
         # Initial conditions: vpower (p), commitment (u),
@@ -274,18 +110,10 @@ class SystemRecord:
         # Locational Marginal Prices (LMP)
         ##################
         if lmp is not None:
-            lmp_df = pd.DataFrame.from_dict(lmp, orient="index", columns=["value"])
-            lmp_df = lmp_df.reset_index().rename(columns={"index": "name"})
-            lmp_df[["node", "timestep"]] = lmp_df["name"].str.extract(
-                r"flowBal\[(.*),(\d+)\]"
+            self.lmp_df = pd.concat(
+                [self.lmp_df, parse_lmp(lmp, self.inputs.sim_horizon, step_k)],
+                axis=0,
             )
-            lmp_df["timestep"] = lmp_df["timestep"].astype(int)
-            lmp_df["hour"] = lmp_df["timestep"] + self.inputs.sim_horizon * (step_k - 1)
-            # Keep only the first 24-hours of the simulation
-            lmp_df = lmp_df[lmp_df["timestep"] <= 24]
-
-            lmp_df = lmp_df.drop(["name", "timestep"], axis=1)
-            self.lmp_df = pd.concat([self.lmp_df, lmp_df], axis=0)
 
         ##################
         # Append results to the existing dataframes
@@ -297,7 +125,9 @@ class SystemRecord:
         current_node_vars = current_node_vars.drop(["varname", "timestep"], axis=1)
         self.node_vars = pd.concat([self.node_vars, current_node_vars], axis=0)
 
-        flow_vars = self._parse_flow_variables(solution=solution, step_k=step_k)
+        flow_vars = parse_flow_variables(
+            solution=solution, sim_horizon=self.inputs.sim_horizon, step_k=step_k
+        )
         # Only keep the first 24-hours of the simulation
         flow_vars = flow_vars[flow_vars["timestep"] <= 24]
         flow_vars = flow_vars.drop("timestep", axis=1)
@@ -309,7 +139,9 @@ class SystemRecord:
             axis=0,
         )
 
-        syswide_vars = self._parse_syswide_variables(solution=solution, step_k=step_k)
+        syswide_vars = parse_syswide_variables(
+            solution=solution, sim_horizon=self.inputs.sim_horizon, step_k=step_k
+        )
         # Only keep the first 24-hours of the simulation
         syswide_vars = syswide_vars[syswide_vars["timestep"] <= 24]
         syswide_vars = syswide_vars.drop("timestep", axis=1)

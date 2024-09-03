@@ -194,14 +194,20 @@ class Visualizer:
 
             plt.show()
 
-    def plot_lmp(self, lmp_df: pd.DataFrame, to_save: bool) -> None:
+    def plot_lmp(
+        self,
+        lmp_df: pd.DataFrame,
+        to_save: bool,
+        max_ylim: float = 200,
+    ) -> None:
         """Plots unique locational marginal price (LMP) timeseries.
         For each unique LMP timeseries, a representative node is chosen
         based on ordering in the dataframe.
 
         Args:
-            lmp_df (pd.DataFrame): The locational marginal price.
+            lmp_df (pd.DataFrame): LMP timeseries.
             to_save (bool): Whether to save to the output directory.
+            max_ylim (float): Maximum y-axis limit.
 
         Returns:
             None
@@ -216,6 +222,7 @@ class Visualizer:
         ax.set_ylabel("LMP ($/MWh)")
         # Place legend at the bottom
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=4)
+        ax.set_ylim(top=max_ylim)
 
         if to_save:
             figure_name = f"{self.model_id}_lmp.png"

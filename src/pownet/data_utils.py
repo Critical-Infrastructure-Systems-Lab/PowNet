@@ -2,10 +2,11 @@
 
 import re
 import datetime
+import os
 
-import gurobipy as gp
 import numpy as np
 import pandas as pd
+from pownet.folder_utils import get_output_dir
 
 
 def get_dates(year):
@@ -90,38 +91,185 @@ def get_edge_hour_from_varname(var_name: str) -> tuple[tuple[str, str], int]:
         raise ValueError("Invalid variable name format")
 
 
-def get_nodehour(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    # Extract the node and hour information
-    pat_node_time = r"(\w+)\[(.+),(\d+)\]"
-    out_df = df["varname"].str.extract(pat_node_time, expand=True)
-    out_df.columns = ["vartype", "node", "hour"]
-    out_df["hour"] = out_df["hour"].astype("int")
-    out_df = pd.concat([out_df, df["value"]], axis=1)
-    return out_df
-
-
-def get_nodehour_flow(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    # Flow is in the (node_a, node_b, t) format
-    pat_node_time = r"flow\[(.+),(.+),(\d+)\]"
-    out_df = df["varname"].str.extract(pat_node_time, expand=True)
-    out_df.columns = ["node_a", "node_b", "hour"]
-    out_df["hour"] = out_df["hour"].astype("int")
-    out_df = pd.concat([out_df, df["value"]], axis=1)
-    return out_df
-
-
-def get_nodehour_sys(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    # Extract the node and hour information
-    pat_node_time = r"(.+)\[(\d+)\]"
-    out_df = df["varname"].str.extract(pat_node_time, expand=True)
-    out_df.columns = ["vartype", "hour"]
-    out_df["hour"] = out_df["hour"].astype("int")
-    out_df = pd.concat([out_df, df["value"]], axis=1)
-    return out_df
-
-
 def get_current_time() -> str:
     return datetime.datetime.now().strftime("%Y%m%d_%H%M")
+
+
+def write_df_to_output_dir(
+    df: pd.DataFrame,
+    output_name: str,
+    model_id: str,
+) -> None:
+    """Write a dataframe to the output folder.
+
+    Args:
+        df: The dataframe to write.
+        output_name: The name of the output file.
+        model_id: The model ID.
+
+    Returns:
+        None
+    """
+    df.to_csv(
+        os.path.join(
+            get_output_dir(),
+            f"{model_id}_{output_name}.csv",
+        ),
+        index=False,
+    )
+
+
+def calc_remaining_duration(
+    solution: pd.DataFrame,
+    sim_horizon: int,
+    thermal_units: list[str],
+    duration_dict: dict[str, int],  # Generic for TU or TD
+    vartype: str,  # 'startup' or 'shutdown'
+) -> dict[str, int]:
+    """Calculates the remaining duration (on or off) for each thermal unit.
+
+    This function analyzes the provided solution DataFrame to determine the latest
+    timestep at which a specified event (startup or shutdown) occurred for each
+    thermal unit. It then calculates the remaining duration based on the simulation
+    horizon and the unit's minimum required duration.
+
+    Args:
+        solution: A DataFrame containing the solution of the optimization model.
+        sim_horizon: The length of the simulation horizon.
+        thermal_units: A list of thermal unit names.
+        duration_dict: A dictionary mapping unit names to their respective minimum durations.
+        vartype: The type of event to analyze. Either 'startup' or 'shutdown'.
+
+    Returns:
+        A dictionary mapping unit names to their remaining durations.
+
+    Raises:
+        ValueError: If the simulation horizon is shorter than the maximum duration of any thermal unit.
+    """
+
+    # This logic does not work if sim_horizon is shorter than the duration
+    if sim_horizon < max(duration_dict.values()):
+        raise ValueError(
+            "The simulation horizon is shorter than the maximum duration of the thermal units."
+        )
+
+    remaining_durations = {}
+
+    for unit in thermal_units:
+        subset = (
+            solution[(solution["node"] == unit) & (solution["vartype"] == vartype)]
+            .set_index("timestep")
+            .drop(["vartype", "node"], axis=1)
+        )
+
+        filtered_df = subset[subset["value"] == 1]
+        if len(filtered_df) > 0:
+            latest_event_timestep = filtered_df.index.max()
+        else:
+            latest_event_timestep = -sim_horizon
+
+        remaining_durations[unit] = max(
+            0, duration_dict[unit] - (sim_horizon - latest_event_timestep) - 1
+        )
+
+    return remaining_durations
+
+
+def calc_remaining_on_duration(
+    solution: pd.DataFrame,
+    sim_horizon: int,
+    thermal_units: list[str],
+    TU: dict[str, int],
+) -> dict[str, int]:
+    """Calculate the remaining online duration for each thermal unit."""
+    return calc_remaining_duration(solution, sim_horizon, thermal_units, TU, "startup")
+
+
+def calc_remaining_off_duration(
+    solution: pd.DataFrame,
+    sim_horizon: int,
+    thermal_units: list[str],
+    TD: dict[str, int],
+) -> dict[str, int]:
+    """Calculate the remaining shutdown duration for each thermal unit."""
+    return calc_remaining_duration(solution, sim_horizon, thermal_units, TD, "shutdown")
+
+
+def parse_node_variables(
+    solution: pd.DataFrame, sim_horizon: int, step_k: int
+) -> pd.DataFrame:
+    """Node variables are in the (node, t) format."""
+
+    node_var_pattern = r"(\w+)\[(\w+),(\d+)\]"
+    current_node_vars = solution[solution["varname"].str.match(node_var_pattern)].copy()
+
+    current_node_vars[["node", "timestep"]] = current_node_vars["varname"].str.extract(
+        node_var_pattern, expand=True
+    )[[1, 2]]
+
+    current_node_vars["timestep"] = current_node_vars["timestep"].astype(int)
+
+    current_node_vars["hour"] = current_node_vars["timestep"] + sim_horizon * (
+        step_k - 1
+    )
+
+    # Rounding binary values
+    current_node_vars.loc[
+        np.isclose(current_node_vars["value"], 0, atol=1e-4), "value"
+    ] = 0
+    current_node_vars.loc[
+        np.isclose(current_node_vars["value"], 1, atol=1e-4), "value"
+    ] = 1
+    return current_node_vars
+
+
+def parse_flow_variables(
+    solution: pd.DataFrame, sim_horizon: int, step_k: int
+) -> pd.DataFrame:
+    """
+    The flow variables are in the (node, node, t) format.
+    """
+    flow_var_pattern = r"flow\[(\w+),(\w+),(\d+)\]"
+    cur_flow_vars = solution[solution["varname"].str.match(flow_var_pattern)].copy()
+
+    cur_flow_vars[["node_a", "node_b", "timestep"]] = cur_flow_vars[
+        "varname"
+    ].str.extract(flow_var_pattern, expand=True)
+
+    cur_flow_vars["timestep"] = cur_flow_vars["timestep"].astype(int)
+    cur_flow_vars["hour"] = cur_flow_vars["timestep"] + sim_horizon * (step_k - 1)
+    cur_flow_vars = cur_flow_vars.drop("varname", axis=1)
+    return cur_flow_vars
+
+
+def parse_syswide_variables(
+    solution: pd.DataFrame, sim_horizon: int, step_k: int
+) -> pd.DataFrame:
+    """
+    The system-wide variables are in the (t) format.
+    """
+    syswide_var_pattern = r"(\w+)\[(\d+)\]"
+    cur_syswide_vars = solution[
+        solution["varname"].str.match(syswide_var_pattern)
+    ].copy()
+
+    cur_syswide_vars["timestep"] = cur_syswide_vars["varname"].str.extract(
+        syswide_var_pattern, expand=True
+    )[1]
+    cur_syswide_vars["timestep"] = cur_syswide_vars["timestep"].astype(int)
+    cur_syswide_vars["hour"] = cur_syswide_vars["timestep"] + sim_horizon * (step_k - 1)
+    cur_syswide_vars = cur_syswide_vars.drop("varname", axis=1)
+    return cur_syswide_vars
+
+
+def parse_lmp(lmp: dict[str, float], sim_horizon: int, step_k: int) -> pd.DataFrame:
+    lmp_df = pd.DataFrame.from_dict(lmp, orient="index", columns=["value"])
+    lmp_df = lmp_df.reset_index().rename(columns={"index": "name"})
+    lmp_df[["node", "timestep"]] = lmp_df["name"].str.extract(r"flowBal\[(.*),(\d+)\]")
+    lmp_df["timestep"] = lmp_df["timestep"].astype(int)
+    lmp_df["hour"] = lmp_df["timestep"] + sim_horizon * (step_k - 1)
+    # Keep only the first 24-hours of the simulation
+    lmp_df = lmp_df[lmp_df["timestep"] <= 24]
+
+    lmp_df = lmp_df.drop(["name", "timestep"], axis=1)
+    return lmp_df
