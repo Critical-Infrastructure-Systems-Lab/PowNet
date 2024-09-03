@@ -193,3 +193,30 @@ class Visualizer:
                 )
 
             plt.show()
+
+    def plot_lmp(self, lmp_df: pd.DataFrame, to_save: bool) -> None:
+        """Plot the locational marginal price.
+
+        Args:
+            lmp_df (pd.DataFrame): The locational marginal price.
+            to_save (bool): Whether to save to the output directory.
+
+        Returns:
+            None
+
+        """
+        fig, ax = plt.subplots(figsize=(8, 5))
+        lmp_df.plot(ax=ax, linewidth=2)
+        ax.set_xlabel("Hour")
+        ax.set_ylabel("LMP ($/MWh)")
+        # Place legend at the bottom
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=4)
+
+        if to_save:
+            figure_name = f"{self.model_id}_lmp.png"
+            fig.savefig(
+                os.path.join(get_output_dir(), figure_name),
+                dpi=350,
+            )
+
+        plt.show()

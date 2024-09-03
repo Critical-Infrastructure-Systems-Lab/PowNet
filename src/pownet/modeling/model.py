@@ -174,7 +174,7 @@ class PowerSystemModel:
         return self.get_runtime_functions[self.solver]()
 
     def get_lmp(self) -> dict:
-        """Get the locational marginal price (LMP) for each node in the network"""
+        """Get the locational marginal price (LMP)"""
         # Fix the binary variables
         self.model = self.model.fixed()
         # Reoptimize as linear program

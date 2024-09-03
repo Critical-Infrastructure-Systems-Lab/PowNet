@@ -129,6 +129,9 @@ class SystemRecord:
         # Format of variable name: var(t)
         self.syswide_vars: pd.DataFrame = pd.DataFrame()
 
+        # Locational marginal prices (LMP)
+        self.lmp_df: pd.DataFrame = pd.DataFrame()
+
         self.objvals: list = []
         self.runtimes: list = []
 
@@ -156,7 +159,9 @@ class SystemRecord:
 
         current_node_vars["timestep"] = current_node_vars["timestep"].astype(int)
 
-        current_node_vars["hour"] = current_node_vars["timestep"] + 24 * (step_k - 1)
+        current_node_vars["hour"] = current_node_vars[
+            "timestep"
+        ] + self.inputs.sim_horizon * (step_k - 1)
 
         # Rounding binary values
         current_node_vars.loc[
@@ -176,14 +181,15 @@ class SystemRecord:
         flow_var_pattern = r"flow\[(\w+),(\w+),(\d+)\]"
         cur_flow_vars = solution[solution["varname"].str.match(flow_var_pattern)].copy()
 
-        cur_flow_vars[["node_a", "node_b", "hour"]] = cur_flow_vars[
+        cur_flow_vars[["node_a", "node_b", "timestep"]] = cur_flow_vars[
             "varname"
         ].str.extract(flow_var_pattern, expand=True)
 
-        cur_flow_vars["hour"] = cur_flow_vars["hour"].astype(int)
-        cur_flow_vars["hour"] = cur_flow_vars["hour"] + self.inputs.sim_horizon * (
+        cur_flow_vars["timestep"] = cur_flow_vars["timestep"].astype(int)
+        cur_flow_vars["hour"] = cur_flow_vars["timestep"] + self.inputs.sim_horizon * (
             step_k - 1
         )
+        cur_flow_vars = cur_flow_vars.drop("varname", axis=1)
         return cur_flow_vars
 
     def _parse_syswide_variables(
@@ -197,11 +203,15 @@ class SystemRecord:
             solution["varname"].str.match(syswide_var_pattern)
         ].copy()
 
-        cur_syswide_vars["hour"] = cur_syswide_vars["varname"].str.extract(
+        cur_syswide_vars["timestep"] = cur_syswide_vars["varname"].str.extract(
             syswide_var_pattern, expand=True
         )[1]
-        cur_syswide_vars["hour"] = cur_syswide_vars["hour"].astype(int)
-        cur_syswide_vars["hour"] = cur_syswide_vars["hour"] + 24 * (step_k - 1)
+        cur_syswide_vars["timestep"] = cur_syswide_vars["timestep"].astype(int)
+        cur_syswide_vars["hour"] = cur_syswide_vars[
+            "timestep"
+        ] + self.inputs.sim_horizon * (step_k - 1)
+
+        cur_syswide_vars = cur_syswide_vars.drop("varname", axis=1)
         return cur_syswide_vars
 
     def keep(
@@ -210,6 +220,7 @@ class SystemRecord:
         objval: float,
         solution: pd.DataFrame,
         step_k: int,
+        lmp: dict[str, float] = None,
     ) -> None:
         """Keep the simulation results at the current simulation period step_k"""
 
@@ -260,6 +271,23 @@ class SystemRecord:
         )
 
         ##################
+        # Locational Marginal Prices (LMP)
+        ##################
+        if lmp is not None:
+            lmp_df = pd.DataFrame.from_dict(lmp, orient="index", columns=["value"])
+            lmp_df = lmp_df.reset_index().rename(columns={"index": "name"})
+            lmp_df[["node", "timestep"]] = lmp_df["name"].str.extract(
+                r"flowBal\[(.*),(\d+)\]"
+            )
+            lmp_df["timestep"] = lmp_df["timestep"].astype(int)
+            lmp_df["hour"] = lmp_df["timestep"] + self.inputs.sim_horizon * (step_k - 1)
+            # Keep only the first 24-hours of the simulation
+            lmp_df = lmp_df[lmp_df["timestep"] <= 24]
+
+            lmp_df = lmp_df.drop(["name", "timestep"], axis=1)
+            self.lmp_df = pd.concat([self.lmp_df, lmp_df], axis=0)
+
+        ##################
         # Append results to the existing dataframes
         ##################
         # Only keep the first 24-hours of the simulation
@@ -267,25 +295,28 @@ class SystemRecord:
         # Remove varname column from the three dataframes
         # move the value column to the end
         current_node_vars = current_node_vars.drop(["varname", "timestep"], axis=1)
-        # Only keep th
-
         self.node_vars = pd.concat([self.node_vars, current_node_vars], axis=0)
 
+        flow_vars = self._parse_flow_variables(solution=solution, step_k=step_k)
+        # Only keep the first 24-hours of the simulation
+        flow_vars = flow_vars[flow_vars["timestep"] <= 24]
+        flow_vars = flow_vars.drop("timestep", axis=1)
         self.flow_vars = pd.concat(
             [
                 self.flow_vars,
-                self._parse_flow_variables(solution=solution, step_k=step_k).drop(
-                    "varname", axis=1
-                ),
+                flow_vars,
             ],
             axis=0,
         )
+
+        syswide_vars = self._parse_syswide_variables(solution=solution, step_k=step_k)
+        # Only keep the first 24-hours of the simulation
+        syswide_vars = syswide_vars[syswide_vars["timestep"] <= 24]
+        syswide_vars = syswide_vars.drop("timestep", axis=1)
         self.syswide_vars = pd.concat(
             [
                 self.syswide_vars,
-                self._parse_syswide_variables(solution=solution, step_k=step_k).drop(
-                    "varname", axis=1
-                ),
+                syswide_vars,
             ],
             axis=0,
         )
@@ -322,6 +353,11 @@ class SystemRecord:
     def get_objvals(self) -> list[float]:
         return self.objvals
 
+    def get_lmp(self) -> pd.DataFrame:
+        return self.lmp_df.pivot_table(
+            index="hour", columns="node", values="value", aggfunc="first"
+        )
+
     def write_simulation_results(self) -> None:
         """
         Write 4 CSV files containing modeling results to the output directory.
@@ -341,4 +377,11 @@ class SystemRecord:
                 df,
                 output_name=output_name,
                 model_id=self.inputs.model_id,  # Use model_name as the identifier
+            )
+
+        if not self.lmp_df.empty:
+            write_df_to_output_dir(
+                self.lmp_df,
+                output_name="lmp",
+                model_id=self.inputs.model_id,
             )
