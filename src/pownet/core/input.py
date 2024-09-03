@@ -515,8 +515,16 @@ class SystemInput:
         ##################################
 
         if not (self.thermal_derated_capacity >= self.thermal_min_capacity).all().all():
+            # Identify units with derated capacity below the minimum capacity
+            units_below_min_capacity = (
+                self.thermal_derated_capacity[
+                    self.thermal_derated_capacity < self.thermal_min_capacity
+                ]
+                .stack()
+                .index.tolist()
+            )
             raise ValueError(
-                "PowNet: The derated capacity of thermal units must be above the minimum capacity."
+                f"PowNet: The derated capacity of thermal units must be above the minimum capacity:\n{units_below_min_capacity}"
             )
 
         ##################################
