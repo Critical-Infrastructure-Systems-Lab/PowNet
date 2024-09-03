@@ -1,7 +1,7 @@
 import unittest
 import pandas as pd
 
-from pownet.core.record import calc_remaining_on_duration, calc_remaining_off_duration
+from pownet.data_utils import calc_remaining_on_duration, calc_remaining_off_duration
 
 
 class TestCalcMinOnlineDuration(unittest.TestCase):
