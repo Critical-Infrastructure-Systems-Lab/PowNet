@@ -31,8 +31,8 @@ VajiralongkornIc,VajiralongkornIc,oil_ic,oil,5,1,10.33,3.17,8,1.5,50,5,1,1
 WangSalaMill1,WangSalaMill1,coal_st,coal,60.2,5,10.05,4.6,5,2.7,90,26.2,10,10
 WangSalaMill2,WangSalaMill2,coal_st,coal,34,7,10.05,4.6,5,2.7,90,34,10,10
 Khanomcc,Khanomcc,gas_cc,gas,678,136,7.65,2,5.85,1.2,70,678,4,4
-Khanom,Khanom,gas_gt,gas,70.2,14,11.21,2,5.85,1.7,70,70.2,1,1
-Krabi,Krabi,gas_st,gas,340,68,11.21,2,5.85,1.2,70,340,6,6
+Khanomgt,Khanom,gas_gt,gas,70.2,14,11.21,2,5.85,1.7,70,70.2,1,1
+Krabist,Krabi,gas_st,gas,340,68,11.21,2,5.85,1.2,70,340,6,6
 LampangCementPlant1,LampangCementPlant1,waste_heat_st,waste_heat,8.5,2,14.1,26,3.02,1.2,50,8.46,6,6
 Lankrabue,Lankrabue,oil_gt,oil,14,3,13.54,3.17,8,1.5,50,14,1,1
 Maehongson,Maehongson,oil_st,oil,6,1,10.19,3.17,8,1.5,50,6,1,1
