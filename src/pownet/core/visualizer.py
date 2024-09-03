@@ -195,7 +195,9 @@ class Visualizer:
             plt.show()
 
     def plot_lmp(self, lmp_df: pd.DataFrame, to_save: bool) -> None:
-        """Plot the locational marginal price.
+        """Plots unique locational marginal price (LMP) timeseries.
+        For each unique LMP timeseries, a representative node is chosen
+        based on ordering in the dataframe.
 
         Args:
             lmp_df (pd.DataFrame): The locational marginal price.
@@ -205,8 +207,11 @@ class Visualizer:
             None
 
         """
+        # Find uni
+        unique_lmp = lmp_df.copy().T.drop_duplicates().T
+
         fig, ax = plt.subplots(figsize=(8, 5))
-        lmp_df.plot(ax=ax, linewidth=2)
+        unique_lmp.plot(ax=ax, linewidth=2)
         ax.set_xlabel("Hour")
         ax.set_ylabel("LMP ($/MWh)")
         # Place legend at the bottom
