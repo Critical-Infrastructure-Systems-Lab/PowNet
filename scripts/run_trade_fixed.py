@@ -3,9 +3,6 @@
 
 import logging
 
-logging.basicConfig(level=logging.INFO)
-logging.basicConfig(format="%(message)s")
-
 from pownet.core import (
     SystemInput,
     ModelBuilder,
@@ -176,7 +173,16 @@ def plot_fuelmix(steps_to_run: int, model_id: str, output_processor: OutputProce
         )
 
 
+def print_summary(objvals: list[float]) -> None:
+    print("\n\n====== Summary ======")
+    print("Total objective value: ", sum(objvals))
+    print("Individual objective values: ", objvals)
+
+
 def main():
+    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(format="%(message)s")
+
     steps_to_run = 3
 
     # Region A
@@ -228,7 +234,16 @@ def main():
     )
 
     # Visualize the results
-    plot_fuelmix(3, inputs_A.model_id, output_processor)
+    plot_fuelmix(steps_to_run, inputs_A.model_id, output_processor)
+
+    objvals_A = record_A.get_objvals()
+    objvals_B = record_B.get_objvals()
+
+    objvals = zip(objvals_A, objvals_B)
+
+    objvals = [x + y for x, y in objvals]
+
+    print_summary([record_A.get_objval(), record_B.get_objval()])
 
 
 if __name__ == "__main__":

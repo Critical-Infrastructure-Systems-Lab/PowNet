@@ -174,7 +174,7 @@ if __name__ == "__main__":
         #     block_id.append(0)
         if "reserveReq1" in constr_name:
             block_id.append(0)
-        if any([unit in constr_name for unit in shared_nodes]):
+        elif any([unit in constr_name for unit in shared_nodes]):
             block_id.append(0)
         elif any([unit in constr_name for unit in thermal_units_A]):
             block_id.append(1)

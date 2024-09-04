@@ -13,7 +13,7 @@ from pownet.data_utils import create_init_condition
 ##### User inputs #####
 to_process_inputs = True
 sim_horizon = 24
-model_name = "laos"
+model_name = "RegionAB"
 steps_to_run = 3  # Default is None
 do_plot = True
 #######################
@@ -28,6 +28,7 @@ inputs = SystemInput(
     sim_horizon=sim_horizon,
     spin_reserve_factor=0.15,
     load_shortfall_penalty_factor=1000,
+    load_curtail_penalty_factor=1,
     spin_shortfall_penalty_factor=1000,
 )
 inputs.load_and_check_data()
@@ -72,7 +73,7 @@ for step_k in range(1, steps_to_run):
         runtime=power_system_model.get_runtime(),
         objval=power_system_model.get_objval(),
         solution=power_system_model.get_solution(),
-        lmp=power_system_model.get_lmp(),
+        lmp=power_system_model.solve_for_lmp(),
         step_k=step_k,
     )
     init_conditions = record.get_init_conds()
@@ -106,7 +107,7 @@ if do_plot:
 
 # Plot LMP
 lmp_df = record.get_lmp()
-visualizer.plot_lmp(lmp_df, to_save=False)
+visualizer.plot_lmp(lmp_df, to_save=False, max_ylim=1000)
 
 # record.write_simulation_results()
 
