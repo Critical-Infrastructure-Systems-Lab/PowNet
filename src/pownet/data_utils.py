@@ -51,6 +51,26 @@ def create_init_condition(thermal_units: list) -> dict[(str, int), dict]:
     }
 
 
+def get_node_hour_from_flow_constraint(constraint_name: str) -> tuple[str, int]:
+    """Get the node and hour from the flow constraint name.
+
+    Args:
+        constraint_name: The name of the constraint.
+
+    Returns:
+        The node and hour.
+
+    """
+    flow_constraint_pattern = re.compile(r"flowBal\[(\w+),(\d+)\]")
+    match = flow_constraint_pattern.match(constraint_name)
+    if match:
+        node = match.group(1)
+        hour = int(match.group(2))
+        return node, hour
+    else:
+        return None, None
+
+
 def get_unit_hour_from_varnam(var_name: str) -> tuple[str, int]:
     """Get the unit and hour from the variable name.
 
@@ -270,6 +290,5 @@ def parse_lmp(lmp: dict[str, float], sim_horizon: int, step_k: int) -> pd.DataFr
     lmp_df["hour"] = lmp_df["timestep"] + sim_horizon * (step_k - 1)
     # Keep only the first 24-hours of the simulation
     lmp_df = lmp_df[lmp_df["timestep"] <= 24]
-
-    lmp_df = lmp_df.drop(["name", "timestep"], axis=1)
+    lmp_df = lmp_df.drop(["name"], axis=1)
     return lmp_df

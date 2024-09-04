@@ -9,7 +9,11 @@ import gurobipy as gp
 import highspy
 import pandas as pd
 
-from pownet.folder_utils import get_output_dir
+from pownet.data_utils import (
+    get_node_hour_from_flow_constraint,
+    parse_lmp,
+    parse_node_variables,
+)
 
 
 class PowerSystemModel:
@@ -41,6 +45,10 @@ class PowerSystemModel:
         self.get_runtime_functions = {
             "gurobi": self.get_runtime_gurobi,
             "highs": self.get_runtime_highs,
+        }
+        self.solve_for_lmp_functions = {
+            "gurobi": self.solve_for_lmp_gurobi,
+            "highs": self.solve_for_lmp_highs,
         }
 
     def write_mps(self, output_folder: str, filename: str):
@@ -173,19 +181,91 @@ class PowerSystemModel:
     def get_runtime(self) -> float:
         return self.get_runtime_functions[self.solver]()
 
-    def get_lmp(self) -> dict:
-        """Get the locational marginal price (LMP)"""
+    def solve_for_lmp_gurobi(self) -> dict:
+        """Return the locational marginal price (LMP).
+
+        Args:
+            model: The Gurobi model.
+
+        Returns:
+            The LMP at each node.
+        """
         # Fix the binary variables
-        self.model = self.model.fixed()
-        # Reoptimize as linear program
-        self.model = self.model.relax()
-        self.model.optimize()
+        model_fixed = self.model.fixed()
+        # Reoptimize as linear program, which is already obtained by fixing the binary variables
+        model_fixed.optimize()
         # Get the dual variables
-        pi = self.model.getAttr("Pi", self.model.getConstrs())
+        pi = model_fixed.getAttr("Pi", model_fixed.getConstrs())
         # Filter to only constraints that are nodal balance, which has 'flowBal' in the name
         nodal_price = {
             constr.ConstrName: pi[i]
-            for i, constr in enumerate(self.model.getConstrs())
+            for i, constr in enumerate(model_fixed.getConstrs())
             if "flowBal" in constr.ConstrName
         }
         return nodal_price
+
+    def solve_for_lmp_highs(self) -> dict:
+        raise NotImplementedError("This method is not implemented for HiGHs solver")
+
+    def solve_for_lmp(self) -> dict:
+        return self.solve_for_lmp_functions[self.solver]()
+
+    def solve_for_export_capacity(
+        self, shared_nodes: list, sim_horizon: int, step_k: int
+    ) -> tuple:
+        """Return the export capacity and hourly prices at the shared nodes"""
+        # Fix binary variables to simulate fixing unit commitments
+        model_fixed = self.model.fixed()
+
+        # Add export variables to the model with a negative coefficient (minimization problem)
+        # The value should be high enough to incentivize export but not high enough to create shortfall
+        export_vars = model_fixed.addVars(
+            shared_nodes,
+            range(1, sim_horizon + 1),
+            vtype=gp.GRB.CONTINUOUS,
+            obj=-1,  # A small negative value should urge the model to export
+            name="export",
+        )
+
+        # Add export variables to the flow balance at the shared nodes
+        for constr in model_fixed.getConstrs():
+            node, t = get_node_hour_from_flow_constraint(constr.ConstrName)
+            if (node is not None) and (node in shared_nodes):
+                model_fixed.chgCoeff(
+                    constr,
+                    export_vars[(node, t)],
+                    -1,  # This will add the export variable to the demand on the RHS
+                )
+        model_fixed.optimize()
+
+        # Extract the export capacity
+        export_capacity = pd.DataFrame(
+            {
+                "varname": [v.varname for v in export_vars.values()],
+                "value": [v.x for v in export_vars.values()],
+            }
+        )
+
+        # Format the dataframe with additional columns
+        export_capacity = parse_node_variables(export_capacity, sim_horizon, step_k)
+
+        return export_capacity.pivot(index="hour", columns="node", values="value")
+
+    def solve_for_export_prices(
+        self, shared_nodes: list, sim_horizon: int, step_k: int
+    ) -> pd.DataFrame:
+        # """The export prices are locational marginal prices at the shared nodes."""
+        # export_prices = convert_lmp_dict_to_dataframe(self.solve_for_lmp())
+        # export_prices = export_prices[export_prices["node"].isin(shared_nodes)]
+        # # Pivot for index to be timesteps and columns to be nodes
+        # export_prices = export_prices.pivot(
+        #     index="timestep", columns="node", values="value"
+        # )
+
+        export_prices = parse_lmp(
+            lmp=self.solve_for_lmp(),
+            sim_horizon=sim_horizon,
+            step_k=step_k,
+        )
+        export_prices = export_prices[export_prices["node"].isin(shared_nodes)]
+        return export_prices.pivot(index="hour", columns="node", values="value")

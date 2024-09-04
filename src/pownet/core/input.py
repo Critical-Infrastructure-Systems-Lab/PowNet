@@ -26,7 +26,7 @@ class SystemInput:
         line_loss_factor: float = 0.075,
         line_capacity_factor: float = 0.9,
         load_shortfall_penalty_factor: float = 1000,
-        load_curtail_penalty_factor: float = 0,
+        load_curtail_penalty_factor: float = 10,
         spin_shortfall_penalty_factor: float = 1000,
     ) -> None:
         """This class reads the input data for the power system model."""

@@ -111,7 +111,12 @@ class SystemRecord:
         ##################
         if lmp is not None:
             self.lmp_df = pd.concat(
-                [self.lmp_df, parse_lmp(lmp, self.inputs.sim_horizon, step_k)],
+                [
+                    self.lmp_df,
+                    parse_lmp(lmp, self.inputs.sim_horizon, step_k).drop(
+                        "timestep", axis=1
+                    ),
+                ],
                 axis=0,
             )
 
