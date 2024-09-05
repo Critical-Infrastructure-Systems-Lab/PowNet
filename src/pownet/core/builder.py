@@ -1,7 +1,7 @@
 """ builder.py: ModelBuilder class builds and updates the unit commitment problem.
 """
 
-from __future__ import annotations
+from .input import SystemInput
 import logging
 
 from gurobipy import GRB
@@ -31,7 +31,7 @@ class ModelBuilder:
 
     """
 
-    def __init__(self, inputs: "SystemInput") -> None:
+    def __init__(self, inputs: SystemInput) -> None:
         self.inputs = inputs
 
         self.timesteps = range(1, self.inputs.sim_horizon + 1)

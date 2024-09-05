@@ -2,7 +2,7 @@
 TODO: self.current_hydro, self.current_import for model coupling
 """
 
-from __future__ import annotations
+from .input import SystemInput
 
 import pandas as pd
 
@@ -23,7 +23,7 @@ class SystemRecord:
     are also stored in the class.
     """
 
-    def __init__(self, system_input: "SystemInput") -> None:
+    def __init__(self, system_input: SystemInput) -> None:
 
         self.inputs = system_input
 
