@@ -6,7 +6,7 @@ import os
 
 import numpy as np
 import pandas as pd
-from pownet.folder_utils import get_output_dir
+from pownet.folder_utils import get_database_dir, get_output_dir
 
 
 def get_dates(year):
@@ -292,3 +292,17 @@ def parse_lmp(lmp: dict[str, float], sim_horizon: int, step_k: int) -> pd.DataFr
     lmp_df = lmp_df[lmp_df["timestep"] <= 24]
     lmp_df = lmp_df.drop(["name"], axis=1)
     return lmp_df
+
+
+def get_fuel_mix_order() -> list[str]:
+    """Return the order of fuel mix for plotting.
+    We use this list to order the node variables dataframe.
+
+    Returns
+        list[str]: The order of fuel mix.
+    -------
+    """
+    return pd.read_csv(
+        os.path.join(get_database_dir(), "fuels.csv"),
+        header=0,
+    )["name"].tolist()

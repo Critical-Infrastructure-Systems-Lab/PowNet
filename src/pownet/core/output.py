@@ -1,24 +1,9 @@
-from __future__ import annotations
-import os
+""" output.py: This module contains the OutputProcessor class, which processes the output from PowNet and provides methods to access the data.
+"""
 
 import pandas as pd
 
-from pownet.folder_utils import get_database_dir
-from pownet.data_utils import get_dates
-
-
-def get_fuel_mix_order() -> list[str]:
-    """Return the order of fuel mix for plotting.
-    We use this list to order the node variables dataframe.
-
-    Returns
-        list[str]: The order of fuel mix.
-    -------
-    """
-    return pd.read_csv(
-        os.path.join(get_database_dir(), "fuels.csv"),
-        header=0,
-    )["name"].tolist()
+from pownet.data_utils import get_dates, get_fuel_mix_order
 
 
 class OutputProcessor:
