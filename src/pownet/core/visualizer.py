@@ -1,25 +1,13 @@
-from __future__ import annotations
+"""visualizer.py: This module contains the Visualizer class, which provides methods to visualize the output from PowNet.
+"""
 
 import os
 
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from pownet.folder_utils import get_output_dir, get_database_dir
-
-
-def get_fuel_color_map() -> dict:
-    """Return a map of fuel type to its color. This is defined in the database folder."""
-    fuel_color_map = (
-        pd.read_csv(
-            os.path.join(get_database_dir(), "fuels.csv"),
-            header=0,
-            usecols=["name", "color"],
-        )
-        .set_index("name")
-        .to_dict()["color"]
-    )
-    return fuel_color_map
+from pownet.folder_utils import get_output_dir
+from pownet.data_utils import get_fuel_color_map
 
 
 class Visualizer:

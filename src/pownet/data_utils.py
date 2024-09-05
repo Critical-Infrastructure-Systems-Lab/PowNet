@@ -306,3 +306,17 @@ def get_fuel_mix_order() -> list[str]:
         os.path.join(get_database_dir(), "fuels.csv"),
         header=0,
     )["name"].tolist()
+
+
+def get_fuel_color_map() -> dict:
+    """Return a map of fuel type to its color. This is defined in the database folder."""
+    fuel_color_map = (
+        pd.read_csv(
+            os.path.join(get_database_dir(), "fuels.csv"),
+            header=0,
+            usecols=["name", "color"],
+        )
+        .set_index("name")
+        .to_dict()["color"]
+    )
+    return fuel_color_map
