@@ -1,3 +1,6 @@
+""" data_processor.py: This file contains the DataProcessor class that processes the data provided by the user.
+"""
+
 import json
 import os
 
@@ -17,8 +20,6 @@ class DataProcessor:
         2. thermal_unit.csv: A file that contains the thermal unit data.
         3. unit_marginal_cost.csv: A file that contains the marginal cost of non-thermal units.
         4. (Optional) solar.csv, wind.csv, hydropower.csv, import.csv: Files that contain the renewable unit data.
-
-
         """
         self.model_name = model_name
         self.year = year
@@ -79,6 +80,25 @@ class DataProcessor:
     ) -> float:
         """This function calculates the steady-state stability limit of a transmission line.
         From Chapter 5 of Power System Analysis and Design 5th (EQ 5.4.30)
+
+        The stability limit per circuit is given by:
+                P = V1 * V2 / X * sin(2 * pi * d / lambda)
+            where:
+                P is the stability limit in MW
+                V1 and V2 are the voltages at the two ends of the line
+                X is the reactance of the line in ohms per km
+                d is the distance between the two ends of the line in km
+                lambda is the wavelength of the system in km
+
+        Args:
+            source_kv (int): Voltage level of the source bus
+            sink_kv (int): Voltage level of the sink bus
+            distance (float): Distance between the two buses in km
+            wavelength (int): Wavelength of the system in km
+            n_circuits (int): Number of circuits in the transmission line
+
+        Returns:
+            float: The stability limit of the transmission line in MW
         """
         # The reactance of the line is a function of the maximum voltage level
         # of the two buses.
@@ -97,6 +117,14 @@ class DataProcessor:
               I = P/(sqrt(3) * V)
         Here, P is the surge impedance factor (SIL) and V is the voltage of the
         receiving bus. This voltage is the minimum voltage between the two ends.
+
+        Args:
+            source_kv (int): Voltage level of the source bus
+            sink_kv (int): Voltage level of the sink bus
+            n_circuits (int): Number of circuits in the transmission line
+
+        Returns:
+            float: The thermal limit of the transmission line in MW
         """
         max_kv = max(source_kv, sink_kv)
         n_conductors = self.transmission_params["n_conductors"][max_kv]
@@ -107,7 +135,10 @@ class DataProcessor:
         return int(n_circuits * thermal_limit_per_circuit)
 
     def calc_line_capacity(self) -> None:
-        """Calculate the capacity of line segments. The unit is in MW."""
+        """Calculate the capacity of line segments. The unit is in MW.
+        Line capacity is the minimum of the thermal limit and the steady-state
+        stability limit (a function of distance).
+        """
         self.transmission_data["stability_limit"] = self.user_transmission.apply(
             lambda x: self.calc_stability_limit(
                 x["source_kv"],
@@ -160,7 +191,11 @@ class DataProcessor:
         )
 
     def create_cycle_map(self) -> None:
-        # Find all the basic cycles in the transmission system
+        """
+        Create a cycle map for the power system. This is used to create the
+        cycle constraints in the optimization model. The cycle map is a dictionary
+        where the key is the cycle name and the value is a list of nodes in the cycle.
+        """
         graph = nx.from_pandas_edgelist(
             self.transmission_data,
             source="source",
@@ -171,8 +206,10 @@ class DataProcessor:
         self.cycle_map = {f"cycle_{idx+1}": cycle for idx, cycle in enumerate(cycles)}
 
     def write_cycle_map(self) -> None:
-        # Save in the model_library/model_name folder so we only need to find
-        # the cycles once
+        """
+        Save the cycle map to a json file in model_library/{model_name}.
+        The key is the cycle name and the value is a list of nodes in the cycle.
+        """
         with open(os.path.join(self.model_folder, "pownet_cycle_map.json"), "w") as f:
             json.dump(self.cycle_map, f)
 
@@ -287,6 +324,7 @@ class DataProcessor:
         self.create_marginal_costs()
 
     def write_data(self) -> None:
+        """Write the processed data as csv files sharing a prefix "pownet_" to the model folder"""
         self.write_transmission_data()
         self.write_cycle_map()
         self.write_thermal_derate_factors()
