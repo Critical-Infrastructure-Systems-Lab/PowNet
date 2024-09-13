@@ -341,3 +341,15 @@ def calc_min_release(
     if storage_t0 + total_inflow_t - min_release_t < 0:
         min_release_t = storage_t0 + total_inflow_t
     return min_release_t
+
+
+def convert_to_hourly_hydropower(daily_hydropower) -> pd.Series:
+    """Return the hourly hydropower values."""
+    hourly_hydropower = daily_hydropower / 24
+    # Repeat the hydropower values for each hour of the day
+    hourly_hydropower = hourly_hydropower.loc[
+        hourly_hydropower.index.repeat(24)
+    ].reset_index(drop=True)
+    # Index starts from 1
+    hourly_hydropower.index += 1
+    return hourly_hydropower
