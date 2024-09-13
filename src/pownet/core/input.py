@@ -637,3 +637,17 @@ class SystemInput:
     def load_and_check_data(self):
         self.load_data()
         self.check_data()
+
+    def update_hydropower(self, hydropower: pd.DataFrame):
+        """Update the hydropower timeseries."""
+        # Check that the dimension of the hydropower timeseries remains the same
+        if len(hydropower) != len(self.hydro_capacity):
+            raise ValueError(
+                "PowNet: The length of the hydropower timeseries must remain the same."
+            )
+        # Check that all hydropower units are present
+        if set(hydropower.columns) != set(self.hydro_capacity.columns):
+            raise ValueError(
+                "PowNet: The hydropower timeseries must contain all hydropower units."
+            )
+        self.hydro_capacity = hydropower.copy()
