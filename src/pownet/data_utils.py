@@ -29,6 +29,24 @@ def get_dates(year):
     return dates
 
 
+def remove_29feb(timeseries: pd.Series) -> pd.Series:
+    """Clean and reindex flow data by removing February 29th and resetting the index.
+
+    Args:
+        timeseries (pd.Series): Timeseries to be cleaned and reindexed.
+
+    Returns:
+        pd.Series: The cleaned and reindexed flow data.
+    """
+
+    # Remove 29th February from the dataset
+    cleaned_data = timeseries[~((timeseries.month == 2) & (timeseries.day == 29))]
+    # Index starts from 1
+    cleaned_data = cleaned_data.reset_index(drop=True)
+    cleaned_data.index += 1
+    return cleaned_data
+
+
 def create_init_condition(thermal_units: list) -> dict[(str, int), dict]:
     """Return dicts of system statuses in the format {(unit, hour): value}"""
     # Assume thermal units in the systems are offline at the beginning
