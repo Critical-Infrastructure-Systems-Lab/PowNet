@@ -265,3 +265,79 @@ def calc_daily_hydropower(
     # Convert to MW-day
     daily_hydropower = hourly_hydropower * 24
     return daily_hydropower
+
+
+def calc_release_impact(
+    release_t: float,
+    storage_t0: float,
+    total_inflow_t: float,
+    min_level: float,
+    max_level: float,
+    max_storage: float,
+    level_t0: float,
+    max_generation: float,
+    turbine_factor: float,
+    max_head: float,
+) -> tuple[float, float, float, float]:
+    """Calculate the impact of a given release on storage, level, mid-level, and hydropower."""
+    spill_t = max(
+        storage_t0 + total_inflow_t - max_storage - release_t,
+        0,
+    )
+    storage_t = storage_t0 + total_inflow_t - release_t - spill_t
+    level_t = calc_level_from_storage(
+        storage=storage_t,
+        min_level=min_level,
+        max_level=max_level,
+        max_storage=max_storage,
+    )
+    mid_level_t = (level_t0 + level_t) / 2
+    daily_hydropower_t = calc_daily_hydropower(
+        release=release_t,
+        mid_level=mid_level_t,
+        max_generation=max_generation,
+        turbine_factor=turbine_factor,
+        max_head=max_head,
+        max_level=max_level,
+    )
+    return spill_t, storage_t, level_t, daily_hydropower_t
+
+
+def calc_max_release(
+    total_inflow_t: float,
+    release_t0: float,
+    storage_t0: float,
+    min_flow_t: float,
+    max_release: float,
+    hydropeak_factor: float,
+) -> float:
+    """Calculate the maximum allowable release of the current timestep."""
+    # Release is limited by the hydropeaking factor
+    max_release_hydropeak_t = release_t0 + max_release * hydropeak_factor
+    # Release cannot be larger than the turbine capacity
+    max_release_t = min(max_release, max_release_hydropeak_t)
+    # Release cannot be less than the min environmental flow
+    max_release_t = max(min_flow_t, max_release_t)
+    # Cannot release more than the amount of water in the reservoir
+    if storage_t0 + total_inflow_t - max_release_t < 0:
+        max_release_t = storage_t0 + total_inflow_t
+    return max_release_t
+
+
+def calc_min_release(
+    total_inflow_t: float,
+    release_t0: float,
+    storage_t0: float,
+    min_flow_t: float,
+    max_release: float,
+    hydropeak_factor: float,
+) -> float:
+    """Calculate the minimum allowable release of the current timestep."""
+    # Release is limited by the hydropeaking factor
+    min_release_hydropeak_t = release_t0 - max_release * hydropeak_factor
+    # Limited by the minimum environmental flow
+    min_release_t = max(min_flow_t, min_release_hydropeak_t)
+    # Release cannot make the storage become negative
+    if storage_t0 + total_inflow_t - min_release_t < 0:
+        min_release_t = storage_t0 + total_inflow_t
+    return min_release_t

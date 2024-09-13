@@ -8,8 +8,8 @@ def main():
     model_name = "dummy_hydro"
     reservoir_name = "kirirom3"
 
-    reservoir = Reservoir()
-    reservoir.load_from_csv(model_name=model_name, reservoir_name=reservoir_name)
+    reservoir = Reservoir(model_name=model_name, reservoir_name=reservoir_name)
+    reservoir.load_from_csv()
     reservoir.simulate()
     reservoir.plot_state()
 
