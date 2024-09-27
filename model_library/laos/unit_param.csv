@@ -1,6 +1,0 @@
-name,unit_type,fuel_type,max_capacity,min_capacity,heat_rate,operation_cost,fixed_cost,startup_cost,ramp_rate,min_uptime,min_downtime
-HongsaLigniteU1,coal,coal,626,100,10.05,4.6,2.7,90,626,10,10
-HongsaLigniteU2,coal,coal,626,100,10.05,4.6,2.7,90,626,10,10
-HongsaLigniteU3,coal,coal,626,100,10.05,4.6,2.7,90,626,10,10
-Mitlao,biomass,biomass,9.7,3.88,14.1,26,1,1,9.7,1,1
-HougAnh,biomass,biomass,30,12,14.1,26,1,1,30,1,1
