@@ -29,6 +29,13 @@ def get_dates(year):
     return dates
 
 
+def get_datetime_index(year: int) -> pd.DatetimeIndex:
+    dates = pd.date_range(start=f"{year}-01-01", end=f"{year+1}-01-01", freq="H")
+    # Remove 29th February
+    dates = dates[~((dates.month == 2) & (dates.day == 29))]
+    return dates[dates.year == year]
+
+
 def remove_29feb(timeseries: pd.Series) -> pd.Series:
     """Clean and reindex flow data by removing February 29th and resetting the index.
 
