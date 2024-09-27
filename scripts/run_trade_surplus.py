@@ -12,7 +12,7 @@ from pownet.core import (
 )
 from pownet.modeling import PowerSystemModel
 from pownet.data_utils import create_init_condition
-from run_bilat_fixed import plot_fuelmix, combine_output_processors
+from run_trade_fixed import plot_fuelmix, combine_output_processors
 
 
 def get_system_inputs(
@@ -70,15 +70,17 @@ def main():
         steps_to_run = 365 - (sim_horizon // 24 - 1)
 
     # Shared units
-    nodes_A = get_nodes("RegionA", year, sim_horizon)
-    nodes_B = get_nodes("RegionB", year, sim_horizon)
+    regionA = "Thailand2022"
+    regionB = "Laos2022"
+    nodes_A = get_nodes(regionA, year, sim_horizon)
+    nodes_B = get_nodes(regionB, year, sim_horizon)
     shared_nodes = list(set(nodes_A) & set(nodes_B))
 
     #########################################################################
     # Initialize inputs, model builder, record, and initial conditions for each region
     #########################################################################
     inputs_A = SystemInput(
-        model_name="RegionA",
+        model_name=regionA,
         year=year,
         sim_horizon=sim_horizon,
     )
@@ -93,7 +95,7 @@ def main():
     inputs_A.unit_marginal_cost.loc[:, shared_nodes] = np.nan
 
     inputs_B = SystemInput(
-        model_name="RegionB",
+        model_name=regionB,
         year=year,
         sim_horizon=sim_horizon,
     )
