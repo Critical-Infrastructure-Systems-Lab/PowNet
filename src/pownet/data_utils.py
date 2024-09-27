@@ -155,6 +155,9 @@ def write_df_to_output_dir(
     Returns:
         None
     """
+    # First check that the output directory exists. If not, create it.
+    if not os.path.exists(get_output_dir()):
+        os.makedirs(get_output_dir())
     df.to_csv(
         os.path.join(
             get_output_dir(),
