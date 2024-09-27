@@ -1,83 +1,108 @@
 from datetime import datetime
-import os
-
-from pownet.core.simulation import Simulator
-from pownet.core.output import OutputProcessor, Visualizer
-from pownet.folder_sys import get_output_dir, delete_all_gurobi_solutions
+from pownet.core import (
+    SystemInput,
+    ModelBuilder,
+    SystemRecord,
+    OutputProcessor,
+    Visualizer,
+)
+from pownet.modeling import PowerSystemModel
+from pownet.data_processor import DataProcessor
+from pownet.data_utils import create_init_condition
 
 
 def main():
-    # ------- User defined inputs
-    MODEL_NAME = "dummy_hydro"
-    # The default simulation horizon T is 24 hours
-    T = 24
-    # One year has 8760 hours. If T = 24, then we have 365 steps.
-    # STEPS = math.floor(8760/T)
-    STEPS = 365
+    ##### User inputs #####
+    to_process_inputs = True
+    sim_horizon = 24
+    model_name = "RegionAB"
+    steps_to_run = 3  # Default is None
+    do_plot = True
+    do_write_results = True
+    #######################
 
-    # Decide whether to save results
-    SAVE_RESULT = True
-    SAVE_PLOT = False
+    if to_process_inputs:
+        data_processor = DataProcessor(model_name=model_name, year=2016, frequency=50)
+        data_processor.execute_data_pipeline()
 
-    to_reoperate = False
-
-    #############################
-    output_dir = get_output_dir()
-
-    # We need a folder to store the figures
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    # A user should create their own model in the model_library folder
-    time_start = datetime.now()
-
-    simulator = Simulator(
-        model_name=MODEL_NAME,
-        T=T,
-        to_reoperate=to_reoperate,
+    inputs = SystemInput(
+        model_name=model_name,
+        year=2016,
+        sim_horizon=sim_horizon,
+        spin_reserve_factor=0.15,
+        load_shortfall_penalty_factor=1000,
+        load_curtail_penalty_factor=1,
+        spin_shortfall_penalty_factor=1000,
     )
+    inputs.load_and_check_data()
 
-    record = simulator.run(steps=STEPS)
+    model_builder = ModelBuilder(inputs)
+    init_conditions = create_init_condition(inputs.thermal_units)
 
-    if SAVE_RESULT:
-        record.to_csv()
+    record = SystemRecord(inputs)
 
-    print("\n\n====")
-    print(f"PowNet: Solved {MODEL_NAME}")
-    print(
-        f"PowNet: Total time (s) = {round((datetime.now() - time_start).total_seconds(), 2)}"
-    )
-    print(f"PowNet: Opt.time (s) = {round(sum(record.runtimes), 2)}")
+    build_times = []
+    opt_times = []
+    objvals = []
 
-    # Export reservoir outputs as csv
-    if to_reoperate:
-        simulator.export_reservoir_outputs()
+    if steps_to_run is None:
+        steps_to_run = 10  # 365 - (sim_horizon // 24 - 1)
 
-    node_variables = record.get_node_variables()
+    for step_k in range(1, steps_to_run):
+        start_time = datetime.now()
+        if step_k == 1:
+            model = model_builder.build(
+                step_k=step_k,
+                init_conds=init_conditions,
+            )
+        else:
+            model = model_builder.update(
+                step_k=step_k,
+                init_conds=init_conditions,
+            )
+        build_times.append((datetime.now() - start_time).total_seconds())
 
-    system_input = simulator.get_system_input()
-    output_processor = OutputProcessor()
-    output_processor.load(
-        df=node_variables, system_input=system_input, model_name=MODEL_NAME
-    )
+        power_system_model = PowerSystemModel(model)
+        power_system_model.optimize(mipgap=0.001)
+        objvals.append(power_system_model.get_objval())
+        opt_times.append(power_system_model.get_runtime())
 
-    # visualizer = Visualizer(model_name=MODEL_NAME,
-    #                         ctime=output_processor.ctime)
-    # visualizer.plot_fuelmix_area(
-    #     dispatch=output_processor.get_total_dispatch(),
-    #     demand=output_processor.get_total_demand(),
-    #     to_save=SAVE_PLOT,
-    # )
-    # # The dispatch plot does not work well when simulating more than 2 day or
-    # # there are more than 10 thermal units.
-    # if STEPS <= 48 and len(system_input.thermal_units) <= 10:
-    #     visualizer.plot_thermal_units(
-    #         thermal_dispatch=output_processor.get_dispatch(),
-    #         unit_status=output_processor.get_unit_status(),
-    #         thermal_units=system_input.thermal_units,
-    #         thermal_rated_capacity=system_input.thermal_rated_capacity,
-    #         to_save=SAVE_PLOT,
-    #     )
+        record.keep(
+            runtime=power_system_model.get_runtime(),
+            objval=power_system_model.get_objval(),
+            solution=power_system_model.get_solution(),
+            step_k=step_k,
+        )
+        init_conditions = record.get_init_conds()
+
+        # Process the results
+        output_processor = OutputProcessor(
+            year=inputs.year,
+            fuelmap=inputs.fuelmap,
+            demand=inputs.demand,
+        )
+        node_var_df = record.get_node_variables()
+        output_processor.load_from_dataframe(node_var_df)
+
+        # Visualize the results
+        if do_plot:
+            visualizer = Visualizer(inputs.model_id)
+            if steps_to_run <= 3:
+                visualizer.plot_fuelmix_bar(
+                    dispatch=output_processor.get_hourly_dispatch(),
+                    demand=output_processor.get_hourly_demand(),
+                    to_save=False,
+                )
+            else:
+                visualizer = Visualizer(inputs.model_id)
+                visualizer.plot_fuelmix_area(
+                    dispatch=output_processor.get_daily_dispatch(),
+                    demand=output_processor.get_daily_demand(),
+                    to_save=False,
+                )
+
+        if do_write_results:
+            record.write_simulation_results()
 
 
 if __name__ == "__main__":
