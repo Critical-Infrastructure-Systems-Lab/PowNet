@@ -638,7 +638,7 @@ class SystemInput:
         self.load_data()
         self.check_data()
 
-    def update_hydropower(self, hydropower: pd.DataFrame):
+    def update_hydro_capacity(self, hydropower: pd.DataFrame):
         """Update the hydropower timeseries."""
         # Check that the dimension of the hydropower timeseries remains the same
         if len(hydropower) != len(self.hydro_capacity):
