@@ -1,4 +1,6 @@
-""" This script runs the bilateral under fixed contract scheme.
+""" This script runs the bilateral under fixed contract scheme. The import region
+has signed a take-or-pay contract with the export region. The export region is
+obligated to prioritize the import region's dispatch over its own.
 """
 
 import logging
@@ -43,7 +45,10 @@ def process_region(
 
     # Subtract hydro capacity from import values
     if import_values is not None:
-        subtract_hydro_capacity(import_values, inputs)
+        new_hydro_capacity = subtract_hydro_capacity(
+            import_values=import_values, hydro_capacity=inputs.hydro_capacity
+        )
+        inputs.update_hydro_capacity(new_hydro_capacity)
 
     model_builder = ModelBuilder(inputs)
     init_conditions = create_init_condition(inputs.thermal_units)
@@ -79,16 +84,19 @@ def process_region(
     return inputs, output_processor, record
 
 
-def subtract_hydro_capacity(import_values_A, inputs_B):
-    inputs_B.hydro_capacity -= import_values_A
-    return
+def subtract_hydro_capacity(import_values, hydro_capacity):
+    hydro_capacity[import_values.columns] = (
+        hydro_capacity[import_values.columns] - import_values
+    )
+    return hydro_capacity
 
 
 def check_shared_units(output_processor_A, output_processor_B) -> set:
     """Check that shared units are import_units in A and export_units in B"""
     temp_df = output_processor_A.node_variables
-    units_in_A = temp_df[temp_df["vartype"] == "pimp"].node.unique()
-    units_in_B = output_processor_B.node_variables.node.unique()
+    units_in_A = temp_df[temp_df["vartype"] == "pimp"].node.unique()  # import units
+    units_in_B = output_processor_B.node_variables.node.unique()  # Export nodes
+
     shared_units1 = set(units_in_A).intersection(set(units_in_B))
     shared_units2 = set(output_processor_A.node_variables.node.unique()).intersection(
         set(output_processor_B.node_variables.node.unique())
@@ -185,17 +193,17 @@ def main():
 
     steps_to_run = 3
 
-    # Region A
+    # Region A (Importing)
     inputs_A, output_processor_A, record_A = process_region(
-        region_name="RegionA",
+        region_name="Thailand2022",
         year=2016,
         sim_horizon=24,
         steps_to_run=steps_to_run,
     )
 
-    # Region B
+    # Region B (Exporting)
     inputs_B, output_processor_B, record_B = process_region(
-        region_name="RegionB",
+        region_name="Laos2022",
         year=2016,
         sim_horizon=24,
         steps_to_run=steps_to_run,
@@ -243,7 +251,9 @@ def main():
 
     objvals = [x + y for x, y in objvals]
 
-    print_summary([record_A.get_objval(), record_B.get_objval()])
+    print_summary(
+        [int(x + y) for x, y in zip(record_A.get_objvals(), record_B.get_objvals())]
+    )
 
 
 if __name__ == "__main__":
