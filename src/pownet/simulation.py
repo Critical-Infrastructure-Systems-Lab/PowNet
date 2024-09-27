@@ -4,34 +4,46 @@ import os
 import re
 
 import pandas as pd
-import gurobipy as gp
-import highspy
 
 from pownet.data_utils import (
     create_init_condition,
     get_current_time,
 )
 from pownet.core import ModelBuilder, SystemInput, SystemRecord
+<<<<<<< HEAD
+=======
+from pownet.modeling import PowerSystemModel
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 from pownet.core.record import (
     get_hydro_from_model,
     convert_to_daily_hydro,
 )
 from pownet.reservoir.reservoir import ReservoirOperator
+<<<<<<< HEAD
 
 import pownet.config as config
+=======
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 from pownet.folder_utils import get_output_dir
 
 
 class Simulator:
     def __init__(
         self,
+<<<<<<< HEAD
         system_input: SystemInput,
         write_model: bool = False,
         use_gurobi: bool = False,
+=======
+        inputs: SystemInput,
+        use_gurobi: bool = True,
+        write_model: bool = False,
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
         to_reoperate: bool = False,
         reop_timestep: str = "hourly",
     ) -> None:
 
+<<<<<<< HEAD
         self.system_input = system_input
         self.model_name = system_input.model_name
         self.T = system_input.T
@@ -53,50 +65,34 @@ class Simulator:
         # )
 
         self.model: gp.Model = None
+=======
+        self.use_gurobi = use_gurobi
+        self.write_model = write_model
+        self.to_reoperate = to_reoperate
+        self.reop_timestep = reop_timestep
+
+        self.model: PowerSystemModel = None
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
         # Statistics
-        self.runtimes: float = []  # Total runtime of each instance
-        self.reop_iter: int = []  # Number of reoperation iterations
-        self.reop_opt_time: float = 0  # Total runtime of reoperation
+        self.wallclock_times: float = []  # Total runtime of each instance
 
-    def _check_infeasibility(self, k) -> bool:
-        """
-        Check if the model is infeasible. If it is, generate an output file."""
-        is_infeasible = self.model.status == 3
-        if is_infeasible == 3:
-            print(f"PowNet: Iteration: {k} is infeasible.")
-            self.model.computeIIS()
-            c_time = get_current_time()
-            ilp_file = os.path.join(
-                get_output_dir(),
-                f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.ilp",
-            )
-            self.model.write(ilp_file)
-
-            mps_file = os.path.join(
-                get_output_dir(),
-                f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.mps",
-            )
-            self.model.write(mps_file)
-
-            # Need to learn about the initial conditions as well
-            with open(
-                os.path.join(
-                    get_output_dir(),
-                    f"infeasible_{self.model_name}_{self.T}_{k}_{c_time}.pkl",
-                ),
-                "wb",
-            ) as f:
-                pickle.dump(system_record, f)
-        return is_infeasible
+    def create_hydropower_csv(self):
+        self.reservoir_operator = ReservoirOperator(self.model_name, num_days=365)
+        self.reservoir_operator.simulate()
+        self.reservoir_operator.export_hydropower_csv(timestep=reop_timestep)
 
     def run(
         self,
         steps: int,
+<<<<<<< HEAD
         init_conds,
         simulated_day,
         mip_gap: float = None,
         timelimit: float = None,
+=======
+        solver: str = "gurobi",
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
     ) -> SystemRecord:
         # Initialize objects
         system_record = SystemRecord(self.system_input)
@@ -128,19 +124,15 @@ class Simulator:
                 self.model = builder.build(
                     k=simulated_step,
                     init_conds=init_conds,
-                    mip_gap=mip_gap,
-                    timelimit=timelimit,
                 )
             else:
                 self.model = builder.update(
                     k=simulated_step,
                     init_conds=init_conds,
-                    mip_gap=mip_gap,
-                    timelimit=timelimit,
                 )
 
-            # We can write the model as .MPS and use non-Gurobi solvers
             if self.write_model:
+<<<<<<< HEAD
                 # Save the model
                 dirname = os.path.join(
                     get_output_dir(), f"{self.model_name}_{self.T}_instances"
@@ -150,16 +142,24 @@ class Simulator:
                 self.model.write(
                     os.path.join(dirname, f"{self.model_name}_{simulated_step}.mps")
                 )
+=======
+                output_folder = get_output_dir()
+                filename = f"{self.model_name}_{self.T}_{k}"
+                self.model.write_mps(output_folder=output_folder, filename=filename)
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
             # Solve the model with either Gurobi or HiGHs
-            if self.use_gurobi:
-                self.model.optimize()
+            # TODO: Set mipgap, timelimit, log_to_console as arguments
+            self.model.optimize(solver=solver)
 
-            else:
-                # Export the instance to MPS and solve with HiGHs
-                mps_file = "temp_instance_for_HiGHs.mps"
-                self.model.write(mps_file)
+            # In case when the model is infeasible, we generate ILP and MPS files
+            # to describe the problem instance.
+            if not self.model.check_feasible():
+                output_folder_infeasible = "infeasible"
+                if not os.path.exists(output_folder_infeasible):
+                    os.makedirs(output_folder_infeasible)
 
+<<<<<<< HEAD
                 self.model = highspy.Highs()
                 self.model.readModel(mps_file)
                 self.model.run()
@@ -196,10 +196,26 @@ class Simulator:
                     ) as f:
                         pickle.dump(system_record, f)
                     break
+=======
+                self.model.write_ilp_mps(
+                    output_folder=output_folder_infeasible,
+                    instance_name=f"{self.model_name}_{self.T}_{k}",
+                )
+                # Need to learn about the initial conditions as well
+                with open(
+                    os.path.join(
+                        get_output_dir(),
+                        f"infeasible_{self.model_name}_{self.T}_{k}.pkl",
+                    ),
+                    "wb",
+                ) as f:
+                    pickle.dump(system_record, f)
+                break
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
             # Reoperate reservoirs
             if self.to_reoperate:
-                self.reoperate(k, builder, init_conds, mip_gap, timelimit)
+                self.reoperate(k, builder, init_conds, mipgap, timelimit)
 
             # Need k to increment the hours field
             system_record.keep(self.model, simulated_step)
@@ -225,7 +241,9 @@ class Simulator:
             print("New Capacity vs. Current Dispatch")
 
             # PowNet returns the hydropower dispatch in hourly resolution across the simulation horizon
-            hydro_dispatch, start_day, end_day = get_hydro_from_model(self.model, k)
+            hydro_dispatch, start_day, end_day = get_hydro_from_model(
+                self.model.model, k
+            )
             # Convert to daily dispatch
             hydro_dispatch = convert_to_daily_hydro(hydro_dispatch, start_day, end_day)
             new_hydro_capacity = self.reservoir_operator.reoperate_basins(
@@ -261,14 +279,11 @@ class Simulator:
             self.model.optimize()
 
             # Keep track of optimization time oand reoperation iterations
-            self.reop_opt_time += self.model.runtime
+            self.reop_opt_time += self.model.get_runtime()
             reop_k += 1
 
         # Record the number of iterations after convergence
         self.reop_iter.append(reop_k)
-
-    def get_system_input(self):
-        return self.system_input
 
     def export_reservoir_outputs(self):
         return self.reservoir_operator.export_reservoir_outputs()

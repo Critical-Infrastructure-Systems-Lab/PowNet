@@ -1,15 +1,21 @@
+<<<<<<< HEAD
 from __future__ import annotations
 import datetime
 import os
 import re
 from typing import TYPE_CHECKING
+=======
+""" record.py: This module contains the SystemRecord class, which processes stores the modeling outputs from each iteration.
+TODO: self.current_hydro, self.current_import for model coupling
+"""
 
-import gurobipy as gp
-import highspy
+from .input import SystemInput
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
+
 import pandas as pd
-import numpy as np
 
 from pownet.data_utils import (
+<<<<<<< HEAD
     get_nodehour,
     get_nodehour_flow,
     get_nodehour_sys,
@@ -168,10 +174,26 @@ def convert_to_daily_hydro(
     daily_hydro = df.groupby((df.index - 1) // 24).sum()
     daily_hydro.index = range(start_day, end_day)
     return daily_hydro
+=======
+    parse_node_variables,
+    parse_flow_variables,
+    parse_syswide_variables,
+    parse_lmp,
+    calc_remaining_on_duration,
+    calc_remaining_off_duration,
+    write_df_to_output_dir,
+)
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
 
 class SystemRecord:
+    """This class stores modeling outputs from each iteration. The results are stored
+    in three dataframes: node_vars, flow_vars, and syswide_vars. The initial conditions
+    are also stored in the class.
+    """
+
     def __init__(self, system_input: SystemInput) -> None:
+<<<<<<< HEAD
         self.T: int = system_input.T
         self.model_name: str = system_input.model_name
         self.runtimes = None
@@ -179,53 +201,41 @@ class SystemRecord:
         self.thermal_units: list = system_input.thermal_units
         self.TD: dict[str, int] = system_input.TD
         self.TU: dict[str, int] = system_input.TU
+=======
 
-        # The model results are separated into three types based on
-        # the formating of their index: var(node, t), var(node, node, t), var(t)
-        self.var_node_t: pd.DataFrame = None
-        self.var_flow: pd.DataFrame = None
-        self.var_syswide: pd.DataFrame = None
+        self.inputs = system_input
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
-        # These attributes are a list of values
-        self.current_p = None
-        self.current_u = None
-        self.current_v = None
-        self.current_w = None
-        self.current_min_on = None
-        self.current_min_off = None
+        # Format of variable name: var(node, t)
+        self.node_vars: pd.DataFrame = pd.DataFrame()
+        # Format of variable name: flow(node_a, node_b, t)
+        self.flow_vars: pd.DataFrame = pd.DataFrame()
+        # Format of variable name: var(t)
+        self.syswide_vars: pd.DataFrame = pd.DataFrame()
 
-        self.objvals = []
+        # Locational marginal prices (LMP)
+        self.lmp_df: pd.DataFrame = pd.DataFrame()
 
-    def _get_sol_from_gurobi(self, gp_model) -> pd.DataFrame:
-        # Extract the variables from the model to process them
-        return pd.DataFrame(
-            {"varname": gp_model.getAttr("varname"), "value": gp_model.getAttr("X")}
-        )
+        self.objvals: list = []
+        self.runtimes: list = []
 
-    def _get_sol_from_highs(self, highs_model: highspy.highs.Highs) -> pd.DataFrame:
-        # Extract the variables from the model to process them
-        # Check the solution
-        return pd.DataFrame(
-            {
-                "varname": [
-                    highs_model.getColName(i)[1]
-                    for i in range(
-                        highs_model.getNumCol()
-                    )  # getColName returns a tuple
-                ],
-                "value": highs_model.getSolution().col_value,
-            }
-        )
-
-    def _get_objval_from_highs(self, highs_model: highspy.highs.Highs) -> float:
-        info = highs_model.getInfo()
-        return info.objective_function_value
+        # These are vpower, unit status, unit switching, etc.
+        self.current_p: dict[str, float] = {}
+        self.current_u: dict[str, int] = {}
+        self.current_v: dict[str, int] = {}
+        self.current_w: dict[str, int] = {}
+        self.current_min_on: dict[str, int] = {}
+        self.current_min_off: dict[str, int] = {}
 
     def keep(
         self,
-        model: gp.Model | highspy.highs.Highs,
-        k: int,
+        runtime: float,
+        objval: float,
+        solution: pd.DataFrame,
+        step_k: int,
+        lmp: dict[str, float] = None,
     ) -> None:
+<<<<<<< HEAD
         ONE_STEP = config.get_onestep()
         if isinstance(model, gp.Model):
             results = self._get_sol_from_gurobi(model)
@@ -233,87 +243,59 @@ class SystemRecord:
         elif isinstance(model, highspy.highs.Highs):
             results = self._get_sol_from_highs(model)
             self.objvals.append(self._get_objval_from_highs(model))
+=======
+        """Keep the simulation results at the current simulation period step_k"""
+
+        def _extract_vartype_data(df: pd.DataFrame, vartype: str) -> dict[str, float]:
+            """Extracts data for a specific 'vartype' from the DataFrame and converts it to a dictionary."""
+            return (
+                df[
+                    (df["vartype"] == vartype)
+                    & (df["timestep"] == self.inputs.sim_horizon)
+                ]  # Only considers values of the last hour
+                .drop("vartype", axis=1)
+                .set_index(["node"])  # Assume generator names do not repeat
+                .to_dict()["value"]
+            )
+
+        self.runtimes.append(runtime)
+        self.objvals.append(objval)
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
         # Create a col of variable types for filtering
         pat_vartype = r"(\w+)\["
-        results[["vartype"]] = results["varname"].str.extract(pat_vartype, expand=True)
-
-        # Some variables are not in the (node, t) format.
-        # These are system-level variables
-        col2exclude = ["flow", "sys_spin"]
-
-        # Format the dataframe into vartype, node, hour, value columns
-        cur_var_node_t = results[~results["vartype"].isin(col2exclude)]
-        cur_var_node_t = get_nodehour(cur_var_node_t)
-        # Prevent numerical instability by ensuring the binary values are zero or one
-        cur_var_node_t.loc[
-            np.isclose(cur_var_node_t["value"], 0, atol=1e-4), "value"
-        ] = 0
-        cur_var_node_t.loc[
-            np.isclose(cur_var_node_t["value"], 1, atol=1e-4), "value"
-        ] = 1
-
-        cur_var_flow = results[results["vartype"] == "flow"]
-        cur_var_flow = get_nodehour_flow(cur_var_flow)
-
-        cur_var_syswide = results[results["vartype"] == "sys_spin"]
-        cur_var_syswide = get_nodehour_sys(cur_var_syswide)
-
-        # Save some variables as initial conditions for the next simulation period
-        self.current_p = (
-            cur_var_node_t[cur_var_node_t["vartype"] == "p"]
-            .drop("vartype", axis=1)
-            .set_index(["node", "hour"])
-            .to_dict()["value"]
+        solution[["vartype"]] = solution["varname"].str.extract(
+            pat_vartype, expand=True
         )
 
-        self.current_u = (
-            cur_var_node_t[cur_var_node_t["vartype"] == "status"]
-            .drop("vartype", axis=1)
-            .set_index(["node", "hour"])
-            .to_dict()["value"]
+        current_node_vars = parse_node_variables(
+            solution, self.inputs.sim_horizon, step_k
         )
 
-        self.current_v = (
-            cur_var_node_t[cur_var_node_t["vartype"] == "start"]
-            .drop("vartype", axis=1)
-            .set_index(["node", "hour"])
-            .to_dict()["value"]
-        )
-
-        self.current_w = (
-            cur_var_node_t[cur_var_node_t["vartype"] == "shut"]
-            .drop("vartype", axis=1)
-            .set_index(["node", "hour"])
-            .to_dict()["value"]
-        )
-
-        self.current_u = {k: v for k, v in self.current_u.items()}
-        self.current_v = {k: v for k, v in self.current_v.items()}
-        self.current_w = {k: v for k, v in self.current_w.items()}
-
-        # Record the results after incrementing the hour by the simulation period
-        cur_var_node_t = increment_hour(cur_var_node_t, T=self.T, k=k)
-        # The solver produces very small numbers
-        cur_var_node_t.loc[np.isclose(cur_var_node_t["value"], 0), "value"] = 0
-
-        self.var_node_t = pd.concat([self.var_node_t, cur_var_node_t], axis=0)
-
-        cur_var_flow = increment_hour(cur_var_flow, T=self.T, k=k)
-        self.var_flow = pd.concat([self.var_flow, cur_var_flow], axis=0)
-
-        # Currently there is only the system-wider reserve
-        cur_var_syswide = increment_hour(cur_var_syswide, T=self.T, k=k)
-        self.var_syswide = pd.concat([self.var_syswide, cur_var_syswide], axis=0)
+        ##################
+        # Initial conditions: vpower (p), commitment (u),
+        # startup (v), and shutdown (w).
+        ##################
+        self.current_p = _extract_vartype_data(current_node_vars, "vpower")
+        self.current_u = _extract_vartype_data(current_node_vars, "status")
+        self.current_v = _extract_vartype_data(current_node_vars, "startup")
+        self.current_w = _extract_vartype_data(current_node_vars, "shutdown")
 
         # Need to calculate the minimum time on/off
-        self.current_min_on = get_init_min_on(
-            cur_var_node_t, T=self.T, thermal_units=self.thermal_units, TU=self.TU
+        self.current_min_on = calc_remaining_on_duration(
+            current_node_vars,
+            sim_horizon=self.inputs.sim_horizon,
+            thermal_units=self.inputs.thermal_units,
+            TU=self.inputs.TU,
         )
-        self.current_min_off = get_init_min_off(
-            cur_var_node_t, T=self.T, thermal_units=self.thermal_units, TD=self.TD
+        self.current_min_off = calc_remaining_off_duration(
+            current_node_vars,
+            sim_horizon=self.inputs.sim_horizon,
+            thermal_units=self.inputs.thermal_units,
+            TD=self.inputs.TD,
         )
 
+<<<<<<< HEAD
         # Save the model runtime
         if isinstance(model, gp.Model):
             if k == 0 or ONE_STEP:
@@ -325,6 +307,59 @@ class SystemRecord:
                 self.runtimes = [model.getRunTime()]
             else:
                 self.runtimes.append(model.getRunTime())
+=======
+        ##################
+        # Locational Marginal Prices (LMP)
+        ##################
+        if lmp is not None:
+            self.lmp_df = pd.concat(
+                [
+                    self.lmp_df,
+                    parse_lmp(lmp, self.inputs.sim_horizon, step_k).drop(
+                        "timestep", axis=1
+                    ),
+                ],
+                axis=0,
+            )
+
+        ##################
+        # Append results to the existing dataframes
+        ##################
+        # Only keep the first 24-hours of the simulation
+        current_node_vars = current_node_vars[current_node_vars["timestep"] <= 24]
+        # Remove varname column from the three dataframes
+        # move the value column to the end
+        current_node_vars = current_node_vars.drop(["varname", "timestep"], axis=1)
+        self.node_vars = pd.concat([self.node_vars, current_node_vars], axis=0)
+
+        flow_vars = parse_flow_variables(
+            solution=solution, sim_horizon=self.inputs.sim_horizon, step_k=step_k
+        )
+        # Only keep the first 24-hours of the simulation
+        flow_vars = flow_vars[flow_vars["timestep"] <= 24]
+        flow_vars = flow_vars.drop("timestep", axis=1)
+        self.flow_vars = pd.concat(
+            [
+                self.flow_vars,
+                flow_vars,
+            ],
+            axis=0,
+        )
+
+        syswide_vars = parse_syswide_variables(
+            solution=solution, sim_horizon=self.inputs.sim_horizon, step_k=step_k
+        )
+        # Only keep the first 24-hours of the simulation
+        syswide_vars = syswide_vars[syswide_vars["timestep"] <= 24]
+        syswide_vars = syswide_vars.drop("timestep", axis=1)
+        self.syswide_vars = pd.concat(
+            [
+                self.syswide_vars,
+                syswide_vars,
+            ],
+            axis=0,
+        )
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
         self.init_conds = self.get_init_conds()
         self.init_conds_df: pd.DataFrame = None
@@ -342,29 +377,26 @@ class SystemRecord:
             "initial_min_off": self.current_min_off,
         }
 
-    def get_record(self) -> None:
-        """Return all the variables as a set of three dataframes"""
-        return [self.var_node_t, self.var_flow, self.var_syswide]
-
     def get_node_variables(self) -> pd.DataFrame:
         """Return node-specific variables. These variables include
         dispatch, unit status, unit switching, etc.
         """
-        return self.var_node_t
+        return self.node_vars
 
     def get_flow_variables(self) -> pd.DataFrame:
         """Return the flow variables."""
-        return self.var_flow
+        return self.flow_vars
 
-    def get_system_variables(self) -> pd.DataFrame:
+    def get_systemwide_variables(self) -> pd.DataFrame:
         """Return the system variables. We currently only have the
         system-wide spinning reserve shortfall.
         """
-        return self.var_syswide
+        return self.syswide_vars
 
-    def runtimes(self) -> list[datetime.datetime]:
+    def get_runtimes(self) -> list[float]:
         return self.runtimes
 
+<<<<<<< HEAD
     def to_csv(self) -> None:
         write_df(
             self.var_node_t,
@@ -402,37 +434,40 @@ class SystemRecord:
             model_name=self.model_name,
             simulated_day=self.simulated_day + 1,
             T=self.T,
+=======
+    def get_objvals(self) -> list[float]:
+        return self.objvals
+
+    def get_lmp(self) -> pd.DataFrame:
+        return self.lmp_df.pivot_table(
+            index="hour", columns="node", values="value", aggfunc="first"
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
         )
 
-    def get_hydro_dispatch(self) -> pd.DataFrame:
-        df = self.var_node_t[self.var_node_t["vartype"] == "phydro"]
-        df = df[["node", "hour", "value"]]
-        df = df.rename(columns={"node": "reservoir", "value": "dispatch"})
-        # Columns: reservoir, hour, v.x
-        df = df.pivot(index="hour", columns="reservoir", values="dispatch")
-        start_day = df.index[0] // 24
-        end_day = df.index[-1] // 24
-        df = convert_to_daily_hydro(df, start_day, end_day)
-        return df
-
-    @staticmethod
-    def get_hydro_from_model(model: gp.Model) -> dict:
-        """The output of the hydro dispatch is a dictionary of the form
-        {
-            "reservoir1": {t1: value1, t2: value2, ...},
-            "reservoir2": {t1: value1, t2: value2, ...},
-        }
+    def write_simulation_results(self) -> None:
         """
-        hydro_dispatch = {}
-        # Variables are named as "phydro[reservoir,t]"
-        pattern = r"phydro\[(\w+),(\d+)\]"
-        for v in model.getVars():
-            varname = v.varName
-            match = re.match(pattern, varname)
-            if match:
-                reservoir, t = match.groups()
-                t = int(t)
-                if reservoir not in hydro_dispatch:
-                    hydro_dispatch[reservoir] = {}
-                hydro_dispatch[reservoir][t] = v.X
-        return hydro_dispatch
+        Write 4 CSV files containing modeling results to the output directory.
+        """
+        data_to_write = [
+            (self.node_vars, "node_variables"),
+            (self.flow_vars, "flow_variables"),
+            (self.syswide_vars, "system_variables"),
+            (
+                pd.DataFrame({"objval": self.objvals, "runtime": self.runtimes}),
+                "model_stats",
+            ),
+        ]
+
+        for df, output_name in data_to_write:
+            write_df_to_output_dir(
+                df,
+                output_name=output_name,
+                model_id=self.inputs.model_id,  # Use model_name as the identifier
+            )
+
+        if not self.lmp_df.empty:
+            write_df_to_output_dir(
+                self.lmp_df,
+                output_name="lmp",
+                model_id=self.inputs.model_id,
+            )

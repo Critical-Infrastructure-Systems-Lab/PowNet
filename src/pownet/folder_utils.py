@@ -22,6 +22,14 @@ def get_model_dir() -> str:
     return os.path.join(get_pownet_dir(), "model_library")
 
 
+def get_reservoir_dir(model_name: str) -> str:
+    return os.path.join(get_model_dir(), model_name, "reservoir")
+
+
+def get_reservoir_file(model_name: str, filename: str) -> str:
+    return os.path.join(get_reservoir_dir(model_name), f"{filename}")
+
+
 def get_home_dir() -> str:
     return os.path.expanduser("~")
 

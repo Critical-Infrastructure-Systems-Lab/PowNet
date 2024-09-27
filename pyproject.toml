@@ -17,6 +17,6 @@ dependencies = [
     "pyomo >= 6.5.0",
     "gurobipy >= 10.0.3",
     "networkx >= 3.1.0",
-    "highs >= 1.6.0"
+    "highspy >= 1.6.0"
 ]
 requires-python = ">=3.10"

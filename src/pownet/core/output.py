@@ -1,10 +1,15 @@
+<<<<<<< HEAD
 from __future__ import annotations
 from datetime import datetime
 import os
+=======
+""" output.py: This module contains the OutputProcessor class, which processes the output from PowNet and provides methods to access the data.
+"""
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
 import pandas as pd
-import matplotlib.pyplot as plt
 
+<<<<<<< HEAD
 from pownet.folder_utils import get_output_dir, get_database_dir
 from pownet.data_utils import get_dates
 
@@ -33,23 +38,28 @@ def get_fuel_color_map() -> dict:
         .to_dict()["color"]
     )
     return fuel_color_map
+=======
+from pownet.data_utils import get_dates, get_fuel_mix_order
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
 
 class OutputProcessor:
-    def __init__(self):
-        self.model_name: str = None
-        self.year: int = None
+    def __init__(
+        self,
+        year: int,
+        fuelmap: dict,
+        demand: pd.DataFrame,
+    ) -> None:
+        self.year: int = year
+        self.fuelmap: dict = fuelmap
+        self.demand: pd.DataFrame = demand
 
-        self.total_timesteps: int = None  # Simulation hours
-        self.ctime: str = None  # Date in 'YYYYMMDD_mmss' format
-        self.dates: pd.Series = None
+        # Sum across each month to get the monthly dispatch
+        # For processing dataframes
+        self.dates: pd.DataFrame = get_dates(year=self.year)
+        self.dates.index += 1
 
-        self.fuelmap: dict[str, str] = None
-
-        self.thermal_dispatch: pd.DataFrame = None
-        self.rnw_dispatch: pd.DataFrame = None
-        self.shortfall: pd.Series = None
-        self.curtailment: pd.Series = None
+        self.node_variables: pd.DataFrame = None
 
         self.total_dispatch: pd.DataFrame = None
         self.monthly_dispatch: pd.DataFrame = None
@@ -65,228 +75,155 @@ class OutputProcessor:
 
         self.unit_status: pd.DataFrame = None
 
-    def load(
+    def load_from_dataframe(
         self,
+<<<<<<< HEAD
         df: pd.DataFrame,
         system_input: "SystemInput",
         model_name: str,
+=======
+        node_var_df: pd.DataFrame,
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
     ) -> None:
         """Process node-specific variables from PowNet."""
-        self.model_name = model_name
-        self.year = system_input.year
-
-        # For saving files
-        self.ctime = datetime.now().strftime("%Y%m%d_%H%M")
-
-        # For processing dataframes
-        self.dates = get_dates(year=self.year)
-        self.dates.index += 1
-
-        # -- Extract information from PowNet's node variables
-        self.fuelmap = system_input.fuelmap
-
-        # Generation from thermal units
-        self.thermal_dispatch = df[df["vartype"] == "dispatch"]
-        self.thermal_dispatch = self.thermal_dispatch
-        self.thermal_dispatch = self.thermal_dispatch.reset_index(drop=True)
-        self.thermal_dispatch["fuel_type"] = self.thermal_dispatch.apply(
-            lambda x: self.fuelmap[x["node"]], axis=1
+        # Extract the dispatch of generators (thermal units and renewables)
+        dispatch_vars = [
+            "pthermal",
+            "psolar",
+            "pwind",
+            "phydro",
+            "pimp",
+            "pos_pmismatch",
+            "neg_pmismatch",
+        ]
+        self.node_variables = node_var_df.loc[
+            node_var_df["vartype"].isin(dispatch_vars)
+        ].reset_index(drop=True)
+        self.node_variables["fuel_type"] = self.node_variables.apply(
+            lambda x: self.fuelmap.get(x["node"], None), axis=1
         )
+        # Assign import and slack fuel types as they are not in the fuelmap dictionary
+        self.node_variables.loc[
+            self.node_variables["vartype"] == "pimp", "fuel_type"
+        ] = "import"
+        self.node_variables.loc[
+            self.node_variables["vartype"] == "pos_pmismatch", "fuel_type"
+        ] = "shortfall"
+        self.node_variables.loc[
+            self.node_variables["vartype"] == "neg_pmismatch", "fuel_type"
+        ] = "curtailment"
 
-        # Generation from renewables
-        mask = (
-            (df["vartype"] == "phydro")
-            | (df["vartype"] == "psolar")
-            | (df["vartype"] == "pwind")
-        )
-        self.rnw_dispatch = df.loc[mask]
-        self.rnw_dispatch = self.rnw_dispatch.reset_index(drop=True)
-        self.rnw_dispatch["fuel_type"] = self.rnw_dispatch.apply(
-            lambda x: self.fuelmap[x["node"]], axis=1
-        )
-
-        # Generation from import nodes
-        self.p_import = format_variable_fueltype(
-            df=df, vartype="pimp", fuel_type="import"
-        )
-        # Shortfall (positive) and curtailment (negative)
-        self.shortfall = format_variable_fueltype(
-            df=df, vartype="s_pos", fuel_type="shortfall"
-        )
-        self.curtailment = format_variable_fueltype(
-            df=df, vartype="s_neg", fuel_type="curtailment"
-        )
-
-        # Calculate the total dispatch for each fuel type and timestep
-        self.total_dispatch = pd.concat(
-            [
-                self.thermal_dispatch,
-                self.rnw_dispatch,
-                self.p_import,
-                self.shortfall,
-                self.curtailment,
-            ],
-            axis=0,
-        )
-        self.total_dispatch = self.total_dispatch.reset_index(drop=True)
+        # self.total_dispatch = self.node_variables.reset_index(drop=True)
         self.total_dispatch = (
-            self.total_dispatch[["fuel_type", "value", "hour"]]
+            self.node_variables[["fuel_type", "value", "hour"]]
             .groupby(["fuel_type", "hour"])
             .sum()
         )
-
         self.total_dispatch = self.total_dispatch.reset_index()
         self.total_dispatch = self.total_dispatch.pivot(
             columns=["hour"], index=["fuel_type"]
         ).T.reset_index(drop=True)
         # PowNet indexing starts at 1
         self.total_dispatch.index += 1
+        self.total_dispatch.index.name = "Hour"
 
         # Reorder the columns of total dispatch in case we want to plot
-        self.fuel_mix_order: pd.DataFrame = pd.read_csv(
-            os.path.join(get_database_dir(), "fuels.csv"),
-            header=0,
-        )["name"]
+        self.fuel_mix_order = get_fuel_mix_order()
         self.fuel_mix_order = [
             fuel for fuel in self.fuel_mix_order if fuel in self.total_dispatch.columns
         ]
         self.total_dispatch = self.total_dispatch[self.fuel_mix_order]
 
-        # Sum across each month to get the monthly dispatch
         self.monthly_dispatch = self.total_dispatch.copy()
         self.monthly_dispatch["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_dispatch = self.monthly_dispatch.groupby("month").sum()
         self.monthly_dispatch.index = self.monthly_dispatch.index.strftime("%b")
+        self.monthly_dispatch.index.name = "Month"
 
         # Sum across 24 hours to get the daily dispatch.
         self.daily_dispatch = self.total_dispatch.copy()
         self.daily_dispatch = self.daily_dispatch.groupby(
             (self.daily_dispatch.index - 1) // 24
         ).sum()
+        self.daily_dispatch.index += 1
+        self.daily_dispatch.index.name = "Day"
 
         # Demand is an input to the simulation
-        self.total_demand = system_input.demand.sum(axis=1)
+        self.total_demand = self.demand.sum(axis=1).to_frame()
+        self.total_demand.columns = ["demand"]
+        self.total_demand.index.name = "Hour"
 
         # Sum across each month to get the monthly demand
-        self.monthly_demand = self.total_demand[: self.total_timesteps].to_frame()
-        self.monthly_demand.columns = ["demand"]
+        self.monthly_demand = self.total_demand.copy()
         self.monthly_demand["month"] = self.dates["date"].dt.to_period("M")
         self.monthly_demand = self.monthly_demand.groupby("month").sum()
         self.monthly_demand.index = self.monthly_demand.index.strftime("%b")
 
+        # Need -1 because the index starts with 1 and we want to group by 24 hours
         self.daily_demand = self.total_demand.groupby(
             (self.total_demand.index - 1) // 24
         ).sum()
+        self.daily_demand.index += 1
 
         # Need unit statuses for plotting their activities
-        self.unit_status = df[df["vartype"] == "status"]
+        self.unit_status = node_var_df[node_var_df["vartype"] == "status"].reset_index(
+            drop=True
+        )
 
-    def get_total_dispatch(self) -> pd.DataFrame:
+    def get_hourly_dispatch(self) -> pd.DataFrame:
         return self.total_dispatch
-
-    def get_monthly_dispatch(self) -> pd.DataFrame:
-        return self.monthly_dispatch
 
     def get_daily_dispatch(self) -> pd.DataFrame:
         return self.daily_dispatch
 
-    def get_total_demand(self) -> pd.Series:
-        return self.total_demand
+    def get_monthly_dispatch(self) -> pd.DataFrame:
+        return self.monthly_dispatch
 
-    def get_monthly_demand(self) -> pd.Series:
-        return self.monthly_demand
+    def get_hourly_demand(self) -> pd.Series:
+        return self.total_demand
 
     def get_daily_demand(self) -> pd.Series:
         return self.daily_demand
 
-    def get_dispatch(self) -> pd.DataFrame:
-        return self.thermal_dispatch
+    def get_monthly_demand(self) -> pd.Series:
+        return self.monthly_demand
 
     def get_unit_status(self) -> pd.DataFrame:
         return self.unit_status
 
+    def get_import_values(self) -> pd.DataFrame:
+        """Return the import values for each timestep. Columns are generators.
+        Index is the hour in the simulation year"""
+        import_values = self.node_variables[self.node_variables["vartype"] == "pimp"]
+        import_values = import_values.pivot(
+            columns="node", index="hour", values="value"
+        )
+        return import_values
+
     def load_from_csv(
         self,
         filename: pd.DataFrame,
+<<<<<<< HEAD
         system_input: "SystemInput",
         model_name: str,
+=======
+>>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
     ) -> None:
         """Load the PowNet output from a CSV file."""
-        df = pd.read_csv(filename, header=0)
-        self.load(df=df, system_input=system_input, model_name=model_name)
+        node_var_df = pd.read_csv(filename, header=0)
+        self.load(node_var_df=node_var_df)
 
-    def _convert_rnw_to_daily(self, rnw: pd.DataFrame) -> pd.DataFrame:
-        """Convert the hourly renewable generation to daily."""
-        # Pivot the table to have names as columns and each row the value at each hour
-        rnw = rnw.pivot_table(index="hour", columns="node", values="value")
-        # Sum across each hour to get the daily hydro generation
-        # Plus 1 because the index starts with 1
-        rnw = rnw.groupby((rnw.index - 1) // 24).sum()
-        rnw.index.name = "day"
-        return rnw
-
-    def get_daily_hydro_dispatch(self) -> pd.DataFrame:
+    def get_daily_dispatch_by_fuel_type(self, fuel_type) -> pd.DataFrame:
         """Return the daily hydro generation."""
-        hydro = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "hydro"]
-        hydro = self._convert_rnw_to_daily(hydro)
-        return hydro
+        daily_dispatch = self.daily_dispatch[fuel_type].to_frame()
+        daily_dispatch.columns = [fuel_type]
+        return daily_dispatch
 
-    def get_daily_solar_dispatch(self) -> pd.DataFrame:
-        """Return the daily solar generation."""
-        solar = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "solar"]
-        solar = self._convert_rnw_to_daily(solar)
-        return solar
-
-    def get_daily_wind_dispatch(self) -> pd.DataFrame:
-        """Return the daily wind generation."""
-        wind = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "wind"]
-        wind = self._convert_rnw_to_daily(wind)
-        return wind
-
-    def _convert_rnw_to_monthly(self, rnw: pd.DataFrame) -> pd.DataFrame:
-        """Convert the daily renewable generation to monthly."""
-        rnw = rnw.pivot_table(index="hour", columns="node", values="value")
-        rnw["month"] = self.dates["date"].dt.to_period("M")
-        rnw = rnw.groupby("month").sum()
-        rnw.index = rnw.index.strftime("%b")
-        return rnw
-
-    def get_monthly_hydro_dispatch(self) -> pd.DataFrame:
+    def get_monthly_dispatch_by_fuel_type(self, fuel_type) -> pd.DataFrame:
         """Return the monthly hydro generation."""
-        hydro = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "hydro"]
-        hydro = self._convert_rnw_to_monthly(hydro)
-        return hydro
-
-    def get_monthly_solar_dispatch(self) -> pd.DataFrame:
-        """Return the monthly solar generation."""
-        solar = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "solar"]
-        solar = self._convert_rnw_to_monthly(solar)
-        return solar
-
-    def get_monthly_wind_dispatch(self) -> pd.DataFrame:
-        """Return the monthly wind generation."""
-        wind = self.rnw_dispatch[self.rnw_dispatch["fuel_type"] == "wind"]
-        wind = self._convert_rnw_to_monthly(wind)
-        return wind
-
-    def get_daily_thermal_dispatch(self) -> pd.DataFrame:
-        """Return the daily thermal generation."""
-        thermal = self.thermal_dispatch.pivot_table(
-            index="hour", columns="fuel_type", values="value", aggfunc="sum"
-        )
-        thermal["day"] = (thermal.index - 1) // 24
-        thermal = thermal.groupby("day").sum()
-        return thermal
-
-    def get_monthly_thermal_dispatch(self) -> pd.DataFrame:
-        """Return the monthly thermal generation."""
-        thermal = self.thermal_dispatch.pivot_table(
-            index="hour", columns="fuel_type", values="value", aggfunc="sum"
-        )
-        thermal["month"] = self.dates["date"].dt.to_period("M")
-        thermal = thermal.groupby("month").sum()
-        thermal.index = thermal.index.strftime("%b")
-        return thermal
+        monthly_dispatch = self.monthly_dispatch[fuel_type].to_frame()
+        monthly_dispatch.columns = [fuel_type]
+        return monthly_dispatch
 
     def get_co2_emission(self, time_interval: str) -> pd.DataFrame:
         """Return the CO2 emissions for timestep.
@@ -327,19 +264,17 @@ class OutputProcessor:
 
         return co2_emissions
 
-    def get_fuel_cost(self, time_interval: str) -> pd.DataFrame:
-        """Return the system cost for each timestep."""
-        cost_map = {
-            "coal": 5,
-            "gas": 5.85,
-            "oil": 8,
-            "import": 10,
-            "shortfall": 1000,
-            "curtailment": 1000,
-            "biomass": 3.02,
-            "wsth": 3.02,
-            "slack": 1000,
-        }
+    def get_system_fuel_cost(self, time_interval: str, cost_map: dict) -> pd.DataFrame:
+        """Return the system's fuel cost for each timestep.
+
+        Args:
+            time_interval (str): The time interval for the cost calculation.
+            cost_map (dict): The cost of each fuel type. Example: {"coal": 5, "gas": 5.85}
+
+        Returns:
+            pd.DataFrame: The system's fuel cost by fuel type for each timestep.
+
+        """
 
         if time_interval == "monthly":
             df = self.get_monthly_thermal_dispatch()
@@ -353,149 +288,3 @@ class OutputProcessor:
             system_cost[fuel] = df[fuel] * cost_map[fuel]
 
         return system_cost
-
-
-class Visualizer:
-    def __init__(self, model_name: str, ctime: str):
-        self.fuel_color_map: dict = get_fuel_color_map()
-        self.model_name: str = model_name
-        # Need to get timestamp from OutputProcessor in 'YYYYMMDD_mmss' format
-        self.ctime: str = ctime
-
-    def plot_fuelmix_bar(
-        self,
-        dispatch: pd.DataFrame,
-        demand: pd.Series,
-        to_save: bool,
-    ) -> None:
-        # Use total_timesteps to index demand because
-        # the length of demand can be longer than the total simulation hours
-        total_timesteps: int = dispatch.shape[0]
-        # Plotting section
-        fig, ax = plt.subplots(figsize=(8, 5))
-
-        dispatch.plot.bar(
-            stacked=True, ax=ax, linewidth=0, color=self.fuel_color_map, legend=False
-        )
-        ax.plot(
-            range(0, total_timesteps),
-            demand[:total_timesteps],
-            color="k",
-            linewidth=2,
-            linestyle=":",
-            label="demand",
-        )
-        ax.set_xlabel("Hour")
-
-        # Plot formatting
-        legend = fig.legend(
-            loc="outside lower center",
-            ncols=4,
-            fontsize="small",
-            bbox_to_anchor=(0.5, -0.1),
-        )
-        ax.set_ylabel("Power (MW)")
-        ax.set_ylim(bottom=0)
-
-        if to_save:
-            figure_name = f"{self.ctime}_{self.model_name}_fuelmix.png"
-            fig.savefig(
-                os.path.join(get_output_dir(), figure_name),
-                bbox_extra_artists=(legend,),
-                bbox_inches="tight",
-                dpi=350,
-            )
-
-        plt.show()
-
-    def plot_fuelmix_area(
-        self,
-        dispatch: pd.DataFrame,
-        demand: pd.Series,
-        to_save: bool,
-    ) -> None:
-        """Return an area plot of the fuel mix."""
-        # Use total_timesteps to index demand because
-        # the length of demand can be longer than the total simulation hours
-        total_timesteps: int = dispatch.shape[0]
-
-        fig, ax = plt.subplots(figsize=(8, 5))
-        dispatch.plot.area(
-            stacked=True, ax=ax, linewidth=0, color=self.fuel_color_map, legend=False
-        )
-        ax.plot(
-            demand[:total_timesteps],
-            color="k",
-            linewidth=2,
-            linestyle=":",
-            label="demand",
-        )
-        ax.set_xlabel("")
-
-        legend = fig.legend(
-            loc="outside lower center",
-            ncols=4,
-            fontsize="small",
-            bbox_to_anchor=(0.5, -0.1),
-        )
-        ax.set_ylabel("Power (MW)")
-        ax.set_ylim(bottom=0)
-
-        if to_save:
-            figure_name = f"{self.ctime}_{self.model_name}_fuelmix.png"
-            fig.savefig(
-                os.path.join(get_output_dir(), figure_name),
-                bbox_extra_artists=(legend,),
-                bbox_inches="tight",
-                dpi=350,
-            )
-
-        plt.show()
-
-    def plot_thermal_units(
-        self,
-        thermal_dispatch: pd.DataFrame,
-        unit_status: pd.DataFrame,
-        thermal_units: list[str],
-        full_max_cap: dict[str, float],
-        to_save: bool,
-    ) -> None:
-        """Plot the on/off status of individual thermal units"""
-
-        for unit_g in thermal_units:
-            # Extract the dispatch of each thermal unit and plot the value
-            df1 = thermal_dispatch[thermal_dispatch.node == unit_g]
-            df2 = unit_status[unit_status["node"] == unit_g]
-
-            fig, ax1 = plt.subplots(figsize=(8, 5))
-            ax2 = ax1.twinx()
-
-            ax1.step(df1["hour"], df1["value"], where="mid", color="b", label="Power")
-            # If ymax is too low, then we cannot see the blue line
-            ax1.set_ylim(bottom=0, top=full_max_cap[unit_g] * 1.05)
-            ax1.tick_params(axis="x", labelrotation=45)
-            ax1.set_xlabel("Hour")
-            ax1.set_ylabel("Power (MW)")
-
-            ax2.bar(
-                df2["hour"], df2["value"], color="k", alpha=0.2, label="Unit status"
-            )
-            ax2.set_ylim(bottom=0, top=1)
-            ax2.set_ylabel("Unit Status")
-            plt.title(unit_g)
-
-            if to_save:
-                unit_plot_folder = os.path.join(
-                    get_output_dir(), f"{self.ctime}_unit_plots"
-                )
-                if not os.path.exists(unit_plot_folder):
-                    os.mkdir(unit_plot_folder)
-
-                fig.savefig(
-                    os.path.join(
-                        unit_plot_folder, f"{self.ctime}_{self.model_name}_{unit_g}.png"
-                    ),
-                    dpi=350,
-                )
-
-            plt.show()
