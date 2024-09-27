@@ -1,4 +1,4 @@
-﻿kv,type,n_conductors,aluminum_cross_section_per_conductor,code_name,current_capacity_amps,reactance_ohms_per_km,pownet_n_circuits
+﻿kv,type,n_conductors,aluminum_cross_section_per_conductor,code_name,current_capacity_amps,reactance_ohms_per_km,n_circuits
 22,acsr,1,1000,curlew,1060,0.3648,2
 69,acsr,1,1000,curlew,1060,0.3648,2
 115,acsr,1,1000,curlew,1060,0.3648,2
