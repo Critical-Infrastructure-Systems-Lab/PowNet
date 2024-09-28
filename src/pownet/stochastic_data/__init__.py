@@ -1,2 +1,0 @@
-""" stochastic_data module.
-"""
