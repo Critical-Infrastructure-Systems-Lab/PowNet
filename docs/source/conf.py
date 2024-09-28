@@ -1,8 +1,22 @@
 import sys
 import os
-import re
 
 sys.path.insert(0, os.path.abspath("../../src/"))
+
+# Import mock modules for readthedocs
+autodoc_mock_imports = [
+    "datetime",
+    "pandas",
+    "gurobipy",
+    "highspy",
+    "networkx",
+    "numpy",
+    "matplotlib.pyplot",
+    "math",
+    "__future__",
+    "re",
+]
+
 # -- Project information
 
 project = "PowNet"
@@ -23,6 +37,7 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
+    "sphinx_autodoc_typehints",
     "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",

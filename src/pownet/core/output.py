@@ -13,6 +13,7 @@ class OutputProcessor:
         fuelmap: dict,
         demand: pd.DataFrame,
     ) -> None:
+        """Initialize the OutputProcessor object."""
         self.year: int = year
         self.fuelmap: dict = fuelmap
         self.demand: pd.DataFrame = demand

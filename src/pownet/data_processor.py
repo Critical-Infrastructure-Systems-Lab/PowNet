@@ -8,8 +8,8 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from pownet.folder_utils import get_model_dir, get_database_dir
-from pownet.data_utils import get_dates
+from .folder_utils import get_model_dir, get_database_dir
+from .data_utils import get_dates
 
 
 class DataProcessor:

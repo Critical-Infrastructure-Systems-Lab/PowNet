@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import gurobipy as gp
-import gurobipy as GRB
-import pandas as pd
-
-
 """ Functions for the objective function
 """
 

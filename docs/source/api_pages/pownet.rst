@@ -25,6 +25,7 @@ pownet.data\_utils module
 -------------------------
 
 .. automodule:: pownet.data_utils
+   :imported-members:
    :members:
    :undoc-members:
    :show-inheritance:

@@ -1,12 +1,10 @@
-"""data_utils.py: functions for processing user inputs"""
-
 import re
 import datetime
-import os
 
 import numpy as np
 import pandas as pd
-from pownet.folder_utils import get_database_dir, get_output_dir
+
+from .folder_utils import get_database_dir, get_output_dir
 
 
 def get_dates(year):
