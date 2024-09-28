@@ -1,46 +1,9 @@
-<<<<<<< HEAD
-from __future__ import annotations
-from datetime import datetime
-import os
-=======
 """ output.py: This module contains the OutputProcessor class, which processes the output from PowNet and provides methods to access the data.
 """
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
 import pandas as pd
 
-<<<<<<< HEAD
-from pownet.folder_utils import get_output_dir, get_database_dir
-from pownet.data_utils import get_dates
-
-
-def format_variable_fueltype(
-    df: pd.DataFrame, vartype: str, fuel_type: str
-) -> pd.DataFrame:
-    """Given a dataframe of PowNet outputs, filter for a vartype and assign the fuel type.
-    Use this function for import, s_pos, and s_neg.
-    """
-    output_df = df[df["vartype"] == vartype]
-    output_df = output_df.reset_index(drop=True)
-    output_df["fuel_type"] = fuel_type
-    return output_df
-
-
-def get_fuel_color_map() -> dict:
-    """Return a map of fuel type to its color. This is defined in the database folder."""
-    fuel_color_map = (
-        pd.read_csv(
-            os.path.join(get_database_dir(), "fuels.csv"),
-            header=0,
-            usecols=["name", "color"],
-        )
-        .set_index("name")
-        .to_dict()["color"]
-    )
-    return fuel_color_map
-=======
 from pownet.data_utils import get_dates, get_fuel_mix_order
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
 
 class OutputProcessor:
@@ -77,13 +40,7 @@ class OutputProcessor:
 
     def load_from_dataframe(
         self,
-<<<<<<< HEAD
-        df: pd.DataFrame,
-        system_input: "SystemInput",
-        model_name: str,
-=======
         node_var_df: pd.DataFrame,
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
     ) -> None:
         """Process node-specific variables from PowNet."""
         # Extract the dispatch of generators (thermal units and renewables)
@@ -203,11 +160,6 @@ class OutputProcessor:
     def load_from_csv(
         self,
         filename: pd.DataFrame,
-<<<<<<< HEAD
-        system_input: "SystemInput",
-        model_name: str,
-=======
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
     ) -> None:
         """Load the PowNet output from a CSV file."""
         node_var_df = pd.read_csv(filename, header=0)

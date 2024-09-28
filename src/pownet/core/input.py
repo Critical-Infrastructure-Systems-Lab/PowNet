@@ -9,26 +9,15 @@ import textwrap
 import gurobipy as gp
 import pandas as pd
 
-<<<<<<< HEAD
-from pownet.config import get_spin_reserve_factor
-from pownet.data_utils import get_arcs, get_linecap, get_suscept
-from pownet.folder_utils import get_model_dir
-=======
 from pownet.folder_utils import get_model_dir
 
 logger = logging.getLogger(__name__)
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
 
 class SystemInput:
     def __init__(
         self,
         model_name: str,
-<<<<<<< HEAD
-        simulated_day:int,
-        price: str = "fuel",
-        reverse_flow: bool = False,
-=======
         year: int,
         sim_horizon: int,
         use_spin_var: bool = True,
@@ -39,20 +28,9 @@ class SystemInput:
         load_shortfall_penalty_factor: float = 1000,
         load_curtail_penalty_factor: float = 10,
         spin_shortfall_penalty_factor: float = 1000,
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
     ) -> None:
         """This class reads the input data for the power system model."""
 
-<<<<<<< HEAD
-        # The date columns are not needed
-        date_cols = ["year", "month", "day", "hour", "date"]
-
-        self.T: int = T
-        self.formulation: str = formulation
-        self.model_name: str = model_name
-        self.simulated_day: str = simulated_day
-        self.model_dir: str = os.path.join(get_model_dir(), model_name)
-=======
         self.model_name = model_name
         self.year = year
         self.sim_horizon = sim_horizon
@@ -60,7 +38,6 @@ class SystemInput:
 
         # The timestamp is used to create a unique folder for the model
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M")
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
         self.model_id: str = f"{self.timestamp}_{self.model_name}_{self.sim_horizon}"
 
@@ -306,24 +283,6 @@ class SystemInput:
         self.fuelmap.update({k: fuel_type for k in unit_node_map.keys()})
         return capacity_data, unit_node_map
 
-<<<<<<< HEAD
-        # Read timeseries data
-        # The index of timeseries starts at 1
-        self.demand: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "demand_export.csv"), header=0
-        ).drop(date_cols, axis=1, errors="ignore")
-        self.demand.index += 1
-
-        self.derating: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "pownet_derate_factor.csv"), header=0
-        ).drop(date_cols, axis=1, errors="ignore")
-        self.derating.index += 1
-
-        self.fuelprice: pd.DataFrame = pd.read_csv(
-            os.path.join(self.model_dir, "fuel_price.csv"), header=0
-        ).drop(date_cols, axis=1, errors="ignore")
-        self.fuelprice.index += 1
-=======
     def load_data(self):
         """Load the input data for the power system model.
         Timeseries are loaded as dataframes with the index starting at 1.
@@ -361,7 +320,6 @@ class SystemInput:
 
         # CHOOSE pownet_hydropower.csv over hydropower.csv because
         # the former is created from the reservoir module in PowNet
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
         if os.path.exists(os.path.join(self.model_dir, "pownet_hydropower.csv")):
             self.hydro_capacity, self.hydro_unit_node = (
@@ -380,82 +338,21 @@ class SystemInput:
         else:
             self.hydro_capacity = pd.DataFrame()
 
-<<<<<<< HEAD
-        # Hydropower capacity
-        self.hydro_cap: pd.DataFrame = pd.read_csv(hydro_fn, header=0).drop(
-            date_cols, axis=1, errors="ignore"
-        )
-        self.hydro_cap.index += 1
-
-        # Hydropower can be given at hourly or daily resolution
-        if len(self.hydro_cap) == 8760:
-=======
         # Hydropower can be given at hourly or daily resolution,
         # which the optimization model must match.
         hours_in_year = 8760
         days_in_year = 365
         if len(self.hydro_capacity) == hours_in_year:
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
             self.hydro_timestep = "hourly"
         elif len(self.hydro_capacity) == days_in_year:
             self.hydro_timestep = "daily"
         elif len(self.hydro_capacity) == 0:
             self.hydro_timestep = "none"
         else:
-<<<<<<< HEAD
-            raise ValueError("Hydropower timeseries must be either 8760 or 365.")
-
-        # Reservoirs are treated as units
-        self.hydro_units: list = self.hydro_cap.columns.tolist()
-
-        solar_fn = os.path.join(self.model_dir, "solar.csv")
-        if os.path.exists(solar_fn):
-            self.solar_cap: pd.DataFrame = pd.read_csv(solar_fn, header=0).drop(
-                date_cols, axis=1, errors="ignore"
-=======
             raise ValueError(
                 "PowNet: Hydropower timeseries must be either of length 8760 or 365."
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
             )
 
-<<<<<<< HEAD
-        wind_fn = os.path.join(self.model_dir, "wind.csv")
-        if os.path.exists(wind_fn):
-            self.wind_cap: pd.DataFrame = pd.read_csv(wind_fn, header=0).drop(
-                date_cols, axis=1, errors="ignore"
-            )
-            self.wind_cap.index += 1
-            self.wind_units: list = self.wind_cap.columns.tolist()
-        else:
-            self.wind_cap = pd.DataFrame()
-            self.wind_units = []
-
-        # Import nodes are treated similary to a renewable but with higher cost
-        fn_import = os.path.join(self.model_dir, "import.csv")
-        if os.path.exists(fn_import):
-            self.p_import: pd.DataFrame = pd.read_csv(fn_import, header=0).drop(
-                date_cols, axis=1, errors="ignore"
-            )
-            self.p_import.index += 1
-            self.nodes_import: list = self.p_import.columns.tolist()
-        else:
-            self.p_import = pd.DataFrame()
-            self.nodes_import = []
-
-        # System nodes
-        self.nodes_w_demand: list = self.demand.columns.tolist()
-
-        # Map units to their fuel type beginning with thermal units,
-        # then hydro, solar, wind, import, and demand nodes
-        self.fuelmap = (
-            pd.read_csv(
-                os.path.join(self.model_dir, "unit_param.csv"),
-                header=0,
-                usecols=["name", "fuel_type"],
-            )
-            .set_index("name")
-            .to_dict()["fuel_type"]
-=======
         #################
         # Renewables (timeseries)
         #################
@@ -468,7 +365,6 @@ class SystemInput:
         )
         self.import_capacity, self.import_unit_node = (
             self._load_capacity_and_update_fuelmap("import.csv", "import")
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
         )
 
         #################
@@ -552,10 +448,6 @@ class SystemInput:
             raise ValueError(
                 "PowNet: Simulation horizon must be a multiple of 24 and greater than 24."
             )
-<<<<<<< HEAD
-            .drop(date_cols, axis=1, errors="ignore")
-            .to_dict()
-=======
 
         ##################################
         # Nodes are connected to the grid
@@ -648,7 +540,6 @@ class SystemInput:
             | self.solar_unit_node
             | self.wind_unit_node
             | self.import_unit_node
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
         )
         if len(self.unit_marginal_cost.columns) != number_of_non_fossil_generators:
             raise ValueError(

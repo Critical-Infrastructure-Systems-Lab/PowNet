@@ -10,69 +10,31 @@ from pownet.data_utils import (
     get_current_time,
 )
 from pownet.core import ModelBuilder, SystemInput, SystemRecord
-<<<<<<< HEAD
-=======
 from pownet.modeling import PowerSystemModel
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 from pownet.core.record import (
     get_hydro_from_model,
     convert_to_daily_hydro,
 )
 from pownet.reservoir.reservoir import ReservoirOperator
-<<<<<<< HEAD
-
-import pownet.config as config
-=======
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 from pownet.folder_utils import get_output_dir
 
 
 class Simulator:
     def __init__(
         self,
-<<<<<<< HEAD
-        system_input: SystemInput,
-        write_model: bool = False,
-        use_gurobi: bool = False,
-=======
         inputs: SystemInput,
         use_gurobi: bool = True,
         write_model: bool = False,
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
         to_reoperate: bool = False,
         reop_timestep: str = "hourly",
     ) -> None:
 
-<<<<<<< HEAD
-        self.system_input = system_input
-        self.model_name = system_input.model_name
-        self.T = system_input.T
-        self.write_model = write_model
-        self.use_gurobi = use_gurobi
-
-        self.to_reoperate = to_reoperate
-        self.reop_timestep = reop_timestep
-
-        # Simulate reservoir operation based on provided rule curve to get pownet_hydropower.csv
-        if self.to_reoperate:
-            self.reservoir_operator = ReservoirOperator(model_name, num_days=365)
-            self.reservoir_operator.simulate()
-            self.reservoir_operator.export_hydropower_csv(timestep=reop_timestep)
-
-        # Extract model parameters from the model library directory
-        # self.system_input = SystemInput(
-        #     T=T, formulation="kirchhoff", model_name=model_name
-        # )
-
-        self.model: gp.Model = None
-=======
         self.use_gurobi = use_gurobi
         self.write_model = write_model
         self.to_reoperate = to_reoperate
         self.reop_timestep = reop_timestep
 
         self.model: PowerSystemModel = None
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
         # Statistics
         self.wallclock_times: float = []  # Total runtime of each instance
@@ -85,68 +47,43 @@ class Simulator:
     def run(
         self,
         steps: int,
-<<<<<<< HEAD
-        init_conds,
-        simulated_day,
-        mip_gap: float = None,
-        timelimit: float = None,
-=======
         solver: str = "gurobi",
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
     ) -> SystemRecord:
         # Initialize objects
         system_record = SystemRecord(self.system_input)
         builder = ModelBuilder(self.system_input)
 
+        # Initially, we can define the initial conditions
+        init_conds = create_init_condition(
+            thermal_units=self.system_input.thermal_units, T=self.T
+        )
+
         # The indexing of 'k' starts at zero because we use this to
         # index the parameters of future simulation periods (t + self.k*self.T)
         # Need to ensure that steps is a multiple of T
-        STEP_BY_STEP = config.get_stepbystep()
-        ONE_STEP = config.get_onestep()
-
-        if STEP_BY_STEP or ONE_STEP:
-            steps_to_run = 1
-        else:
-            steps_to_run = min(steps, 365 * 24 // self.T)
+        steps_to_run = min(steps, 365 * 24 // self.T)
 
         for k in range(0, steps_to_run):
             # Create a gurobipy model for each simulation period
-            if STEP_BY_STEP or ONE_STEP:
-                simulated_step = simulated_day
-            else:
-                simulated_step = k
             print("\n\n\n============")
             print(f"PowNet: Simulate step {k+1}\n\n")
-
             k_timer = datetime.now()
 
             if k == 0:
                 self.model = builder.build(
-                    k=simulated_step,
+                    k=k,
                     init_conds=init_conds,
                 )
             else:
                 self.model = builder.update(
-                    k=simulated_step,
+                    k=k,
                     init_conds=init_conds,
                 )
 
             if self.write_model:
-<<<<<<< HEAD
-                # Save the model
-                dirname = os.path.join(
-                    get_output_dir(), f"{self.model_name}_{self.T}_instances"
-                )
-                if not os.path.exists(dirname):
-                    os.makedirs(dirname)
-                self.model.write(
-                    os.path.join(dirname, f"{self.model_name}_{simulated_step}.mps")
-                )
-=======
                 output_folder = get_output_dir()
                 filename = f"{self.model_name}_{self.T}_{k}"
                 self.model.write_mps(output_folder=output_folder, filename=filename)
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
             # Solve the model with either Gurobi or HiGHs
             # TODO: Set mipgap, timelimit, log_to_console as arguments
@@ -159,44 +96,6 @@ class Simulator:
                 if not os.path.exists(output_folder_infeasible):
                     os.makedirs(output_folder_infeasible)
 
-<<<<<<< HEAD
-                self.model = highspy.Highs()
-                self.model.readModel(mps_file)
-                self.model.run()
-
-                # Delete the MPS file
-                os.remove(mps_file)
-
-            # In case when the model is infeasible, we generate an output file
-            # to troubleshoot the problem. The model should always be feasible.
-            if self.use_gurobi:
-                if self.model.status == 3:
-                    print(f"PowNet: Iteration: {simulated_step} is infeasible.")
-                    self.model.computeIIS()
-                    c_time = get_current_time()
-                    ilp_file = os.path.join(
-                        get_output_dir(),
-                        f"infeasible_{self.model_name}_{self.T}_{simulated_step}_{c_time}.ilp",
-                    )
-                    self.model.write(ilp_file)
-
-                    mps_file = os.path.join(
-                        get_output_dir(),
-                        f"infeasible_{self.model_name}_{self.T}_{simulated_step}_{c_time}.mps",
-                    )
-                    self.model.write(mps_file)
-
-                    # Need to learn about the initial conditions as well
-                    with open(
-                        os.path.join(
-                            get_output_dir(),
-                            f"infeasible_{self.model_name}_{self.T}_{simulated_step}_{c_time}.pkl",
-                        ),
-                        "wb",
-                    ) as f:
-                        pickle.dump(system_record, f)
-                    break
-=======
                 self.model.write_ilp_mps(
                     output_folder=output_folder_infeasible,
                     instance_name=f"{self.model_name}_{self.T}_{k}",
@@ -211,14 +110,13 @@ class Simulator:
                 ) as f:
                     pickle.dump(system_record, f)
                 break
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
             # Reoperate reservoirs
             if self.to_reoperate:
                 self.reoperate(k, builder, init_conds, mipgap, timelimit)
 
             # Need k to increment the hours field
-            system_record.keep(self.model, simulated_step)
+            system_record.keep(self.model, k)
             init_conds = system_record.get_init_conds()
 
             # Record the runtime

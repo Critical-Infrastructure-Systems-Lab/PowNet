@@ -1,38 +1,17 @@
-<<<<<<< HEAD
-from __future__ import annotations
-
-import math
-import os
-=======
 """ builder.py: ModelBuilder class builds and updates the unit commitment problem.
 """
 
 from .input import SystemInput
 import logging
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
 from gurobipy import GRB
 import gurobipy as gp
 import pandas as pd
 
-<<<<<<< HEAD
-from pownet.config import (
-    is_warmstart,
-    get_line_capacity_factor,
-    get_line_loss_factor,
-    get_shortfall_penalty,
-    get_spin_reserve_penalty,
-    get_mip_gap,
-    get_to_log,
-    get_timelimit,
-)
-from pownet.folder_utils import get_output_dir
-=======
 import pownet.modeling as modeling
 from pownet.data_utils import get_unit_hour_from_varnam, get_edge_hour_from_varname
 
 logger = logging.getLogger(__name__)
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
 
 class ModelBuilder:
@@ -46,15 +25,9 @@ class ModelBuilder:
       - Update the upper bounds of variables
       - Remove and add constraints that are time-dependent, such as
 
-<<<<<<< HEAD
-    def __init__(self, inputs: "SystemInput", reverse_flow: bool = False) -> None:
-        self.model = None
-        self.model_name = inputs.model_name
-=======
     Define the lower/upper bounds explicitly at the variable level instead of
     defining them as constraints. This approach can leverage gurobi's presolve
     and reduce the size of the model.
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
 
     """
 
@@ -215,266 +188,11 @@ class ModelBuilder:
                 ),
             )
 
-<<<<<<< HEAD
-                if node in self.inputs.wind_units:
-                    wind_gen = self.pwind[node, t]
-                else:
-                    wind_gen = 0
-
-                # If n is an import node, then it can generate energy
-                if node in self.inputs.nodes_import:
-                    imp_gen = self.pimp[node, t]
-                else:
-                    imp_gen = 0
-
-                # Get the demand of node n at time t
-                if node in self.inputs.nodes_w_demand:
-                    demand_n_t = self.inputs.demand.loc[t + self.T * self.k, node]
-                    mismatch = self.s_pos[node, t] - self.s_neg[node, t]
-                else:
-                    demand_n_t = 0
-                    mismatch = 0
-
-                # Flow into a node is positive, while flow out is negative
-                arc_flow = 0
-                for x, y in self.inputs.arcs:
-                    if x == node:
-                        arc_flow -= self.flow[x, y, t] * 1 / line_efficiency
-                    elif y == node:
-                        arc_flow += self.flow[x, y, t]
-
-                # Given the above terms, we can specify the energy balance
-                self.model.addConstr(
-                    (
-                        thermal_gen
-                        + hydro_gen
-                        + solar_gen
-                        + wind_gen
-                        + imp_gen
-                        + arc_flow
-                        + mismatch
-                        == demand_n_t
-                    ),
-                    name="flowBal" + f"[{node},{t}]",
-                )
-
-    def _c_reserve_req_carrion(self):
-        """Equation 67 of Kneuven et al (2019). System-wide spinning reserve requirement.
-        We substitute in the max_dispatch using Equation 13.
-        """
-        raise NotImplementedError("This formulation needs modification.")
-        self.model.addConstrs(
-            (
-                gp.quicksum(
-                    self.pbar[unit_g, t]
-                    + self.inputs.min_cap[unit_g] * self.u[unit_g, t]
-                    for unit_g in self.inputs.thermal_units
-                )
-                + self.sys_spin[t]
-                >= gp.quicksum(
-                    self.inputs.demand.loc[t + self.T * self.k, n]
-                    for n in self.inputs.nodes_w_demand
-                )
-                + self.inputs.spin_req[t + self.T * self.k]
-                for t in self.timesteps
-            ),
-            name="reserveReq",
-        )
-
-    def _c_reserve_req(self):
-        """Equation 68 of Kneuven et al (2019). This spinning reserve constraint
-        is based on Morales-España et al. (2013).
-
-        """
-        self.model.addConstrs(
-            (
-                gp.quicksum(
-                    self.spin[unit_g, t] for unit_g in self.inputs.thermal_units
-                )
-                + self.sys_spin[t]
-                >= self.inputs.spin_req[t + self.T * self.k]
-                for t in self.timesteps
-            ),
-            name="reserveReq",
-        )
-
-    def _c_hydro_limit_hourly(self):
-        """Hydro generation must be less than the maximum capacity of the hydro unit."""
-        self.model.addConstrs(
-            (
-                self.phydro[hydro_unit, t]
-                <= self.inputs.hydro_cap.loc[t + self.T * self.k, hydro_unit]
-                for t in self.timesteps
-                for hydro_unit in self.inputs.hydro_units
-            ),
-            name="hydroLimit_hr",
-        )
-
-    def _c_hydro_limit_daily(self):
-        # The sum of the hydro generation in a day must be less than the maximum capacity.
-        # PowNet can decide the dispatch at each hour when given the amount of hydro energy available.
-        self.model.addConstrs(
-            (
-                gp.quicksum(self.phydro[hydro_unit, t] for t in self.timesteps)
-                <= gp.quicksum(
-                    self.inputs.hydro_cap.loc[
-                        (self.k * self.T) / 24
-                        + 1 : (self.k * self.T) / 24
-                        + self.T / 24,
-                        hydro_unit,
-                    ]
-                )
-                for hydro_unit in self.inputs.hydro_units
-            ),
-            name="hydroLimit_day",
-        )
-
-    def _add_variables(self) -> None:
-        """The lower and upper bounds of variables are defined here instead
-        of defining them as constraints.
-        """
-        # Dispatched power from a generator. Unit: MW
-        self.dispatch = self.model.addVars(
-            self.inputs.thermal_units,
-            self.timesteps,
-            vtype=GRB.CONTINUOUS,
-            lb=0,
-            name="dispatch",
-        )
-        # Power generated above minimum. Unit: MW
-        self.p = self.model.addVars(
-            self.inputs.thermal_units,
-            self.timesteps,
-            lb=0,
-            vtype=GRB.CONTINUOUS,
-            name="p",
-        )
-        # The maximum power available above the minimum capacity. Unit: MW
-        # Formula: pbar = p + spin
-        self.pbar = self.model.addVars(
-            self.inputs.thermal_units,
-            self.timesteps,
-            lb=0,
-            vtype=GRB.CONTINUOUS,
-            name="pbar",
-        )
-
-        # The dispatch from renewables is in absolute term. Unit: MW
-        self.phydro = self.model.addVars(
-            self.inputs.hydro_units,
-            self.timesteps,
-            lb=0,
-            vtype=GRB.CONTINUOUS,
-            name="phydro",
-        )
-
-        self.psolar = self.model.addVars(
-            self.inputs.solar_units,
-            self.timesteps,
-            lb=0,
-            ub={
-                (solar_unit, t): self.inputs.solar_cap.loc[
-                    t + self.T * self.k, solar_unit
-                ]
-                for t in self.timesteps
-                for solar_unit in self.inputs.solar_cap.columns
-            },
-            vtype=GRB.CONTINUOUS,
-            name="psolar",
-        )
-
-        self.pwind = self.model.addVars(
-            self.inputs.wind_units,
-            self.timesteps,
-            lb=0,
-            ub={
-                (wind_unit, t): self.inputs.wind_cap.loc[t + self.T * self.k, wind_unit]
-                for t in self.timesteps
-                for wind_unit in self.inputs.wind_cap.columns
-            },
-            vtype=GRB.CONTINUOUS,
-            name="pwind",
-        )
-
-        # The import from neighboring system in absolute term. Unit: MW
-        self.pimp = self.model.addVars(
-            self.inputs.nodes_import,
-            self.timesteps,
-            lb=0,
-            ub={
-                (import_node, t): self.inputs.p_import.loc[
-                    t + self.T * self.k, import_node
-                ]
-                for t in self.timesteps
-                for import_node in self.inputs.p_import.columns
-            },
-            vtype=GRB.CONTINUOUS,
-            name="pimp",
-        )
-
-        # Spinning reserve. Unit: MW
-        self.spin = self.model.addVars(
-            self.inputs.thermal_units,
-            self.timesteps,
-            lb=0,
-            vtype=GRB.CONTINUOUS,
-            name="spin",
-        )
-
-        # Spinning reserve of the overall system. Unit: MW
-        self.sys_spin = self.model.addVars(
-            self.timesteps, lb=0, vtype=GRB.CONTINUOUS, name="sys_spin"
-        )
-
-        # Positive mismatch. Unit: MW
-        self.s_pos = self.model.addVars(
-            self.inputs.nodes_w_demand,
-            self.timesteps,
-            lb=0,
-            vtype=GRB.CONTINUOUS,
-            name="s_pos",
-        )
-
-        # Negative mismatch. Unit: MW
-        # Need to clarify when we have negative mismatch.
-        self.s_neg = self.model.addVars(
-            self.inputs.nodes_w_demand,
-            self.timesteps,
-            lb=0,
-            vtype=GRB.CONTINUOUS,
-            name="s_neg",
-        )
-
-        # Unit status. On = 1 and off = 0
-        self.u = self.model.addVars(
-            self.inputs.thermal_units, self.timesteps, vtype=GRB.BINARY, name="status"
-        )
-
-        # Switch-on
-        self.v = self.model.addVars(
-            self.inputs.thermal_units, self.timesteps, vtype=GRB.BINARY, name="start"
-        )
-
-        # Switch-off
-        self.w = self.model.addVars(
-            self.inputs.thermal_units, self.timesteps, vtype=GRB.BINARY, name="shut"
-        )
-
-        # The flow variable f(a,b,t) represents the flow in the
-        # line segment (a,b) at hour t in MW/hr). If the flow is positive,
-        # then energy flows from a to b.
-        # We set the bounds based on the transmission limit
-        line_capacity_factor = get_line_capacity_factor()
-        if not self.reverse_flow:
-            self.flow = self.model.addVars(
-                self.inputs.arcs,
-=======
         # Spinning reserve can be modeled with or without
         # the spin variable
         if self.inputs.use_spin_var:
             self.spin = self.model.addVars(
                 self.inputs.thermal_units,
->>>>>>> 2713ab8ef7d05cb2166b986110140e0693cd09f0
                 self.timesteps,
                 name="spin",
             )
