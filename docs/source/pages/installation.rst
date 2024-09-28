@@ -7,23 +7,7 @@ Prerequisites
 
 **PowNet requires python version >=3.10**
 
-PowNet dependencies include:
-
--  "matplotlib >= 3.7.1"
-
--  "numpy >= 1.24.3"
-
--  "pandas >= 1.5.3"
-
--  "mplcursors >= 0.5.1"
-
--  "pyomo >= 6.5.0"
-
--  "gurobipy >= 10.0.3"
-
--  "networkx >= 3.1.0"
-
--  "highs >= 1.6.0"
+PowNet dependencies are listed in `pyproject.toml <https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/blob/master/pyproject.toml>`_.
 
 Installation Steps
 ------------------

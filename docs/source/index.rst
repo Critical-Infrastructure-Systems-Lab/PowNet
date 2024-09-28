@@ -20,3 +20,8 @@ Content
    pages/license
    pages/acknowledgement
    pages/publications
+   pages/api
+   api_pages/modules
+   api_pages/core
+   api_pages/modeling
+   api_pages/pownet
