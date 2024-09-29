@@ -8,8 +8,24 @@ PowNet Folder Structure
 
 The folder/files structure of PowNet is summarized as follows:
 
-.. figure:: PowNet_Folder_Structure.png
-   :align: center
+.. code-block:: text
+
+  pownet/
+  ├── data_processor.py
+  ├── data_utils.py
+  ├── folder_utils.py
+  ├── simulation.py
+  ├── core/
+  │   ├── builder.py
+  │   ├── input.py
+  │   ├── output.py
+  │   ├── record.py
+  │   └── visualizer.py
+  └── modeling/
+      ├── constraint.py
+      ├── model.py
+      ├── objfunc.py
+      └── variable.py
    
 
 The user can make changes for the following options in ``main.py`` :
