@@ -12,6 +12,14 @@ pownet.core.builder module
    :undoc-members:
    :show-inheritance:
 
+pownet.core.data\_processor module
+----------------------------------
+
+.. automodule:: pownet.core.data_processor
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pownet.core.input module
 ------------------------
 
@@ -32,6 +40,14 @@ pownet.core.record module
 -------------------------
 
 .. automodule:: pownet.core.record
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pownet.core.simulation module
+-----------------------------
+
+.. automodule:: pownet.core.simulation
    :members:
    :undoc-members:
    :show-inheritance:

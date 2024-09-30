@@ -13,19 +13,10 @@ Subpackages
 Submodules
 ----------
 
-pownet.data\_processor module
------------------------------
-
-.. automodule:: pownet.data_processor
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 pownet.data\_utils module
 -------------------------
 
 .. automodule:: pownet.data_utils
-   :imported-members:
    :members:
    :undoc-members:
    :show-inheritance:
@@ -34,14 +25,6 @@ pownet.folder\_utils module
 ---------------------------
 
 .. automodule:: pownet.folder_utils
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-pownet.simulation module
-------------------------
-
-.. automodule:: pownet.simulation
    :members:
    :undoc-members:
    :show-inheritance:
