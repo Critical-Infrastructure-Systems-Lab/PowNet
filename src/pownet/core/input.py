@@ -9,14 +9,13 @@ import textwrap
 import gurobipy as gp
 import pandas as pd
 
-from pownet.folder_utils import get_model_dir
-
 logger = logging.getLogger(__name__)
 
 
 class SystemInput:
     def __init__(
         self,
+        input_folder: str,
         model_name: str,
         year: int,
         sim_horizon: int,
@@ -31,13 +30,14 @@ class SystemInput:
     ) -> None:
         """This class reads the input data for the power system model."""
 
-        self.model_name = model_name
-        self.year = year
-        self.sim_horizon = sim_horizon
-        self.use_spin_var = use_spin_var
+        self.model_name: str = model_name
+        self.model_dir: str = os.path.join(input_folder, model_name)
+        self.year: int = year
+        self.sim_horizon: int = sim_horizon
+        self.use_spin_var: bool = use_spin_var
 
         # The timestamp is used to create a unique folder for the model
-        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        self.timestamp: str = datetime.now().strftime("%Y%m%d_%H%M")
 
         self.model_id: str = f"{self.timestamp}_{self.model_name}_{self.sim_horizon}"
 
@@ -46,29 +46,26 @@ class SystemInput:
             raise ValueError(
                 "PowNet: Line flow must be either 'kirchhoff' or 'voltage_angle'."
             )
-        self.dc_opf = dc_opf
+        self.dc_opf: str = dc_opf
 
         # The spin reserve factor is a fraction of total demand
-        self.spin_reserve_factor = spin_reserve_factor
+        self.spin_reserve_factor: float = spin_reserve_factor
 
         # The line loss factor is also called the inefficiency factor.
         # It is the fraction of power lost in the transmission line.
-        self.line_loss_factor = line_loss_factor
+        self.line_loss_factor: float = line_loss_factor
 
         # The line capacity factor is the fraction of the line capacity
         # that can be used. It is used to account for the uncertainty in
         # the line capacity.
-        self.line_capacity_factor = line_capacity_factor
+        self.line_capacity_factor: float = line_capacity_factor
 
         # The shortfall penalty is the cost of not meeting the demand. (USD/MWh)
-        self.load_shortfall_penalty_factor = load_shortfall_penalty_factor
-        self.load_curtail_penalty_factor = load_curtail_penalty_factor
+        self.load_shortfall_penalty_factor: float = load_shortfall_penalty_factor
+        self.load_curtail_penalty_factor: float = load_curtail_penalty_factor
 
         # The reserve penalty is the cost of not meeting the reserve requirement. (USD/MWh)
-        self.spin_shortfall_penalty_factor = spin_shortfall_penalty_factor
-
-        # folder structure: pownet_root/model_library/
-        self.model_dir = os.path.join(get_model_dir(), model_name)
+        self.spin_shortfall_penalty_factor: float = spin_shortfall_penalty_factor
 
         #################
         # Complex attributes that will be defined in load_data
@@ -138,11 +135,7 @@ class SystemInput:
         self.node_edge: dict[str, list[str]] = {}
 
     def _load_csv(self, filename: str, header_levels: int) -> pd.DataFrame:
-        """Helper function to load CSV with default options.
-        Note:
-        - Files are located in the model directory
-        - Date columns are dropped from the DataFrame
-        """
+        """Helper function to load CSV with default options. Date columns are dropped from the DataFrame"""
         date_cols = ["year", "month", "day", "hour", "date"]
         # If there are header levels, we drop the date columns at the lowest level
         col_level = None
@@ -179,7 +172,7 @@ class SystemInput:
         return dict(column_pairs)
 
     def load_thermal_unit_params(self):
-        """Load the techno-economic parameters of thermal units from thermal_unit.csv"""
+        """Load the techno-economic parameters of thermal units from thermal_unit.csv."""
         thermal_unit_df = pd.read_csv(
             os.path.join(self.model_dir, "thermal_unit.csv"), header=0, index_col="name"
         )
@@ -635,6 +628,7 @@ class SystemInput:
         logger.info(input_summary)
 
     def load_and_check_data(self):
+        """Load and check the input data."""
         self.load_data()
         self.check_data()
 

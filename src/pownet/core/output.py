@@ -1,22 +1,19 @@
-""" output.py: This module contains the OutputProcessor class, which processes the output from PowNet and provides methods to access the data.
+""" output.py: Contains the OutputProcessor class, which processes the output from PowNet and provides methods to access the data.
 """
 
 import pandas as pd
 
+from .input import SystemInput
 from pownet.data_utils import get_dates, get_fuel_mix_order
 
 
 class OutputProcessor:
-    def __init__(
-        self,
-        year: int,
-        fuelmap: dict,
-        demand: pd.DataFrame,
-    ) -> None:
+    def __init__(self, inputs: SystemInput) -> None:
         """Initialize the OutputProcessor object."""
-        self.year: int = year
-        self.fuelmap: dict = fuelmap
-        self.demand: pd.DataFrame = demand
+        self.inputs: SystemInput = inputs
+        self.year: int = inputs.year
+        self.fuelmap: dict = inputs.fuelmap
+        self.nodal_hourly_demand: pd.DataFrame = inputs.demand
 
         # Sum across each month to get the monthly dispatch
         # For processing dataframes
@@ -36,14 +33,21 @@ class OutputProcessor:
         # Define the order of fuel mix. Baseload at the bottom,
         # renewables in the middle, then peaker plants, and shortfall
         self.fuel_mix_order: list[str] = None
-
         self.unit_status: pd.DataFrame = None
 
     def load_from_dataframe(
         self,
         node_var_df: pd.DataFrame,
     ) -> None:
-        """Process node-specific variables from PowNet."""
+        """
+        Process node-specific variables from PowNet.
+
+        Args:
+            node_var_df (pd.DataFrame): The dataframe containing the node-specific variables.
+
+        Returns:
+            None
+        """
         # Extract the dispatch of generators (thermal units and renewables)
         dispatch_vars = [
             "pthermal",
@@ -107,7 +111,7 @@ class OutputProcessor:
         self.daily_dispatch.index.name = "Day"
 
         # Demand is an input to the simulation
-        self.total_demand = self.demand.sum(axis=1).to_frame()
+        self.total_demand = self.nodal_hourly_demand.sum(axis=1).to_frame()
         self.total_demand.columns = ["demand"]
         self.total_demand.index.name = "Hour"
 
@@ -162,35 +166,61 @@ class OutputProcessor:
         self,
         filename: pd.DataFrame,
     ) -> None:
-        """Load the PowNet output from a CSV file."""
+        """Load the PowNet output from a CSV file.
+
+        Args:
+            filename (str): The name of the CSV file containing the PowNet output.
+
+        Returns:
+            None
+        """
         node_var_df = pd.read_csv(filename, header=0)
         self.load(node_var_df=node_var_df)
 
     def get_daily_dispatch_by_fuel_type(self, fuel_type) -> pd.DataFrame:
-        """Return the daily hydro generation."""
+        """Return generator dispatch for a specific fuel type.
+
+        Args:
+            fuel_type (str): The fuel type of the generator.
+
+        Returns:
+            pd.DataFrame: The generator dispatch for the fuel type.
+        """
         daily_dispatch = self.daily_dispatch[fuel_type].to_frame()
         daily_dispatch.columns = [fuel_type]
         return daily_dispatch
 
     def get_monthly_dispatch_by_fuel_type(self, fuel_type) -> pd.DataFrame:
-        """Return the monthly hydro generation."""
+        """Return the monthly dispatch for a specific fuel type.
+
+        Args:
+            fuel_type (str): The fuel type of the generator.
+
+        Returns:
+            pd.DataFrame: The monthly dispatch for the fuel type.
+        """
         monthly_dispatch = self.monthly_dispatch[fuel_type].to_frame()
         monthly_dispatch.columns = [fuel_type]
         return monthly_dispatch
 
-    def get_co2_emission(self, time_interval: str) -> pd.DataFrame:
+    def get_hourly_thermal_dispatch(self) -> pd.DataFrame:
+        """Return the hourly thermal dispatch."""
+        return self.node_variables[
+            self.node_variables["node"].isin(self.inputs.thermal_units)
+        ]
+
+    def get_co2_emission(self) -> pd.DataFrame:
         """Return the CO2 emissions for timestep.
         From Chowdhury, Dang, Nguyen, Koh, & Galelli. (2021).
 
         coal: 1.04 Mton/MWh
         gas:  0.47 Mton/MWh
         oil : 0.73 Mton/MWh
+        waste_heat: 0.170 Mton/MWh
 
         From https://www.eia.gov/environment/emissions/co2_vol_mass.php:
-        wsth: 49.89 kg/MMBtu
+        waste_heat: 49.89 kg/MMBtu
               = 49.89 kg/MMBtu * 3.412 MMBtu/MWh * 1 Mton/1000 kg = 0.170
-
-
         """
         co2_map = {
             "coal": 1.04,
@@ -200,24 +230,18 @@ class OutputProcessor:
             "shortfall": 0.0,
             "curtailment": 0.0,
             "biomass": 0.0,
-            "wsth": 0.170,
+            "waste_heat": 0.170,
             "slack": 0.0,
         }
 
-        if time_interval == "monthly":
-            df = self.get_monthly_thermal_dispatch()
-        elif time_interval == "daily":
-            df = self.get_daily_thermal_dispatch()
-        else:
-            raise ValueError("Time interval must be either 'monthly' or 'daily'.")
-
+        df = self.get_hourly_thermal_dispatch()
         co2_emissions = pd.DataFrame()
         for fuel in df.columns:
             co2_emissions[fuel] = df[fuel] * co2_map[fuel]
 
         return co2_emissions
 
-    def get_system_fuel_cost(self, time_interval: str, cost_map: dict) -> pd.DataFrame:
+    def get_system_fuel_cost(self, cost_map: dict) -> pd.DataFrame:
         """Return the system's fuel cost for each timestep.
 
         Args:
@@ -226,16 +250,8 @@ class OutputProcessor:
 
         Returns:
             pd.DataFrame: The system's fuel cost by fuel type for each timestep.
-
         """
-
-        if time_interval == "monthly":
-            df = self.get_monthly_thermal_dispatch()
-        elif time_interval == "daily":
-            df = self.get_daily_thermal_dispatch()
-        else:
-            raise ValueError("Time interval must be either 'monthly' or 'daily'.")
-
+        df = self.get_hourly_thermal_dispatch()
         system_cost = pd.DataFrame()
         for fuel in df.columns:
             system_cost[fuel] = df[fuel] * cost_map[fuel]

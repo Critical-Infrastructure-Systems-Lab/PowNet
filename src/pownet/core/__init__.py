@@ -6,3 +6,5 @@ from .input import SystemInput
 from .output import OutputProcessor
 from .visualizer import Visualizer
 from .record import SystemRecord
+from .simulation import Simulator
+from .data_processor import DataProcessor

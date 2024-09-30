@@ -8,12 +8,14 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from .folder_utils import get_model_dir, get_database_dir
-from .data_utils import get_dates
+from pownet.folder_utils import get_database_dir
+from pownet.data_utils import get_dates
 
 
 class DataProcessor:
-    def __init__(self, model_name: str, year: int, frequency: int) -> None:
+    def __init__(
+        self, input_folder: str, model_name: str, year: int, frequency: int
+    ) -> None:
         """The DataProcessor class is used to process the data provided by the user. The data
         is stored in the model_library/model_name folder. The required files are:
         1. transmission.csv: A file that contains the transmission data.
@@ -21,6 +23,7 @@ class DataProcessor:
         3. unit_marginal_cost.csv: A file that contains the marginal cost of non-thermal units.
         4. (Optional) solar.csv, wind.csv, hydropower.csv, import.csv: Files that contain the renewable unit data.
         """
+        self.input_folder = input_folder
         self.model_name = model_name
         self.year = year
         self.frequency = frequency
@@ -35,7 +38,7 @@ class DataProcessor:
         self.wavelength = wavelengths[frequency]
 
         # Note that we will modify the original file
-        self.model_folder = os.path.join(get_model_dir(), model_name)
+        self.model_folder = os.path.join(self.input_folder, model_name)
 
     def load_data(self) -> None:
         # User inputs of transmission data
@@ -218,7 +221,7 @@ class DataProcessor:
         to the nameplate capacity of thermal units.
         """
         # Get the thermal units
-        model_dir = os.path.join(get_model_dir(), self.model_name)
+        model_dir = os.path.join(self.input_folder, self.model_name)
         thermal_units = pd.read_csv(os.path.join(model_dir, "thermal_unit.csv"))[
             "name"
         ].values

@@ -4,7 +4,7 @@
 import os
 import unittest
 from unittest.mock import patch, MagicMock
-from pownet.data_processor import (
+from pownet.core.data_processor import (
     DataProcessor,
 )
 

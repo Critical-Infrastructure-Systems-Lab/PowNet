@@ -1,15 +1,18 @@
+"""data_utils.py: functions for processing user inputs"""
+
 import re
 import datetime
+import os
 
 import numpy as np
 import pandas as pd
-
-from .folder_utils import get_database_dir, get_output_dir
+from .folder_utils import get_database_dir
 
 
 def get_dates(year):
     """Return a dataframe of dates for the given year. The dataframe will have
     365 rows, one for each day of the year. The columns are 'date' and 'hour'.
+    Exclude 29th February.
     """
     # Create dates to concatenate with the new dataframes
     dates = pd.DataFrame(
@@ -28,6 +31,7 @@ def get_dates(year):
 
 
 def get_datetime_index(year: int) -> pd.DatetimeIndex:
+    """Return a datetime index for the given year. The index will have 8760 entries, one for each hour of the year. Exclude 29th February."""
     dates = pd.date_range(start=f"{year}-01-01", end=f"{year+1}-01-01", freq="H")
     # Remove 29th February
     dates = dates[~((dates.month == 2) & (dates.day == 29))]
@@ -138,8 +142,9 @@ def get_current_time() -> str:
     return datetime.datetime.now().strftime("%Y%m%d_%H%M")
 
 
-def write_df_to_output_dir(
+def write_df(
     df: pd.DataFrame,
+    output_folder: str,
     output_name: str,
     model_id: str,
 ) -> None:
@@ -154,13 +159,8 @@ def write_df_to_output_dir(
         None
     """
     # First check that the output directory exists. If not, create it.
-    if not os.path.exists(get_output_dir()):
-        os.makedirs(get_output_dir())
     df.to_csv(
-        os.path.join(
-            get_output_dir(),
-            f"{model_id}_{output_name}.csv",
-        ),
+        os.path.join(output_folder, f"{model_id}_{output_name}.csv"),
         index=False,
     )
 
@@ -227,7 +227,17 @@ def calc_remaining_on_duration(
     thermal_units: list[str],
     TU: dict[str, int],
 ) -> dict[str, int]:
-    """Calculate the remaining online duration for each thermal unit."""
+    """Calculate the remaining online duration for each thermal unit.
+
+    Args:
+        solution: A DataFrame containing the solution of the optimization model.
+        sim_horizon: The length of the simulation horizon.
+        thermal_units: A list of thermal unit names.
+        TU: A dictionary mapping unit names to their respective minimum online durations.
+
+    Returns:
+        A dictionary mapping unit names to their remaining online durations.
+    """
     return calc_remaining_duration(solution, sim_horizon, thermal_units, TU, "startup")
 
 
@@ -237,14 +247,33 @@ def calc_remaining_off_duration(
     thermal_units: list[str],
     TD: dict[str, int],
 ) -> dict[str, int]:
-    """Calculate the remaining shutdown duration for each thermal unit."""
+    """Calculate the remaining shutdown duration for each thermal unit.
+
+    Args:
+        solution: A DataFrame containing the solution of the optimization model.
+        sim_horizon: The length of the simulation horizon.
+        thermal_units: A list of thermal unit names.
+        TD: A dictionary mapping unit names to their respective minimum offline durations.
+
+    Returns:
+        A dictionary mapping unit names to their remaining shutdown durations.
+    """
     return calc_remaining_duration(solution, sim_horizon, thermal_units, TD, "shutdown")
 
 
 def parse_node_variables(
     solution: pd.DataFrame, sim_horizon: int, step_k: int
 ) -> pd.DataFrame:
-    """Node variables are in the (node, t) format."""
+    """Parse the node variables from the solution DataFrame. Node variables are in the (node, t) format.
+    Also, ensure binary values are rounded to 0 or 1.
+
+    Args:
+        solution: The solution DataFrame.
+        sim_horizon: The length of the simulation horizon.
+        step_k: The current simulation period.
+
+    Returns:
+        pd.DataFrame: The node variables DataFrame"""
 
     node_var_pattern = r"(\w+)\[(\w+),(\d+)\]"
     current_node_vars = solution[solution["varname"].str.match(node_var_pattern)].copy()
@@ -274,6 +303,14 @@ def parse_flow_variables(
 ) -> pd.DataFrame:
     """
     The flow variables are in the (node, node, t) format.
+
+    Args:
+        solution: The solution DataFrame.
+        sim_horizon: The length of the simulation horizon.
+        step_k: The current simulation period.
+
+    Returns:
+        pd.DataFrame: The flow variables DataFrame
     """
     flow_var_pattern = r"flow\[(\w+),(\w+),(\d+)\]"
     cur_flow_vars = solution[solution["varname"].str.match(flow_var_pattern)].copy()
@@ -293,6 +330,14 @@ def parse_syswide_variables(
 ) -> pd.DataFrame:
     """
     The system-wide variables are in the (t) format.
+
+    Args:
+        solution: The solution DataFrame.
+        sim_horizon: The length of the simulation horizon.
+        step_k: The current simulation period.
+
+    Returns:
+        pd.DataFrame: The system-wide variables DataFrame
     """
     syswide_var_pattern = r"(\w+)\[(\d+)\]"
     cur_syswide_vars = solution[
@@ -309,6 +354,16 @@ def parse_syswide_variables(
 
 
 def parse_lmp(lmp: dict[str, float], sim_horizon: int, step_k: int) -> pd.DataFrame:
+    """Parse the LMP dictionary and return a DataFrame.
+
+    Args:
+        lmp: The dictionary of LMP values.
+        sim_horizon: The length of the simulation horizon.
+        step_k: The current simulation period.
+
+    Returns:
+        pd.DataFrame: The LMP DataFrame.
+    """
     lmp_df = pd.DataFrame.from_dict(lmp, orient="index", columns=["value"])
     lmp_df = lmp_df.reset_index().rename(columns={"index": "name"})
     lmp_df[["node", "timestep"]] = lmp_df["name"].str.extract(r"flowBal\[(.*),(\d+)\]")

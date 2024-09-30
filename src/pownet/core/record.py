@@ -13,7 +13,7 @@ from pownet.data_utils import (
     parse_lmp,
     calc_remaining_on_duration,
     calc_remaining_off_duration,
-    write_df_to_output_dir,
+    write_df,
 )
 
 
@@ -24,8 +24,12 @@ class SystemRecord:
     """
 
     def __init__(self, system_input: SystemInput) -> None:
+        """Initialize the SystemRecord object.
+        Args:
+            system_input (SystemInput): The input object containing the simulation parameters.
+        """
 
-        self.inputs = system_input
+        self.inputs: SystemInput = system_input
 
         # Format of variable name: var(node, t)
         self.node_vars: pd.DataFrame = pd.DataFrame()
@@ -56,7 +60,18 @@ class SystemRecord:
         step_k: int,
         lmp: dict[str, float] = None,
     ) -> None:
-        """Keep the simulation results at the current simulation period step_k"""
+        """Keep the simulation results at the current simulation period step_k.
+
+        Args:
+            runtime (float): The runtime of the model.
+            objval (float): The objective value of the model.
+            solution (pd.DataFrame): The solution dataframe from the model.
+            step_k (int): The current simulation period.
+            lmp (dict[str, float], optional): The locational marginal prices. Defaults to None.
+
+        Returns:
+            None
+        """
 
         def _extract_vartype_data(df: pd.DataFrame, vartype: str) -> dict[str, float]:
             """Extracts data for a specific 'vartype' from the DataFrame and converts it to a dictionary."""
@@ -159,6 +174,7 @@ class SystemRecord:
         )
 
     def get_init_conds(self) -> dict[str, dict]:
+        """Return the initial conditions for the simulation."""
         return {
             "initial_p": self.current_p,
             "initial_u": self.current_u,
@@ -185,19 +201,28 @@ class SystemRecord:
         return self.syswide_vars
 
     def get_runtimes(self) -> list[float]:
+        """Return the model runtime from each iteration."""
         return self.runtimes
 
     def get_objvals(self) -> list[float]:
+        """Return the objective values from each iteration."""
         return self.objvals
 
     def get_lmp(self) -> pd.DataFrame:
+        """Return the locational marginal prices (LMP) data."""
         return self.lmp_df.pivot_table(
             index="hour", columns="node", values="value", aggfunc="first"
         )
 
-    def write_simulation_results(self) -> None:
+    def write_simulation_results(self, output_folder: str) -> None:
         """
-        Write 4 CSV files containing modeling results to the output directory.
+        Write CSV files containing modeling results to the output directory.
+
+        Args:
+            output_folder (str): The directory where the output files will be saved.
+
+        Returns:
+            None
         """
         data_to_write = [
             (self.node_vars, "node_variables"),
@@ -208,17 +233,27 @@ class SystemRecord:
                 "model_stats",
             ),
         ]
-
         for df, output_name in data_to_write:
-            write_df_to_output_dir(
+            write_df(
                 df,
+                output_folder=output_folder,
                 output_name=output_name,
                 model_id=self.inputs.model_id,  # Use model_name as the identifier
             )
 
+        # Objective values and runtimes
+        write_df(
+            pd.DataFrame({"objval": self.objvals, "runtime": self.runtimes}),
+            output_folder=output_folder,
+            output_name="model_stats",
+            model_id=self.inputs.model_id,
+        )
+
+        # LMP data if it exists
         if not self.lmp_df.empty:
-            write_df_to_output_dir(
+            write_df(
                 self.lmp_df,
+                output_folder=output_folder,
                 output_name="lmp",
                 model_id=self.inputs.model_id,
             )

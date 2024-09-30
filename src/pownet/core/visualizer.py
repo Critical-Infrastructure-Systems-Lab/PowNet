@@ -6,13 +6,13 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from pownet.folder_utils import get_output_dir
 from pownet.data_utils import get_fuel_color_map
 
 
 class Visualizer:
-    def __init__(self, model_id: str) -> None:
+    def __init__(self, model_id: str, output_folder: str) -> None:
         self.model_id: str = model_id
+        self.output_folder: str = output_folder
         self.fuel_color_map: dict = get_fuel_color_map()
 
     def plot_fuelmix_bar(
@@ -32,8 +32,9 @@ class Visualizer:
             None
         """
         # Use total_timesteps to index demand because
-        # the length of demand can be longer than the total simulation hours
+        # the length of demand can be longer than the simulation hours
         total_timesteps: int = dispatch.shape[0]
+
         # Plotting section
         fig, ax = plt.subplots(figsize=(8, 5))
 
@@ -63,7 +64,7 @@ class Visualizer:
         if to_save:
             figure_name = f"{self.model_id}_fuelmix.png"
             fig.savefig(
-                os.path.join(get_output_dir(), figure_name),
+                os.path.join(self.output_folder, figure_name),
                 bbox_extra_artists=(legend,),
                 bbox_inches="tight",
                 dpi=350,
@@ -117,7 +118,7 @@ class Visualizer:
         if to_save:
             figure_name = f"{self.model_id}_fuelmix.png"
             fig.savefig(
-                os.path.join(get_output_dir(), figure_name),
+                os.path.join(self.output_folder, figure_name),
                 bbox_extra_artists=(legend,),
                 bbox_inches="tight",
                 dpi=350,
@@ -146,17 +147,17 @@ class Visualizer:
         """
         thermal_units = thermal_dispatch["node"].unique()
 
-        for unit_g in thermal_units:
+        for unit in thermal_units:
             # Extract the dispatch of each thermal unit and plot the value
-            df1 = thermal_dispatch[thermal_dispatch.node == unit_g]
-            df2 = unit_status[unit_status["node"] == unit_g]
+            df1 = thermal_dispatch[thermal_dispatch.node == unit]
+            df2 = unit_status[unit_status["node"] == unit]
 
             fig, ax1 = plt.subplots(figsize=(8, 5))
             ax2 = ax1.twinx()
 
             ax1.step(df1["hour"], df1["value"], where="mid", color="b", label="Power")
             # If ymax is too low, then we cannot see the blue line
-            ax1.set_ylim(bottom=0, top=thermal_rated_capacity[unit_g] * 1.05)
+            ax1.set_ylim(bottom=0, top=thermal_rated_capacity[unit] * 1.05)
             ax1.tick_params(axis="x", labelrotation=45)
             ax1.set_xlabel("Hour")
             ax1.set_ylabel("Power (MW)")
@@ -166,17 +167,17 @@ class Visualizer:
             )
             ax2.set_ylim(bottom=0, top=1)
             ax2.set_ylabel("Unit Status")
-            plt.title(unit_g)
+            plt.title(unit)
 
             if to_save:
                 unit_plot_folder = os.path.join(
-                    get_output_dir(), f"{self.model_id}_unit_plots"
+                    self.output_folder, f"{self.model_id}_unit_plots"
                 )
                 if not os.path.exists(unit_plot_folder):
                     os.mkdir(unit_plot_folder)
 
                 fig.savefig(
-                    os.path.join(unit_plot_folder, f"{unit_g}.png"),
+                    os.path.join(unit_plot_folder, f"{unit}.png"),
                     dpi=350,
                 )
 
@@ -215,7 +216,7 @@ class Visualizer:
         if to_save:
             figure_name = f"{self.model_id}_lmp.png"
             fig.savefig(
-                os.path.join(get_output_dir(), figure_name),
+                os.path.join(self.output_folder, figure_name),
                 dpi=350,
             )
 
