@@ -10,23 +10,22 @@ from pownet.data_utils import get_fuel_color_map
 
 
 class Visualizer:
-    def __init__(self, model_id: str, output_folder: str) -> None:
+    def __init__(self, model_id: str) -> None:
         self.model_id: str = model_id
-        self.output_folder: str = output_folder
         self.fuel_color_map: dict = get_fuel_color_map()
 
     def plot_fuelmix_bar(
         self,
         dispatch: pd.DataFrame,
         demand: pd.Series,
-        to_save: bool,
+        output_folder: str = None,
     ) -> None:
         """Create a bar plot of the fuel mix.
 
         Args:
             dispatch (pd.DataFrame): The dispatch of each generator.
             demand (pd.Series): The demand of the system.
-            to_save (bool): Whether to save to the output directory.
+            output_folder (str): If specified, then the plot is saved in the folder.
 
         Returns:
             None
@@ -61,10 +60,10 @@ class Visualizer:
         ax.set_ylabel("Power (MW)")
         ax.set_ylim(bottom=0)
 
-        if to_save:
+        if output_folder is not None:
             figure_name = f"{self.model_id}_fuelmix.png"
             fig.savefig(
-                os.path.join(self.output_folder, figure_name),
+                os.path.join(output_folder, figure_name),
                 bbox_extra_artists=(legend,),
                 bbox_inches="tight",
                 dpi=350,
@@ -76,14 +75,14 @@ class Visualizer:
         self,
         dispatch: pd.DataFrame,
         demand: pd.Series,
-        to_save: bool,
+        output_folder: str = None,
     ) -> None:
         """Create an area plot of the fuel mix.
 
         Args:
             dispatch (pd.DataFrame): The dispatch of each generator.
             demand (pd.Series): The demand of the system.
-            to_save (bool): Whether to save to the output directory.
+            output_folder (str): If specified, then the plot is saved in the folder.
 
         Returns:
             None
@@ -115,10 +114,10 @@ class Visualizer:
         ax.set_ylabel("Power (MW)")
         ax.set_ylim(bottom=0)
 
-        if to_save:
+        if output_folder is not None:
             figure_name = f"{self.model_id}_fuelmix.png"
             fig.savefig(
-                os.path.join(self.output_folder, figure_name),
+                os.path.join(output_folder, figure_name),
                 bbox_extra_artists=(legend,),
                 bbox_inches="tight",
                 dpi=350,
@@ -131,7 +130,7 @@ class Visualizer:
         thermal_dispatch: pd.DataFrame,
         unit_status: pd.DataFrame,
         thermal_rated_capacity: dict[str, float],
-        to_save: bool,
+        output_folder: str = None,
     ) -> None:
         """Plot the on/off status of individual thermal units
 
@@ -139,7 +138,7 @@ class Visualizer:
             thermal_dispatch (pd.DataFrame): The dispatch of each thermal unit.
             unit_status (pd.DataFrame): The status of each thermal unit.
             thermal_rated_capacity (dict[str, float]): Rated capacity of each thermal unit.
-            to_save (bool): Whether to save to the output directory.
+            output_folder (str): If specified, then the plot is saved in the folder.
 
         Returns:
             None
@@ -169,9 +168,9 @@ class Visualizer:
             ax2.set_ylabel("Unit Status")
             plt.title(unit)
 
-            if to_save:
+            if output_folder is not None:
                 unit_plot_folder = os.path.join(
-                    self.output_folder, f"{self.model_id}_unit_plots"
+                    output_folder, f"{self.model_id}_unit_plots"
                 )
                 if not os.path.exists(unit_plot_folder):
                     os.mkdir(unit_plot_folder)
@@ -186,7 +185,7 @@ class Visualizer:
     def plot_lmp(
         self,
         lmp_df: pd.DataFrame,
-        to_save: bool,
+        output_folder: str = None,
         max_ylim: float = 200,
     ) -> None:
         """Plots unique locational marginal price (LMP) timeseries.
@@ -213,10 +212,10 @@ class Visualizer:
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=4)
         ax.set_ylim(top=max_ylim)
 
-        if to_save:
+        if output_folder is not None:
             figure_name = f"{self.model_id}_lmp.png"
             fig.savefig(
-                os.path.join(self.output_folder, figure_name),
+                os.path.join(output_folder, figure_name),
                 dpi=350,
             )
 
