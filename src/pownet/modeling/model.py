@@ -15,11 +15,17 @@ from pownet.data_utils import (
     parse_node_variables,
 )
 
+from .rounding_algo import optimize_with_rounding
+
 
 class PowerSystemModel:
     def __init__(self, model: gp.Model):
         self.model = model
         self.solver: str = "gurobi"
+
+        # Rounding related variables
+        self.status_vars: gp.tupledict = None
+        self.rounding_iter: int = 0
 
         # Define dictionaries of functions for Gurobi and HiGHs
         self.optimize_functions = {
@@ -105,6 +111,27 @@ class PowerSystemModel:
         # Update the solver attribute for referencing in other methods
         self.solver = solver
         self.optimize_functions[self.solver](
+            log_to_console=log_to_console,
+            mipgap=mipgap,
+            timelimit=timelimit,
+            num_threads=num_threads,
+        )
+
+    def optimize_with_rounding(
+        self,
+        rounding_strategy: str,
+        max_rounding_iter: int,
+        threshold: float = 0,
+        log_to_console: bool = True,
+        mipgap: float = 1e-3,
+        timelimit: int = 600,
+        num_threads: int = 0,
+    ) -> None:
+        self.model = optimize_with_rounding(
+            model=self.model,
+            rounding_strategy=rounding_strategy,
+            threshold=threshold,
+            max_rounding_iter=max_rounding_iter,
             log_to_console=log_to_console,
             mipgap=mipgap,
             timelimit=timelimit,
@@ -254,14 +281,7 @@ class PowerSystemModel:
     def solve_for_export_prices(
         self, shared_nodes: list, sim_horizon: int, step_k: int
     ) -> pd.DataFrame:
-        # """The export prices are locational marginal prices at the shared nodes."""
-        # export_prices = convert_lmp_dict_to_dataframe(self.solve_for_lmp())
-        # export_prices = export_prices[export_prices["node"].isin(shared_nodes)]
-        # # Pivot for index to be timesteps and columns to be nodes
-        # export_prices = export_prices.pivot(
-        #     index="timestep", columns="node", values="value"
-        # )
-
+        """The export prices are locational marginal prices at the shared nodes."""
         export_prices = parse_lmp(
             lmp=self.solve_for_lmp(),
             sim_horizon=sim_horizon,
