@@ -9,6 +9,7 @@ import gurobipy as gp
 import pandas as pd
 
 import pownet.modeling as modeling
+from pownet.modeling import PowerSystemModel
 from pownet.data_utils import get_unit_hour_from_varnam, get_edge_hour_from_varname
 
 logger = logging.getLogger(__name__)
@@ -672,7 +673,7 @@ class ModelBuilder:
         self.set_objfunc(step_k=step_k)
         self.add_constraints(step_k=step_k, init_conds=init_conds)
 
-        return self.model
+        return PowerSystemModel(self.model)
 
     def _update_variables(self, step_k: int) -> None:
         """
@@ -950,7 +951,7 @@ class ModelBuilder:
         self._update_constraints(step_k=step_k, init_conds=init_conds)
         self.model.update()
 
-        return self.model
+        return PowerSystemModel(self.model)
 
     def print_added_constraints(self):
         added_constrs = []
