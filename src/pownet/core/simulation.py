@@ -139,17 +139,16 @@ class Simulator:
         for step_k in range(1, steps_to_run + 1):
             # Build or update the model
             if step_k == 1:
-                model = model_builder.build(
+                power_system_model = model_builder.build(
                     step_k=step_k,
                     init_conds=init_conditions,
                 )
             else:
-                model = model_builder.update(
+                power_system_model = model_builder.update(
                     step_k=step_k,
                     init_conds=init_conditions,
                 )
             # Optimization
-            power_system_model = PowerSystemModel(model)
             power_system_model.optimize(
                 solver=solver,
                 log_to_console=log_to_console,
@@ -190,22 +189,16 @@ class Simulator:
         """Write the simulation results to files"""
         self.system_record.write_simulation_results(output_folder)
 
-    def plot_fuelmix(
-        self, chart_type: str, output_folder: str, save_plot: bool = True
-    ) -> None:
+    def plot_fuelmix(self, chart_type: str, output_folder: str = None) -> None:
         """Plot the fuel mix of the power system
 
         Args:
             chart_type (str): The type of chart to plot. Choose between 'bar' and 'area'.
             output_folder (str): The folder to save the plot.
-            save_plot (bool): Whether to save the plot.
 
         Returns:
             None
         """
-        if save_plot and (output_folder is None):
-            raise ValueError("Please provide an output folder to save the plot.")
-
         if chart_type not in ["bar", "area"]:
             raise ValueError(
                 "Invalid chart type. Choose between 'fuelmix' and 'fuelmix_area'."
@@ -217,77 +210,59 @@ class Simulator:
         node_var_df = self.system_record.get_node_variables()
         output_processor.load_from_dataframe(node_var_df)
 
-        visualizer = Visualizer(
-            model_id=self.inputs.model_id, output_folder=output_folder
-        )
+        visualizer = Visualizer(model_id=self.inputs.model_id)
 
         if chart_type == "bar":
             visualizer.plot_fuelmix_bar(
                 dispatch=output_processor.get_hourly_dispatch(),
                 demand=output_processor.get_hourly_demand(),
-                to_save=save_plot,
+                output_folder=output_folder,
             )
         elif chart_type == "area":
             visualizer.plot_fuelmix_area(
                 dispatch=output_processor.get_hourly_dispatch(),
                 demand=output_processor.get_hourly_demand(),
-                to_save=save_plot,
+                output_folder=output_folder,
             )
 
-    def plot_unit_status(
-        self, output_folder: str = None, save_plot: bool = True
-    ) -> None:
+    def plot_unit_status(self, output_folder: str = None) -> None:
         """Plot the status of the thermal units
 
         Args:
             output_folder (str): The folder to save the plot.
-            save_plot (bool): Whether to save the plot.
 
         Returns:
             None
         """
-        if save_plot and (output_folder is None):
-            raise ValueError("Please provide an output folder to save the plot.")
-
         output_processor = OutputProcessor(
             inputs=self.inputs,
         )
         output_processor.load_from_dataframe(self.system_record.get_node_variables())
-        visualizer = Visualizer(
-            model_id=self.inputs.model_id,
-            output_folder=output_folder,
-        )
+        visualizer = Visualizer(model_id=self.inputs.model_id)
         visualizer.plot_thermal_units(
             unit_status=output_processor.get_unit_status(),
             thermal_dispatch=output_processor.get_hourly_thermal_dispatch(),
             thermal_rated_capacity=self.inputs.thermal_rated_capacity,
-            to_save=save_plot,
+            output_folder=output_folder,
         )
 
-    def plot_lmp(self, output_folder: str = None, save_plot: bool = True) -> None:
+    def plot_lmp(self, output_folder: str = None) -> None:
         """Plot the locational marginal prices
 
         Args:
             output_folder (str): The folder to save the plot.
-            save_plot (bool): Whether to save the plot.
 
         Returns:
             None
         """
-        if save_plot and (output_folder is None):
-            raise ValueError("Please provide an output folder to save the plot.")
-
         output_processor = OutputProcessor(
             inputs=self.inputs,
         )
         output_processor.load_from_dataframe(self.system_record.get_node_variables())
-        visualizer = Visualizer(
-            model_id=self.inputs.model_id,
-            output_folder=output_folder,
-        )
+        visualizer = Visualizer(model_id=self.inputs.model_id)
         visualizer.plot_lmp(
             lmp_df=self.system_record.get_lmp(),
-            to_save=save_plot,
+            output_folder=output_folder,
         )
 
     # def reoperate(

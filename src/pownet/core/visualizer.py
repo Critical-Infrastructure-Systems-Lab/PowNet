@@ -194,7 +194,7 @@ class Visualizer:
 
         Args:
             lmp_df (pd.DataFrame): LMP timeseries.
-            to_save (bool): Whether to save to the output directory.
+            output_folder (str): If specified, then the plot is saved in the folder.
             max_ylim (float): Maximum y-axis limit.
 
         Returns:
@@ -204,13 +204,17 @@ class Visualizer:
         # Find uni
         unique_lmp = lmp_df.copy().T.drop_duplicates().T
 
-        fig, ax = plt.subplots(figsize=(8, 5))
+        fig, ax = plt.subplots()
         unique_lmp.plot(ax=ax, linewidth=2)
         ax.set_xlabel("Hour")
         ax.set_ylabel("LMP ($/MWh)")
         # Place legend at the bottom
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=4)
         ax.set_ylim(top=max_ylim)
+
+        # Adjust layout to prevent legend from being cut off
+        plt.tight_layout()
+        plt.subplots_adjust(bottom=0.2)
 
         if output_folder is not None:
             figure_name = f"{self.model_id}_lmp.png"

@@ -21,7 +21,7 @@ def main():
 
     # Simulation parameters
     sim_horizon = 24
-    steps_to_run = 2
+    steps_to_run = 2  # 365 - (sim_horizon // 24 - 1)
     to_process_inputs = True
     solver = "gurobi"
     log_to_console = True
@@ -29,7 +29,6 @@ def main():
 
     # Outputs
     output_folder = "temptemp"
-    save_plot = True
 
     # --------- End of user inputs
 
@@ -62,8 +61,11 @@ def main():
     simulator.write_results(output_folder)
 
     # Plot the results
-    simulator.plot_fuelmix("bar", output_folder, save_plot)
-    simulator.plot_unit_status(output_folder, save_plot)
+    simulator.plot_fuelmix("bar", output_folder)
+    # simulator.plot_unit_status(output_folder)
+
+    if find_lmp:
+        simulator.plot_lmp(output_folder)
 
 
 if __name__ == "__main__":
