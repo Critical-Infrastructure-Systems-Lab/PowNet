@@ -4,17 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cisl-pownet"
-version = "1.0.0"
+version = "2.0.0"
 description = "A simple production cost model of framework for power systems"
 readme = "README.md"
 authors = [{ name = "Phumthep Bunnak", email = "pb585@cornell.edu" }]
-keywords = ["power_system", "optimization"]
+keywords = ["power_system", "optimization", "production_cost_model"]
 dependencies = [
+    "gurobipy >= 11.0.3",
+    "highspy >= 1.7.2",
     "matplotlib >= 3.7.1",
-    "numpy >= 1.24.3",
-    "pandas >= 1.5.3",
-    "gurobipy >= 10.0.3",
     "networkx >= 3.1.0",
-    "highspy >= 1.6.0"
+    "numpy >= 1.26.0",
+    "pandas >= 2.1.1",
+    "scipy >= 1.11.3",
+    "scikit-learn >= 1.5.2",
+    "statsmodels >= 0.14.4",
 ]
 requires-python = ">=3.10"
