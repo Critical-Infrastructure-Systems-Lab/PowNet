@@ -1,10 +1,11 @@
 """constraint.py: Contains functions for constructing the objective function and constraints of the optimization model.
 Throughout this module, the number 24 is the number of hours in a day. This number is used to calculate the index of the next day in the optimization model."""
 
-from __future__ import annotations
 import gurobipy as gp
 import networkx as nx
 import pandas as pd
+
+from pownet.core import SystemInput
 
 
 """Functions for thermal-unit constraints
@@ -850,7 +851,7 @@ def add_c_flow_balance(
     flow: gp.tupledict,
     timesteps: range,
     step_k: int,
-    inputs: "SystemInput",
+    inputs: SystemInput,
     nodes: list,
     node_edge: dict,
     node_generator: dict,
