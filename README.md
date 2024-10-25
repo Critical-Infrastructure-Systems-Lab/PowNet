@@ -9,3 +9,9 @@ PowNet is a least-cost optimization model for simulating the Unit Commitment and
 A quick start tutorial is provided here: https://pownet.readthedocs.io/en/latest/pages/quickstarter.html
 
 Read the PowNet Documentation here: https://pownet.readthedocs.io/en/latest
+
+## Overview of PowNet
+
+![overview_pownet](./docs/overview_pownet.png)
+
+
