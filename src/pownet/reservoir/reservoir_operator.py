@@ -81,7 +81,7 @@ class ReservoirOperator:
         return self.hourly_hydropower
 
     def export_hydropower_csv(self, timestep: str, output_folder: str) -> None:
-        csv_name = f"pownet_hydropower.csv"
+        csv_name = "pownet_hydropower.csv"
 
         # Check if the timestep is valid
         if timestep not in ["daily", "hourly"]:

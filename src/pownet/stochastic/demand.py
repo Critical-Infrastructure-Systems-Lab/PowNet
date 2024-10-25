@@ -131,7 +131,6 @@ class DemandTSModel(TimeSeriesModel):
         synthetic_y = pd.Series()
         for month in self.months:
             # Models are fitted for each month
-            reg_model = self.monthly_reg_models[month]
             stl_result = self.monthly_stl_results[month]
             sarimax_model = self._monthly_models[month]
 
@@ -146,10 +145,12 @@ class DemandTSModel(TimeSeriesModel):
                 reg_pred = self.monthly_reg_models[month].predict(exog=daily_exog)
                 reg_pred = pd.Series(reg_pred, index=daily_exog.index)
 
-                # Bootstrap the SARIMAX predictions within 75% confidence interval
+                # Bootstrap the SARIMAX predictions within 95% confidence interval
                 sarimax_pred = sarimax_model.predict()
                 sarimax_pred_ci = np.percentile(sarimax_pred, [2.5, 97.5])
-                sarimax_bootstrap = np.random.choice(sarimax_pred, size=len(daily_exog))
+                sarimax_bootstrap = np.random.choice(
+                    sarimax_pred_ci, size=len(daily_exog)
+                )
                 sarimax_bootstrap = pd.Series(sarimax_bootstrap, index=daily_exog.index)
 
                 # Recover electricity demand by adding predictions from the regression model,

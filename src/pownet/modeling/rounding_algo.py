@@ -166,7 +166,7 @@ def optimize_with_rounding(
 
     # If no integer solution is found after max_rounding_iter
     print(
-        f"\nPowNet: The rounding heuristic has terminated before finding an integer solution."
+        "\nPowNet: The rounding heuristic has terminated before finding an integer solution."
     )
     model.optimize()
     return model
