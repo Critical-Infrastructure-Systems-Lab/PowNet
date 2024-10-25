@@ -3,24 +3,29 @@
 
 import os
 import unittest
-from unittest.mock import patch, MagicMock
 from pownet.core.data_processor import (
     DataProcessor,
 )
 
-from pownet.data_utils import get_dates
-from pownet.folder_utils import get_database_dir, get_model_dir
+from pownet.folder_utils import get_model_dir
 
 
 class TestDataProcessor(unittest.TestCase):
     def test_initialization(self):
         # Arrange
+        input_folder = os.getcwd()
+        print(input_folder)
         model_name = "test_model"
         year = 2024
         frequency = 50
 
         # Act
-        processor = DataProcessor(model_name, year, frequency)
+        processor = DataProcessor(
+            input_folder=input_folder,
+            model_name=model_name,
+            year=year,
+            frequency=frequency,
+        )
 
         # Assert
         self.assertEqual(processor.model_name, model_name)
@@ -29,7 +34,7 @@ class TestDataProcessor(unittest.TestCase):
         self.assertEqual(processor.wavelength, 6000)
         self.assertEqual(
             processor.model_folder,
-            os.path.join(get_model_dir(), model_name),
+            os.path.join(get_model_dir(), input_folder, model_name),
         )
         # Timeseries should have 8760 rows
         self.assertEqual(processor.cycle_map, {})

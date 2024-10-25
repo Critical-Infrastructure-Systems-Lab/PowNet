@@ -1,14 +1,10 @@
 """ Unit tests for the ModelBuilder class.
 """
 
+import os
 import unittest
-from unittest.mock import MagicMock, patch
-
-import gurobipy as gp
-
-from pownet.folder_utils import get_output_dir, get_model_dir
-from pownet.modeling import PowerSystemModel
 from pownet.core import ModelBuilder, SystemInput
+from pownet.folder_utils import get_model_dir
 
 
 class TestModelBuilder(unittest.TestCase):
@@ -17,7 +13,8 @@ class TestModelBuilder(unittest.TestCase):
     def setUp(self) -> None:
         # Load the test data
         self.inputs = SystemInput(
-            model_name="dummy_trade",
+            input_folder=get_model_dir(),
+            model_name="dummy",
             year=2016,
             sim_horizon=24,
         )
