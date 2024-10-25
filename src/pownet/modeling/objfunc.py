@@ -1,6 +1,7 @@
 """model_formulation.py: Contains functions for constructing the objective function and constraints of the optimization model."""
 
-from __future__ import annotations
+from pownet.core import SystemInput
+
 
 """ Functions for the objective function
 """
@@ -52,7 +53,7 @@ def get_thermal_startup_coeff(
 
 
 def get_marginal_cost_coeff(
-    inputs: "SystemInput",
+    inputs: SystemInput,
     step_k: int,
     timesteps: range,
     units: list,
