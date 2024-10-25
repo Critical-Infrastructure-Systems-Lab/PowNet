@@ -1,58 +1,105 @@
 
-**4. Quickstarter Notebook**
+**4. PowNet 2.0 Quick Start Guide**
 ============================
+This tutorial demonstrates how to use PowNet 2.0 to simulate a dummy power system over a 24-hour horizon for two simulation days.
 
-**1. Install Jupyter Notebook**
+1. Model Overview
+-----------------
 
-.. code:: shell
+The dummy power system includes a variety of generation sources and a single buyer.  
 
-  >>> pip install jupyterlab
+::
 
-**2. Launch a Jupyter Notebook from the terminal**
+        pOil
+          |
+          |
+    Node 3 --- pGas
+          |
+          |
+    Node 1 --- Node 2 --- pHydro --- Buyer
+          |               |
+          |               |
+    Supplier         pBiomass 
 
-.. code:: shell
 
-  >>> jupyter lab
+2.  Setup
+----------
 
-**3. Download PowNet from CIS Lab GitHub Repo**
+* **Input Folder:** Define the directory containing the power system models (`input_folder`). This folder may contain multiple subdirectories.  Ensure the `input_folder` contains a subdirectory named `model_name` with the necessary model data, which is a set of CSV files.
 
-.. code:: shell
-  
-  >>> ! git clone https://github.com/Critical-Infrastructure-Systems-Lab/PowNet.git
+* **Model Year:** Specify the simulation year (`model_year`). This value must match the year associated with the time series data files within the `input_folder/model_name` directory.
 
-**4. Change directory to PowNet folder**
+* **Simulation Parameters:**
+    *  `sim_horizon`:  Define the simulation horizon in hours (e.g., 24 for a daily simulation).
+    *  `steps_to_run`: Specify the number of simulation steps (e.g., 2 for a two-day simulation).
+    *  `solver`: Select the optimization solver ('gurobi' or 'highs').
 
-.. code:: python
+3. Code Example
+---------------
 
-  >>> import os
-  
-  >>> os.chdir('PowNet/')
-  
-  >>> os.getcwd()
+The following code has already been made available in the the `scripts` folder as `run_quickstart.py`. However, the code is also presented here.
 
-**5. Make changes in user input variables**
-  
-.. code:: python
+.. code-block:: python
 
-  >>> %load main.py
+    """ This script provides an example of how to run PowNet 2.0.
+    """
 
-*Make changes in* ``main.py`` *loaded in the notebaook [e.g.,* ``MODEL_NAME`` *to define region of interest,* ``T`` *for Simulation Horizon,
-or* ``use_gurobi`` *to choose optimization solver] and then save changes.*
+    import os
+    from pownet.core import Simulator
 
-.. code:: python
 
-  >>> %save main.py
+    def main():
 
-**6. Add the PYTHONPATH environment variable**
+        # --------- User inputs
 
-.. code:: python
+        input_folder = "..//model_library"
+        output_folder = "..//temptemp"
 
-  >>> import sys
-  
-  >>> sys.path.append('/Path/to/PowNet Directory/src/')
+        model_name = "dummy"
+        model_year = 2016
 
-**7. Run PowNet Simulation**
+        # Simulation parameters
+        sim_horizon = 24
+        steps_to_run = 2
+        solver = "gurobi"  # or highs
 
-.. code:: python
+        # --------- End of user inputs
 
-  >>> %run main.py
+        # Run the simulation
+        simulator = Simulator(
+            input_folder=input_folder,
+            model_name=model_name,
+            model_year=model_year,
+        )
+
+        simulator.run(
+            sim_horizon=sim_horizon,
+            steps_to_run=steps_to_run,
+            solver=solver,
+        )
+
+        # Write the simulation results
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+        simulator.write_results(output_folder)
+
+        # Plot the results
+        simulator.plot_fuelmix("bar", output_folder)
+        simulator.plot_unit_status(output_folder)
+
+
+    if __name__ == "__main__":
+        main()
+
+
+4. Running the Simulation
+-------------------------
+
+1.  **Save:** Save the code above as a Python file (e.g., `run_tutorial.py`).
+2.  **Run:** Execute the script from your terminal using `python run_pownet.py`.
+
+5. Outputs
+----------
+
+* **Results:** Simulation results will be saved in the specified `output_folder`.
+* **Plots:**  The code generates plots of the fuel mix and unit status, also saved in the `output_folder`.
