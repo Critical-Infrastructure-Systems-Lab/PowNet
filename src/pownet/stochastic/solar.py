@@ -157,7 +157,7 @@ class SolarTSModel(TimeSeriesModel):
                 start_time = self.data.loc[
                     (self.data.index.month == month) & (self.data.index.day == day)
                 ].index[0]
-                end_time = start_time + pd.Timedelta("23H")
+                end_time = start_time + pd.Timedelta("23h")
 
                 # This is the trend + residuals of the STL decomposition
                 daily_exog_data = None
@@ -180,7 +180,7 @@ class SolarTSModel(TimeSeriesModel):
                 daily_y_syn = pd.Series(
                     daily_y_syn,
                     name="value",
-                    index=pd.date_range(start_time, end_time, freq="H"),
+                    index=pd.date_range(start_time, end_time, freq="h"),
                 )
                 if synthetic_y.empty:
                     synthetic_y = daily_y_syn

@@ -45,7 +45,7 @@ class TimeSeriesModel(ABC):
         self.months.sort()
         # Time series modeling requires datetime to be the index
         self.data = self.data.set_index("datetime")
-        self.data.index.freq = "H"  # Requires hourly time series
+        self.data.index.freq = "h"  # Requires hourly time series
         self._is_loaded = True
 
     def fit(
