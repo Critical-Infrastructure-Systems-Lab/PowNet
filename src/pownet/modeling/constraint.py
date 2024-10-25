@@ -1,11 +1,10 @@
 """constraint.py: Contains functions for constructing the objective function and constraints of the optimization model.
 Throughout this module, the number 24 is the number of hours in a day. This number is used to calculate the index of the next day in the optimization model."""
 
+from pownet.core.input import SystemInput
 import gurobipy as gp
 import networkx as nx
 import pandas as pd
-
-from pownet.core import SystemInput
 
 
 """Functions for thermal-unit constraints

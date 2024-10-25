@@ -1,4 +1,4 @@
-""" This is the core module. 
+""" This is the core module.
 """
 
 from .builder import ModelBuilder

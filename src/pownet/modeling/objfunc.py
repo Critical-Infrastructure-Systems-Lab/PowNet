@@ -1,7 +1,6 @@
 """model_formulation.py: Contains functions for constructing the objective function and constraints of the optimization model."""
 
-from pownet.core import SystemInput
-
+from pownet.core.input import SystemInput
 
 """ Functions for the objective function
 """
