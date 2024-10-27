@@ -3,7 +3,38 @@
 ============================
 This tutorial demonstrates how to use PowNet 2.0 to simulate a dummy power system over a 24-hour horizon for two simulation days.
 
-1. Model Overview
+1. Installation
+-----------------
+Download or clone the PowNet 2.0 repository to your local machine. For example: if we want to clone to "C://user/pownet",
+
+.. code-block:: python
+
+    git clone https://github.com/your-username/pownet.git C://user/pownet
+
+Next, open a terminal and navigate to the directory where you cloned the repository:
+
+.. code-block:: python
+
+    cd C://user/pownet
+
+The following step is highly recommended: creating a virtual environment to manage dependencies. If using Conda, you can create an envrionment named "pownet":
+
+.. code-block:: python
+
+    conda create --name pownet
+    conda activate pownet
+
+Now, you can install this PowNet package using pip, which is a manager for Python packages:
+
+.. code-block:: python
+
+    pip install -e .
+
+This command installs the package in "editable" mode (-e) using pyproject.toml that is located in the root directory of PowNet. The editable mode allows you to edit PowNet codebase when you need to modify or implement new features. The pyproject.toml file specifies the dependencies required to run PowNet.
+
+Now you have PowNet 2.0 installed and ready to use! You can proceed with the rest of this tutorial to run your first simulation using a small case study.
+
+2. Model Overview
 -----------------
 
 The dummy power system includes a variety of generation sources and a single buyer.  
@@ -22,7 +53,7 @@ The dummy power system includes a variety of generation sources and a single buy
     Supplier         pBiomass 
 
 
-2.  Setup
+3.  Setup
 ----------
 
 * **Input Folder:** Define the directory containing the power system models (`input_folder`). This folder may contain multiple subdirectories.  Ensure the `input_folder` contains a subdirectory named `model_name` with the necessary model data, which is a set of CSV files.
@@ -34,7 +65,7 @@ The dummy power system includes a variety of generation sources and a single buy
     *  `steps_to_run`: Specify the number of simulation steps (e.g., 2 for a two-day simulation).
     *  `solver`: Select the optimization solver ('gurobi' or 'highs').
 
-3. Code Example
+4. Code Example
 ---------------
 
 The following code has already been made available in the the `scripts` folder as `run_quickstart.py`. However, the code is also presented here.
@@ -92,13 +123,13 @@ The following code has already been made available in the the `scripts` folder a
         main()
 
 
-4. Running the Simulation
+5. Running the Simulation
 -------------------------
 
 1.  **Save:** Save the code above as a Python file (e.g., `run_tutorial.py`).
 2.  **Run:** Execute the script from your terminal using `python run_pownet.py`.
 
-5. Outputs
+6. Outputs
 ----------
 
 * **Results:** Simulation results will be saved in the specified `output_folder`.
