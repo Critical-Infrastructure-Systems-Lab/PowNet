@@ -92,7 +92,7 @@ class PowerSystemModel:
         self.model.setOptionValue("mip_rel_gap", mipgap)
         self.model.setOptionValue("time_limit", timelimit)
         self.model.setOptionValue("threads", num_threads)
-        self.model.setOptionValue("solver", simplex)
+        self.model.setOptionValue("solver", "simplex")
 
         self.model.run()
         # Delete the MPS file
