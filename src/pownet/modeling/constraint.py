@@ -1,7 +1,6 @@
 """constraint.py: Contains functions for constructing the objective function and constraints of the optimization model.
 Throughout this module, the number 24 is the number of hours in a day. This number is used to calculate the index of the next day in the optimization model."""
 
-from pownet.core.input import SystemInput
 import gurobipy as gp
 import networkx as nx
 import pandas as pd
@@ -850,7 +849,11 @@ def add_c_flow_balance(
     flow: gp.tupledict,
     timesteps: range,
     step_k: int,
-    inputs: SystemInput,
+    thermal_units: list,
+    hydro_units: list,
+    solar_units: list,
+    wind_units: list,
+    import_units: list,
     nodes: list,
     node_edge: dict,
     node_generator: dict,
@@ -873,7 +876,11 @@ def add_c_flow_balance(
         flow (gp.tupledict): The power flow
         timesteps (range): The range of timesteps
         step_k (int): The current iteration
-        inputs (SystemInput): The system input data
+        thermal_units (list): The list of thermal units
+        hydro_units (list): The list of hydro units
+        solar_units (list): The list of solar units
+        wind_units (list): The list of wind units
+        import_units (list): The list of import units
         nodes (list): The list of nodes
         node_edge (dict): The edges connected to a node
         node_generator (dict): The generators connected to a node
@@ -886,23 +893,21 @@ def add_c_flow_balance(
 
     """
 
-    def get_unit_generation(
-        unit_g: str,
-        t: int,
-    ):
-        """Helper method to get the generation for a given unit and time from SystemInput."""
-        unit_dispatch_map = {
-            "thermal_units": pthermal,
-            "hydro_units": phydro,
-            "solar_units": psolar,
-            "wind_units": pwind,
-            "import_units": pimp,
-        }
-        for unit_type, dispatch_var in unit_dispatch_map.items():
-            if unit_g in getattr(inputs, unit_type):
-                return dispatch_var[unit_g, t]
-
-        return 0
+    def get_unit_generation(unit_g: str, t: int):
+        if unit_g in thermal_units:
+            return pthermal[unit_g, t]
+        elif unit_g in hydro_units:
+            return phydro[unit_g, t]
+        elif unit_g in solar_units:
+            return psolar[unit_g, t]
+        elif unit_g in wind_units:
+            return pwind[unit_g, t]
+        elif unit_g in import_units:
+            return pimp[unit_g, t]
+        else:
+            raise ValueError(
+                f"PowNet: Unit {unit_g} not found in any of the generation types but is connected to the node."
+            )
 
     constraints = gp.tupledict()
     # Impose a line loss factor to account for the inefficiency of the transmission line
