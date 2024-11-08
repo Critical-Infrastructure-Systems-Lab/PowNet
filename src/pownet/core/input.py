@@ -99,6 +99,7 @@ class SystemInput:
         self.hydro_capacity: pd.DataFrame = pd.DataFrame()
         self.hydro_timestep: str = ""
         self.hydro_unit_node: dict[str, str] = {}
+        self.using_pownet_hydropower: bool = False
 
         self.solar_capacity: pd.DataFrame = pd.DataFrame()
         self.solar_unit_node: dict[str, str] = {}
@@ -127,6 +128,7 @@ class SystemInput:
         self.solar_units: list[str] = []
         self.wind_units: list[str] = []
         self.import_units: list[str] = []
+        self.all_generators: set[str] = []
 
         # Generators by node
         self.node_generator: dict[str, list[str]] = {}
@@ -320,6 +322,7 @@ class SystemInput:
                     "pownet_hydropower.csv", fuel_type="hydropower"
                 )
             )
+            self.using_pownet_hydropower = True
 
         elif os.path.exists(os.path.join(self.model_dir, "hydropower.csv")):
             self.hydro_capacity, self.hydro_unit_node = (
@@ -359,6 +362,23 @@ class SystemInput:
         self.import_capacity, self.import_unit_node = (
             self._load_capacity_and_update_fuelmap("import.csv", "import")
         )
+
+        #################
+        # All generators
+        #################
+        generators = (
+            list(self.thermal_unit_node.keys())
+            + list(self.hydro_unit_node.keys())
+            + list(self.solar_unit_node.keys())
+            + list(self.wind_unit_node.keys())
+            + list(self.import_unit_node.keys())
+        )
+        set_generators = set(generators)
+        if len(generators) != len(set_generators):
+            raise ValueError(
+                "PowNet: Generator names cannot repeat across different types."
+            )
+        self.all_generators = set_generators
 
         #################
         # Transmission
@@ -572,24 +592,9 @@ class SystemInput:
             )
 
         ##################################
-        # Generator names cannot repeat across different generator types and slack units (demand nodes)
-        ##################################
-        generators = (
-            set(self.thermal_units)
-            | set(self.hydro_units)
-            | set(self.solar_units)
-            | set(self.wind_units)
-            | set(self.import_units)
-        )
-        if len(generators) != number_of_generators:
-            raise ValueError(
-                "PowNet: Generator names cannot repeat across different types."
-            )
-
-        ##################################
         # Generator names cannot be the same as the name of demand nodes
         ##################################
-        if generators.intersection(self.demand_nodes):
+        if self.all_generators.intersection(self.demand_nodes):
             raise ValueError(
                 "PowNet: Generator names cannot be the same as the name of demand nodes."
             )
