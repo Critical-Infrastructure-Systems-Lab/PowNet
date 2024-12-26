@@ -77,8 +77,7 @@ class SystemRecord:
             """Extracts data for a specific 'vartype' from the DataFrame and converts it to a dictionary."""
             return (
                 df[
-                    (df["vartype"] == vartype)
-                    & (df["timestep"] == self.inputs.sim_horizon)
+                    (df["vartype"] == vartype) & (df["timestep"] == 24)
                 ]  # Only considers values of the last hour
                 .drop("vartype", axis=1)
                 .set_index(["node"])  # Assume generator names do not repeat
@@ -110,13 +109,13 @@ class SystemRecord:
         # Need to calculate the minimum time on/off
         self.current_min_on = calc_remaining_on_duration(
             current_node_vars,
-            sim_horizon=self.inputs.sim_horizon,
+            sim_horizon=24,
             thermal_units=self.inputs.thermal_units,
             TU=self.inputs.TU,
         )
         self.current_min_off = calc_remaining_off_duration(
             current_node_vars,
-            sim_horizon=self.inputs.sim_horizon,
+            sim_horizon=24,
             thermal_units=self.inputs.thermal_units,
             TD=self.inputs.TD,
         )

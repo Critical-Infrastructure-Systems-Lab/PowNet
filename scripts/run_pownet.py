@@ -12,7 +12,7 @@ from pownet.data_utils import create_init_condition
 ##### User inputs #####
 to_process_inputs = True
 sim_horizon = 24
-model_name = "RegionAB"
+model_name = "dummy"
 steps_to_run = 3  # Default is None
 do_plot = True
 #######################
