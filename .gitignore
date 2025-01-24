@@ -122,5 +122,5 @@ src/analysis/results/*
 scripts/scratch.py
 
 # Pownet generated files
-pownet_*.csv
-pownet_*.json
+/model_library/*/pownet_*.csv
+/model_library/*/pownet_*.json

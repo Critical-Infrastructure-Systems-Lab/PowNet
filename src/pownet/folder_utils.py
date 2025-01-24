@@ -35,7 +35,7 @@ def get_home_dir() -> str:
 
 
 def get_database_dir() -> str:
-    return os.path.join(get_pownet_dir(), "database")
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "database")
 
 
 def get_test_dir() -> str:
