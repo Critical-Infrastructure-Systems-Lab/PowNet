@@ -1,4 +1,4 @@
-source,sink,source_kv,sink_kv,stability_limit,thermal_limit,line_capacity,max_kv,reactance_per_km,reactance_pu,susceptance
+source,sink,source_kv,sink_kv,stability_limit,thermal_limit,line_capacity,max_kv,reactance_per_km,reactance,susceptance
 pGas,Node3,765,275,14365,6360,6360,765,0.2544,13.992,15035
 Node3,Node1,275,275,2273,1009,1009,275,0.365,63.875,1183
 Node1,Node2,275,275,1156,1009,1009,275,0.365,127.75,591

@@ -4,7 +4,7 @@ import pandas as pd
 from pownet.data_utils import calc_remaining_on_duration, calc_remaining_off_duration
 
 
-class TestCalcMinOnlineDuration(unittest.TestCase):
+class TestCalcMinOnlineDuration1(unittest.TestCase):
 
     def test_startup_within_horizon(self):
         """Test case where a unit has a startup within the simulation horizon.
@@ -70,7 +70,7 @@ class TestCalcMinOnlineDuration(unittest.TestCase):
         self.assertEqual(result, expected_output)
 
 
-class TestCalcMinOnlineDuration(unittest.TestCase):
+class TestCalcMinOnlineDuration2(unittest.TestCase):
 
     def test_shutdown_within_horizon(self):
         """Test case where a unit has a shutdown within the simulation horizon.

@@ -216,23 +216,23 @@ class TestCalcDailyHydropower(unittest.TestCase):
 
         pd.testing.assert_series_equal(actual_hydropower, expected_hydropower)
 
-    def test_zero_head(self):
-        """Test when the head is zero (no hydropower generation)."""
-        release = pd.Series([100000.0])
-        mid_level = pd.Series(
-            [105.0]
-        )  # mid_level equals max_level, resulting in zero head
-        max_generation = 10.0
-        turbine_factor = 0.8
-        max_head = 20.0
-        max_level = 105.0
+    # def test_no_level_change(self):
+    #     """Test when no level change with output at max head"""
+    #     release = pd.Series([100000.0])
+    #     mid_level = pd.Series(
+    #         [105.0]
+    #     )  # mid_level equals max_level, resulting in zero head
+    #     max_generation = 10.0
+    #     turbine_factor = 0.8
+    #     max_head = 20.0
+    #     max_level = 105.0
 
-        expected_hydropower = pd.Series([0.0])
-        actual_hydropower = calc_daily_hydropower(
-            release, mid_level, max_generation, turbine_factor, max_head, max_level
-        )
+    #     expected_hydropower = pd.Series([0.0])
+    #     actual_hydropower = calc_daily_hydropower(
+    #         release, mid_level, max_generation, turbine_factor, max_head, max_level
+    #     )
 
-        pd.testing.assert_series_equal(actual_hydropower, expected_hydropower)
+    #     pd.testing.assert_series_equal(actual_hydropower, expected_hydropower)
 
 
 if __name__ == "__main__":

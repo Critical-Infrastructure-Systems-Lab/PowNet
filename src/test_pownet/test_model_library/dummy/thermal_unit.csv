@@ -1,4 +1,4 @@
-name,node,unit_type,fuel_type,max_capacity,min_capacity,heat_rate,operation_cost,fuel_cost,fixed_cost,startup_cost,ramp_rate,min_uptime,min_downtime
-pGas,pGas,gas_cc,gas,1200,10,7.65,2,5.85,1.2,70,287.67,4,4
-pOil,pOil,oil_st,oil,35,1,10.19,3.17,6.85,1.5,50,6,1,1
-pBiomass,pBiomass,biomass_st,biomass,9.9,2,14.1,26,7.85,1,100,9.9,2,2
+name,node,unit_type,fuel_type,max_capacity,min_capacity,heat_rate,operation_cost,fuel_contract,fixed_cost,startup_cost,ramp_rate,min_uptime,min_downtime,must_take
+pGas,pGas,gas_cc,gas,1200,10,7.65,2,gas,1.2,70,287.67,4,4,0
+pOil,pOil,oil_st,oil,35,1,10.19,3.17,oil,1.5,50,6,1,1,0
+pBiomass,pBiomass,biomass_st,biomass,9.9,2,14.1,26,biomass,1,100,9.9,2,2,1
