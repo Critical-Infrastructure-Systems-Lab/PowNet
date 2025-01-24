@@ -212,6 +212,56 @@ def calc_level_from_storage(
     return ((storage / max_storage) * (max_level - min_level)) + min_level
 
 
+def calc_hourly_hydropower(
+    release: pd.Series,
+    mid_level: pd.Series,
+    max_generation: float,
+    turbine_factor: float,
+    max_head: float,
+    max_level: float,
+) -> pd.Series:
+    """Calculate hourly hydropower generation from release and mid-level.
+
+    The hourly hydropower (MW) is calculated using the following formula:
+
+    hourly_hydropower = min(turbine_factor * rho * g * head * flow_rate, max_generation)
+
+    where:
+    * rho: Density of water (kg/m3)
+    * g: Acceleration due to gravity (m/s2)
+    * head: Water head above the turbine (m)
+    * flow_rate: Water flow rate (m3/hour)
+    * max_generation: Maximum power generation capacity of the turbine (MW)
+    * turbine_factor: Turbine efficiency
+
+    Args:
+        release: Water release (m3/hour)
+        mid_level: Average water level between current and previous timestep (m)
+        max_generation: Maximum power generation capacity of the turbine (MW)
+        turbine_factor: Turbine efficiency
+        max_head: Maximum head (m)
+        max_level: Maximum water level (m)
+
+    Returns:
+        pd.Series: Hourly hydropower generation (MW)
+    """
+    # Define constants
+    density = 998  # kg/m3
+    gravity = 9.81  # m/s2
+
+    # Calculate the water head above the turbine
+    head = max_head - (max_level - mid_level)
+    # Convert release from m3/hour to m3/s because the hydropower formula uses seconds
+    flow_rate = release / 3600
+
+    # The calculated hourly hydropower is in Watts
+    hourly_hydropower = turbine_factor * density * gravity * head * flow_rate
+    hourly_hydropower = hourly_hydropower / 1e6  # Convert to MegaWatts
+    # A turbine has a maximum water intake, so the power generation is capped
+    hourly_hydropower = np.minimum(hourly_hydropower, max_generation)
+    return hourly_hydropower
+
+
 def calc_daily_hydropower(
     release: pd.Series,
     mid_level: pd.Series,
@@ -222,22 +272,8 @@ def calc_daily_hydropower(
 ) -> pd.Series:
     """Calculate daily hydropower generation from release and mid-level.
 
-    The hourly hydropower is calculated using the following formula:
-
-    hourly_hydropower = min(turbine_factor * rho * g * head * flow_rate, max_generation)
-
-    where:
-    * rho: Density of water (kg/m3)
-    * g: Acceleration due to gravity (m/s2)
-    * head: Water head above the turbine (m)
-    * flow_rate: Water flow rate (m3/s)
-    * max_generation: Maximum power generation capacity of the turbine (MW)
-    * turbine_factor: Turbine efficiency
-
-    The daily hydropower is then obtained by multiplying the hourly hydropower by 24.
-
     Args:
-        release: Water release (m3/day)
+        release: Water release (m3/daily)
         mid_level: Average water level between current and previous timestep (m)
         max_generation: Maximum power generation capacity of the turbine (MW)
         turbine_factor: Turbine efficiency
@@ -247,21 +283,16 @@ def calc_daily_hydropower(
     Returns:
         pd.Series: Daily hydropower generation (MW-day)
     """
-    # Define constants
-    density = 998  # kg/m3
-    gravity = 9.81  # m/s2
-
-    # Calculate the water head above the turbine
-    head = max_head - (max_level - mid_level)
-    # Convert release from m3/day to m3/s
-    flow_rate = release / (24 * 3600)
-    # Calculate the hourly hydropower
-    hourly_hydropower = (
-        turbine_factor * density * gravity * head * flow_rate
-    )  # in Watts
-    hourly_hydropower = hourly_hydropower / 1e6  # Convert to MegaWatts
-    # A turbine has a maximum water intake, so the power generation is capped
-    hourly_hydropower = np.minimum(hourly_hydropower, max_generation)
+    # Convert release from m3/daily to m3/hour
+    release = release / 24  # Convert to m3/hour
+    hourly_hydropower = calc_hourly_hydropower(
+        release=release,
+        mid_level=mid_level,
+        max_generation=max_generation,
+        turbine_factor=turbine_factor,
+        max_head=max_head,
+        max_level=max_level,
+    )
     # Convert to MW-day
     daily_hydropower = hourly_hydropower * 24
     return daily_hydropower

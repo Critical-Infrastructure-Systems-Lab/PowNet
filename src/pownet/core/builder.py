@@ -34,73 +34,117 @@ class ModelBuilder:
 
     def __init__(self, inputs: SystemInput) -> None:
         self.inputs = inputs
-
         self.timesteps = range(1, self.inputs.sim_horizon + 1)
-
         self.model: gp.Model = None
 
         # Variables
         # Thermal units
-        self.pthermal: gp.tupledict = {}
-        self.status: gp.tupledict = {}
-        self.startup: gp.tupledict = {}
-        self.shutdown: gp.tupledict = {}
-        self.vpower: gp.tupledict = {}
-        self.vpowerbar: gp.tupledict = {}
-        self.spin: gp.tupledict = {}
+        self.pthermal = gp.tupledict()
+        self.status = gp.tupledict()
+        self.startup = gp.tupledict()
+        self.shutdown = gp.tupledict()
+        self.vpower = gp.tupledict()
+        self.vpowerbar = gp.tupledict()
+        self.spin = gp.tupledict()
+        self.pthermal_curtail = gp.tupledict()  # for must-take units
+
+        # Energy storage
+        self.pcharge = gp.tupledict()
+        self.pdischarge = gp.tupledict()
+
+        self.charge_state = gp.tupledict()  # State of charge
+        self.ucharge = gp.tupledict()  # Charging indicator
+        self.udischarge = gp.tupledict()  # Discharging indicator
 
         # Renewable energy and import sources
-        self.phydro: gp.tupledict = gp.tupledict()
-        self.psolar: gp.tupledict = gp.tupledict()
-        self.pwind: gp.tupledict = gp.tupledict()
-        self.pimp: gp.tupledict = gp.tupledict()  # import
+        self.phydro = gp.tupledict()
+        self.phydro_curtail = gp.tupledict()
+        self.uhydro = gp.tupledict()
+
+        self.psolar = gp.tupledict()
+        self.psolar_curtail = gp.tupledict()
+        self.usolar = gp.tupledict()
+
+        self.pwind = gp.tupledict()
+        self.pwind_curtail = gp.tupledict()
+        self.uwind = gp.tupledict()
+
+        self.pimp = gp.tupledict()  # import
+        self.pimp_curtail = gp.tupledict()
+        self.uimp = gp.tupledict()
 
         # Node variables
-        self.pos_pmismatch: gp.tupledict = {}
-        self.neg_pmismatch: gp.tupledict = {}
+        self.pos_pmismatch = gp.tupledict()
+        self.neg_pmismatch = gp.tupledict()
 
-        # Flow variables
-        self.flow: gp.tupledict = {}
-        self.theta: gp.tupledict = {}
+        # Energy-flow variables
+        self.flow = gp.tupledict()
+        self.theta = gp.tupledict()
 
         # System-wide variables
-        self.spin_shortfall: gp.tupledict = {}
+        self.spin_shortfall = gp.tupledict()
 
         # Time-independent terms in the objective function
-        self.thermal_fixed_expr: gp.LinExpr = gp.LinExpr()
-        self.thermal_opex_expr: gp.LinExpr = gp.LinExpr()
-        self.thermal_startup_expr: gp.LinExpr = gp.LinExpr()
-        self.load_shortfall_penalty_expr: gp.LinExpr = gp.LinExpr()
-        self.spin_shortfall_penalty_expr: gp.LinExpr = gp.LinExpr()
+        self.thermal_fixed_expr = gp.LinExpr()
+        self.thermal_opex_expr = gp.LinExpr()
+        self.thermal_startup_expr = gp.LinExpr()
+        self.thermal_curtail_expr = gp.LinExpr()
 
-        # Constraints
-        self.c_link_uvw_init: gp.tupledict = None
-        self.c_link_uvw: gp.tupledict = None
-        self.c_link_pthermal: gp.tupledict = None
-        self.c_link_pu_lower: gp.tupledict = None
-        self.c_link_pu_upper: gp.tupledict = None
-        self.c_min_down_init: gp.tupledict = None
-        self.c_min_up_init: gp.tupledict = None
-        self.c_min_down: gp.tupledict = None
-        self.c_min_up: gp.tupledict = None
-        self.c_peak_down_bound: gp.tupledict = None
-        self.c_peak_up_bound: gp.tupledict = None
-        self.c_ramp_down_init: gp.tupledict = None
-        self.c_ramp_up_init: gp.tupledict = None
-        self.c_ramp_down: gp.tupledict = None
-        self.c_ramp_up: gp.tupledict = None
-        self.c_ref_node: gp.tupledict = None
-        self.c_angle_diff: gp.tupledict = None
-        self.c_kirchhoff: gp.tupledict = None
-        self.c_flow_balance: gp.tupledict = None
-        self.c_hydro_capacity: gp.tupledict = None
-        self.c_link_spin: gp.tupledict = None
-        self.c_link_ppbar: gp.tupledict = None
-        self.c_reserve_req: gp.tupledict = None
+        self.load_shortfall_penalty_expr = gp.LinExpr()
+        self.spin_shortfall_penalty_expr = gp.LinExpr()
+
+        # Thermal unit constraints
+        self.c_link_uvw_init = gp.tupledict()
+        self.c_link_uvw = gp.tupledict()
+        self.c_link_pthermal = gp.tupledict()
+        self.c_link_pu_lower = gp.tupledict()
+        self.c_link_pu_upper = gp.tupledict()
+        self.c_min_down_init = gp.tupledict()
+        self.c_min_up_init = gp.tupledict()
+        self.c_min_down = gp.tupledict()
+        self.c_min_up = gp.tupledict()
+        self.c_peak_down_bound = gp.tupledict()
+        self.c_peak_up_bound = gp.tupledict()
+        self.c_ramp_down_init = gp.tupledict()
+        self.c_ramp_up_init = gp.tupledict()
+        self.c_ramp_down = gp.tupledict()
+        self.c_ramp_up = gp.tupledict()
+        self.c_link_spin = gp.tupledict()
+        self.c_link_ppbar = gp.tupledict()
+        self.c_thermal_curtail = gp.tupledict()
+
+        # System-wide constraints
+        self.c_ref_node = gp.tupledict()
+        self.c_angle_diff = gp.tupledict()
+        self.c_kirchhoff = gp.tupledict()
+        self.c_flow_balance = gp.tupledict()
+        self.c_reserve_req = gp.tupledict()
+
+        self.c_hydro_curtail_ess = gp.tupledict()
+        self.c_daily_hydro_curtail_ess = gp.tupledict()
+        self.c_solar_curtail_ess = gp.tupledict()
+        self.c_wind_curtail_ess = gp.tupledict()
+        self.c_import_curtail_ess = gp.tupledict()
+
+        # These constraints act as the upper bound
+        # and provides indicators if the unit is online
+        self.c_link_hydro_pu = gp.tupledict()
+        self.c_link_daily_hydro_pu = gp.tupledict()
+        self.c_link_solar_pu = gp.tupledict()
+        self.c_link_wind_pu = gp.tupledict()
+        self.c_link_import_pu = gp.tupledict()
+
+        self.c_hydro_limit_daily = gp.tupledict()
+
+        # Energy storage constraints
+        self.c_link_ess_charge = gp.tupledict()
+        self.c_link_discharge = gp.tupledict()
+        self.c_link_ess_state = gp.tupledict()
+        self.c_unit_ess_balance_init = gp.tupledict()
+        self.c_unit_ess_balance = gp.tupledict()
 
     def add_variables(self, step_k: int) -> None:
-        """Add variables to the model. The variables are grouped into
-        thermal units, renewable energy sources, and imports, nodes, and flows.
+        """Add variables to the model.
 
         Thermal-unit variables:
         -----------------
@@ -111,23 +155,36 @@ class ModelBuilder:
         - `startup`: Indicator if a unit is shutting down. Unitless.
         - `shutdown`: Indicator if a unit is starting up. Unitless.
         - `spin` (optional): Spinning reserve. Unit: MW.
+        - `pthermal_curtail`: Curtailed power output by a thermal unit. Unit: MW.
+
+        Energy-storage variables:
+        -----------------
+        - `pcharge`: Power charging an energy storage system. Unit: MW.
+        - `pdischarge`: Power discharging an energy storage system. Unit: MW.
+        - `charge_state`: State of charge of an energy storage system. Unit: MWh.
+        - `ucharge`: Indicator that an ESS is charging. Unitless.
+        - `udischarge`: Indicator that an ESS is discharging. Unitless.
 
         Renewable energy and import variables:
         -----------------
+        - `phydro`: Hydropower output. Unit: MW.
         - `psolar`: Solar power output. Unit: MW.
         - `pwind`: Wind power output. Unit: MW.
         - `pimp`: Import power output. Unit: MW.
-        - `phydro`: Hydropower output. Unit: MW.
+        - `phydro_curtail`: Curtailed hydropower output. Unit: MW.
+        - `psolar_curtail`: Curtailed solar power output. Unit: MW.
+        - `pwind_curtail`: Curtailed wind power output. Unit: MW.
+        - `pimp_curtail`: Curtailed import power output. Unit: MW.
 
         Node variables:
         -----------------
         - `pos_pmismatch`: Positive power mismatch. Unit: MW.
         - `neg_pmismatch`: Negative power mismatch. Unit: MW.
+        - `theta`: Voltage angle. Unit: Radians.
 
         Flow variables:
         -----------------
         - `flow`: Power flow on transmission lines. Unit: MW/hr.
-        - `theta`: Voltage angle. Unit: Radians.
 
         System variables:
         -----------------
@@ -140,26 +197,77 @@ class ModelBuilder:
             None
 
         """
+        ################################
+        # Variables with fixed upper bounds
+        ################################
+        var_with_u_tuples = [
+            ("phydro", self.inputs.hydro_units, self.inputs.hydro_contracted_capacity),
+            (
+                "phydro_curtail",
+                self.inputs.hydro_units,
+                self.inputs.hydro_contracted_capacity,
+            ),
+            ("psolar", self.inputs.solar_units, self.inputs.solar_contracted_capacity),
+            (
+                "psolar_curtail",
+                self.inputs.solar_units,
+                self.inputs.solar_contracted_capacity,
+            ),
+            ("pwind", self.inputs.wind_units, self.inputs.wind_contracted_capacity),
+            (
+                "pwind_curtail",
+                self.inputs.wind_units,
+                self.inputs.wind_contracted_capacity,
+            ),
+            ("pimp", self.inputs.import_units, self.inputs.import_contracted_capacity),
+            (
+                "pimp_curtail",
+                self.inputs.import_units,
+                self.inputs.import_contracted_capacity,
+            ),
+            ("pcharge", self.inputs.storage_units, self.inputs.ess_max_charge),
+            ("pdischarge", self.inputs.storage_units, self.inputs.ess_max_discharge),
+        ]
+
+        for varname, units, capacity_dict in var_with_u_tuples:
+            setattr(
+                self,
+                f"{varname}",
+                self.model.addVars(
+                    units,
+                    self.timesteps,
+                    lb=0,
+                    ub={
+                        (unit, t): capacity_dict[unit]
+                        for t in self.timesteps
+                        for unit in units
+                    },
+                    name=varname,
+                ),
+            )
 
         ################################
-        # Variables without upper bounds
+        # Variables with variable upper bounds
         ################################
 
-        var_with_ub_tuples = [
+        var_with_variable_ub_tuples = [
             ("pthermal", "thermal_units", self.inputs.thermal_derated_capacity),
             ("vpower", "thermal_units", self.inputs.thermal_derated_capacity),
             ["vpowerbar", "thermal_units", self.inputs.thermal_derated_capacity],
-            ("psolar", "solar_units", self.inputs.solar_capacity),
-            ("pwind", "wind_units", self.inputs.wind_capacity),
-            ("pimp", "import_units", self.inputs.import_capacity),
+            (
+                "pthermal_curtail",
+                "thermal_must_take_units",
+                self.inputs.thermal_derated_capacity,
+            ),
+            ("charge_state", "storage_units", self.inputs.ess_derated_capacity),
         ]
 
-        for varname, unit_type, capacity_df in var_with_ub_tuples:
+        for varname, unit_type, capacity_df in var_with_variable_ub_tuples:
             # Update the self attribute directly
             setattr(
                 self,
                 varname,
-                modeling.add_var_with_ub(
+                modeling.add_var_with_variable_ub(
                     model=self.model,
                     varname=varname,
                     timesteps=self.timesteps,
@@ -205,56 +313,29 @@ class ModelBuilder:
         )
 
         ################################
-        # Binary variables of thermal units
+        # Binary variables
         ################################
         var_binary_tuples = [
             ("status", "thermal_units"),
             ("startup", "thermal_units"),
             ("shutdown", "thermal_units"),
+            ("ucharge", "storage_units"),
+            ("udischarge", "storage_units"),
+            ("uhydro", "hydro_units"),
+            ("usolar", "solar_units"),
+            ("uwind", "wind_units"),
+            ("uimp", "import_units"),
         ]
         for varname, unit_type in var_binary_tuples:
             setattr(
                 self,
                 varname,
                 self.model.addVars(
-                    self.inputs.thermal_units,
+                    getattr(self.inputs, unit_type),
                     self.timesteps,
                     vtype=GRB.BINARY,
                     name=varname,
                 ),
-            )
-
-        ################################
-        # Daily hydropower availability is limited by a constraint expression
-        # instead of an upper bound on the variables
-        ################################
-
-        if self.inputs.hydro_timestep == "hourly":
-            setattr(
-                self,
-                "phydro",
-                modeling.add_var_with_ub(
-                    model=self.model,
-                    varname="phydro",
-                    timesteps=self.timesteps,
-                    step_k=step_k,
-                    units=getattr(self.inputs, "hydro_units"),
-                    capacity_df=self.inputs.hydro_capacity,
-                ),
-            )
-        elif self.inputs.hydro_timestep == "daily":
-            self.phydro = self.model.addVars(
-                self.inputs.hydro_units,
-                self.timesteps,
-                lb=0,
-                vtype=GRB.CONTINUOUS,
-                name="phydro",
-            )
-        elif self.inputs.hydro_timestep == "none":
-            pass  # No hydropower
-        else:
-            raise ValueError(
-                f"Invalid hydro_timestep parameter: {self.inputs.hydro_timestep}."
             )
 
         ################################
@@ -283,25 +364,54 @@ class ModelBuilder:
 
         self.model.update()
 
-    def _build_rnw_import_objfunc_terms(self, step_k: int) -> gp.LinExpr:
+    def _build_rnw_import_storage_objfunc_terms(self, step_k: int) -> gp.LinExpr:
         """Build the objective function for renewable energy and import sources."""
-        variable_unit_pairs = [
-            (self.phydro, self.inputs.hydro_units),
-            (self.psolar, self.inputs.solar_units),
-            (self.pwind, self.inputs.wind_units),
-            (self.pimp, self.inputs.import_units),
+        variable_unit_contracts_tuple = [
+            (self.phydro, self.inputs.hydro_units, self.inputs.nondispatch_contracts),
+            # hourly hydro
+            (
+                self.phydro_curtail,
+                self.inputs.hydro_must_take_units,
+                self.inputs.nondispatch_contracts,
+            ),
+            # Daily hydro
+            (
+                self.phydro_curtail,
+                self.inputs.daily_hydro_must_take_units,
+                self.inputs.nondispatch_contracts,
+            ),
+            (self.psolar, self.inputs.solar_units, self.inputs.nondispatch_contracts),
+            (
+                self.psolar_curtail,
+                self.inputs.solar_must_take_units,
+                self.inputs.nondispatch_contracts,
+            ),
+            (self.pwind, self.inputs.wind_units, self.inputs.nondispatch_contracts),
+            (
+                self.pwind_curtail,
+                self.inputs.wind_must_take_units,
+                self.inputs.nondispatch_contracts,
+            ),
+            (self.pimp, self.inputs.import_units, self.inputs.nondispatch_contracts),
+            (
+                self.pimp_curtail,
+                self.inputs.import_must_take_units,
+                self.inputs.nondispatch_contracts,
+            ),
+            (self.pdischarge, self.inputs.storage_units, self.inputs.ess_contracts),
         ]
-        rnw_import_expr = gp.LinExpr()
-        for var_dict, units in variable_unit_pairs:
+
+        rnw_import_storage_expr = gp.LinExpr()
+        for var_dict, units, contracts in variable_unit_contracts_tuple:
             cost_coeffs = modeling.get_marginal_cost_coeff(
-                inputs=self.inputs,
-                timesteps=self.timesteps,
                 step_k=step_k,
+                timesteps=self.timesteps,
                 units=units,
-                attribute="unit_marginal_cost",
+                nondispatch_contracts=contracts,
+                contract_costs=self.inputs.contract_costs,
             )
-            rnw_import_expr.add(var_dict.prod(cost_coeffs))
-        return rnw_import_expr
+            rnw_import_storage_expr.add(var_dict.prod(cost_coeffs))
+        return rnw_import_storage_expr
 
     def set_objfunc(self, step_k: int) -> None:
         """The objective function has four components: unit fixed cost, unit variable cost,
@@ -314,7 +424,6 @@ class ModelBuilder:
 
         Returns:
             None
-
         """
 
         ################################
@@ -328,15 +437,16 @@ class ModelBuilder:
         )
         self.thermal_fixed_expr = self.status.prod(thermal_fixed_coeffs)
 
-        # TODO: thermal_fuel_cost should be a time-dependent parameter
-        # (Separate out fuel cost from the OPEX cost)
         thermal_opex_coeffs = modeling.get_thermal_opex_coeff(
+            step_k=step_k,
             timesteps=self.timesteps,
             thermal_units=self.inputs.thermal_units,
             thermal_opex=self.inputs.thermal_opex,
-            thermal_fuel_cost=self.inputs.thermal_fuel_cost,
+            fuel_contracts=self.inputs.fuel_contracts,
+            contract_costs=self.inputs.contract_costs,
             thermal_heat_rate=self.inputs.thermal_heat_rate,
         )
+
         self.thermal_opex_expr = self.pthermal.prod(thermal_opex_coeffs)
 
         thermal_startup_coeffs = modeling.get_thermal_startup_coeff(
@@ -346,6 +456,9 @@ class ModelBuilder:
             thermal_rated_capacity=self.inputs.thermal_rated_capacity,
         )
         self.thermal_startup_expr = self.startup.prod(thermal_startup_coeffs)
+
+        # Curtailment cost is the same as the OPEX cost
+        self.thermal_curtail_expr = self.pthermal_curtail.prod(thermal_opex_coeffs)
 
         ################################
         # Shortfall penalties
@@ -362,22 +475,186 @@ class ModelBuilder:
         )
 
         ################################
-        # Renewable energy and import sources
+        # Renewable energy, import sources, and energy storage
         ################################
-        rnw_import_expr = self._build_rnw_import_objfunc_terms(step_k=step_k)
+        rnw_import_expr = self._build_rnw_import_storage_objfunc_terms(step_k=step_k)
+
+        ################################
+        # Set the objective function
+        ################################
 
         self.model.setObjective(
             (
                 self.thermal_fixed_expr
                 + self.thermal_opex_expr
                 + self.thermal_startup_expr
+                + self.thermal_curtail_expr
                 + self.load_shortfall_penalty_expr
                 + self.spin_shortfall_penalty_expr
                 + rnw_import_expr
             ),
             sense=GRB.MINIMIZE,
         )
+
         self.model.update()
+
+    def _add_hourly_hydropower_constraints(self, step_k: int) -> None:
+        self.c_link_hydro_pu = modeling.add_c_link_unit_pu(
+            model=self.model,
+            pdispatch=self.phydro,
+            u=self.uhydro,
+            type="hydro",
+            timesteps=self.timesteps,
+            step_k=step_k,
+            units=self.inputs.hydro_unit_node.keys(),
+            capacity_df=self.inputs.hydro_capacity,
+        )
+        self.c_hydro_curtail_ess = modeling.add_c_unit_curtail_ess(
+            model=self.model,
+            pdispatch=self.phydro,
+            pcurtail=self.phydro_curtail,
+            pcharge=self.pcharge,
+            type="hydro",
+            timesteps=self.timesteps,
+            step_k=step_k,
+            units=self.inputs.hydro_unit_node.keys(),
+            capacity_df=self.inputs.hydro_capacity,
+            ess_attached=self.inputs.ess_hydro_units,
+        )
+
+    def _add_daily_hydropower_constraints(self, step_k: int) -> None:
+        # (1) Define the daily upper bound.
+        self.c_hydro_limit_daily = modeling.add_c_hydro_limit_daily(
+            model=self.model,
+            phydro=self.phydro,
+            step_k=step_k,
+            sim_horizon=self.inputs.sim_horizon,
+            hydro_units=self.inputs.daily_hydro_unit_node.keys(),
+            hydro_capacity=self.inputs.daily_hydro_capacity,
+        )
+        # (2) The curtailment is enforced for the day and not the hour.
+        self.c_daily_hydro_curtail_ess = modeling.add_c_unit_curtail_ess_daily(
+            model=self.model,
+            pdispatch=self.phydro,
+            pcurtail=self.phydro_curtail,
+            pcharge=self.pcharge,
+            type="hydro",
+            sim_horizon=self.inputs.sim_horizon,
+            step_k=step_k,
+            units=self.inputs.daily_hydro_unit_node.keys(),
+            capacity_df=self.inputs.daily_hydro_capacity,
+            ess_attached=self.inputs.ess_daily_hydro_units,
+        )
+
+    def _add_hydropower_constraints(self, step_k: int) -> None:
+
+        self._add_hourly_hydropower_constraints(step_k=step_k)
+        self._add_daily_hydropower_constraints(step_k=step_k)
+
+        # Does not update every step_k for this constraint
+        self.c_link_daily_hydro_pu = modeling.add_c_link_unit_pu_constant(
+            model=self.model,
+            pdispatch=self.phydro,
+            u=self.uhydro,
+            timesteps=self.timesteps,
+            units=self.inputs.daily_hydro_unit_node.keys(),
+            contracted_capacity=self.inputs.hydro_contracted_capacity,
+        )
+
+    def _update_hydropower_constraints(self, step_k: int) -> None:
+        # Hourly constraints
+        self.model.remove(self.c_link_hydro_pu)
+        self.model.remove(self.c_hydro_curtail_ess)
+        self._add_hourly_hydropower_constraints(step_k=step_k)
+
+        self.model.remove(self.c_hydro_limit_daily)
+        self.model.remove(self.c_daily_hydro_curtail_ess)
+        self._add_daily_hydropower_constraints(step_k=step_k)
+
+    def _add_unit_link_pu(self, step_k: int) -> None:
+        # Define parameters
+        unit_params = {
+            "solar": {
+                "p": self.psolar,
+                "u": self.usolar,
+                "units": self.inputs.solar_units,
+                "capacity_df": self.inputs.solar_capacity,
+            },
+            "wind": {
+                "p": self.pwind,
+                "u": self.uwind,
+                "units": self.inputs.wind_units,
+                "capacity_df": self.inputs.wind_capacity,
+            },
+            "import": {
+                "p": self.pimp,
+                "u": self.uimp,
+                "units": self.inputs.import_units,
+                "capacity_df": self.inputs.import_capacity,
+            },
+        }
+        for type, params in unit_params.items():
+            setattr(
+                self,
+                f"c_link_{type}_pu",
+                modeling.add_c_link_unit_pu(
+                    model=self.model,
+                    pdispatch=params["p"],
+                    u=params["u"],
+                    type=type,
+                    timesteps=self.timesteps,
+                    step_k=step_k,
+                    units=params["units"],
+                    capacity_df=params["capacity_df"],
+                ),
+            )
+
+    def _add_curtail_ess_constraints(self, step_k: int) -> None:
+        # Not implementing ESS for thermal units
+        unit_types_with_ess = {
+            "solar": {
+                "pdispatch": self.psolar,
+                "pcurtail": self.psolar_curtail,
+                "pcharge": self.pcharge,
+                "units": self.inputs.solar_units,
+                "capacity_df": self.inputs.solar_capacity,
+                "ess_attached": self.inputs.ess_solar_units,
+            },
+            "wind": {
+                "pdispatch": self.pwind,
+                "pcurtail": self.pwind_curtail,
+                "pcharge": self.pcharge,
+                "units": self.inputs.wind_units,
+                "capacity_df": self.inputs.wind_capacity,
+                "ess_attached": self.inputs.ess_wind_units,
+            },
+            "import": {
+                "pdispatch": self.pimp,
+                "pcurtail": self.pimp_curtail,
+                "pcharge": self.pcharge,
+                "units": self.inputs.import_units,
+                "capacity_df": self.inputs.import_capacity,
+                "ess_attached": {},  # No ESS attached to import sources
+            },
+        }
+
+        for unit_type, params in unit_types_with_ess.items():
+            setattr(
+                self,
+                f"c_{unit_type}_curtail_ess",
+                modeling.add_c_unit_curtail_ess(
+                    model=self.model,
+                    pdispatch=params["pdispatch"],
+                    pcurtail=params["pcurtail"],
+                    pcharge=params["pcharge"],
+                    type=unit_type,
+                    timesteps=self.timesteps,
+                    step_k=step_k,
+                    units=params["units"],
+                    capacity_df=params["capacity_df"],
+                    ess_attached=params["ess_attached"],
+                ),
+            )
 
     def add_constraints(self, step_k: int, init_conds: dict) -> None:
         ################################
@@ -456,6 +733,17 @@ class ModelBuilder:
             sim_horizon=self.inputs.sim_horizon,
             thermal_units=self.inputs.thermal_units,
             TU=self.inputs.TU,
+        )
+        self.c_thermal_curtail = modeling.add_c_thermal_curtail(
+            model=self.model,
+            pthermal=self.pthermal,
+            pthermal_curtail=self.pthermal_curtail,
+            pcharge=self.pcharge,
+            timesteps=self.timesteps,
+            step_k=step_k,
+            thermal_derated_capacity=self.inputs.thermal_derated_capacity,
+            thermal_must_take_units=self.inputs.thermal_must_take_units,
+            ess_attached=self.inputs.ess_thermal_units,
         )
 
         # Currently not implemented because we set SD = SU = ramping
@@ -540,6 +828,60 @@ class ModelBuilder:
         )
 
         ################################
+        # Energy-storage constraints
+        ################################
+
+        self.c_link_ess_charge = modeling.add_c_link_ess_charge(
+            model=self.model,
+            pcharge=self.pcharge,
+            ucharge=self.ucharge,
+            timesteps=self.timesteps,
+            units=self.inputs.storage_units,
+            max_charge=self.inputs.ess_max_charge,
+        )
+
+        self.c_link_ess_dischage = modeling.add_c_link_ess_discharge(
+            model=self.model,
+            pdischarge=self.pdischarge,
+            udischarge=self.udischarge,
+            timesteps=self.timesteps,
+            units=self.inputs.storage_units,
+            max_discharge=self.inputs.ess_max_discharge,
+        )
+
+        self.c_link_ess_state = modeling.add_c_link_ess_state(
+            model=self.model,
+            ucharge=self.ucharge,
+            udischarge=self.udischarge,
+            timesteps=self.timesteps,
+            units=self.inputs.storage_units,
+        )
+
+        self.c_unit_ess_balance_init = modeling.add_c_unit_ess_balance_init(
+            model=self.model,
+            pcharge=self.pcharge,
+            pdischarge=self.pdischarge,
+            charge_state=self.charge_state,
+            units=self.inputs.storage_units,
+            charge_state_init=init_conds["initial_charge_state"],
+            charge_efficiency=self.inputs.ess_charge_efficiency,
+            discharge_efficiency=self.inputs.ess_discharge_efficiency,
+            self_discharge_rate=self.inputs.ess_self_discharge_rate,
+        )
+
+        self.c_unit_ess_balance = modeling.add_c_unit_ess_balance(
+            model=self.model,
+            pcharge=self.pcharge,
+            pdischarge=self.pdischarge,
+            charge_state=self.charge_state,
+            units=self.inputs.storage_units,
+            sim_horizon=self.inputs.sim_horizon,
+            charge_efficiency=self.inputs.ess_charge_efficiency,
+            discharge_efficiency=self.inputs.ess_discharge_efficiency,
+            self_discharge_rate=self.inputs.ess_self_discharge_rate,
+        )
+
+        ################################
         # Power flow constraints
         ################################
 
@@ -579,6 +921,8 @@ class ModelBuilder:
             psolar=self.psolar,
             pwind=self.pwind,
             pimp=self.pimp,
+            pcharge=self.pcharge,
+            pdis=self.pdischarge,
             pos_pmismatch=self.pos_pmismatch,
             neg_pmismatch=self.neg_pmismatch,
             flow=self.flow,
@@ -592,36 +936,12 @@ class ModelBuilder:
             nodes=self.inputs.nodes,
             node_edge=self.inputs.node_edge,
             node_generator=self.inputs.node_generator,
+            charge_storage=self.inputs.ess_substation_units,
+            discharge_storage=self.inputs.ess_attach_unit,
             demand_nodes=self.inputs.demand_nodes,
             demand=self.inputs.demand,
             line_loss_factor=self.inputs.line_loss_factor,
         )
-
-        ################################
-        # Hydropower constraint
-        ################################
-
-        # There are two ways to enforce the hydro limit.
-        if self.inputs.hydro_timestep == "hourly":
-            # Hydropower is limited by the upper bound of phydro
-            pass
-        elif self.inputs.hydro_timestep == "daily":
-            # In this case, phydro is not bounded, so we need to add a constraint
-            self.c_hydro_capacity = self.inputs.hydro_capacity(
-                model=self.model,
-                phydro=self.phydro,
-                timesteps=self.timesteps,
-                step_k=step_k,
-                sim_horizon=self.inputs.sim_horizon,
-                hydro_units=self.inputs.hydro_units,
-                hydro_capacity=self.inputs.hydro_capacity,
-            )
-        elif self.inputs.hydro_timestep == "none":
-            pass
-        else:
-            raise ValueError(
-                f"Invalid hydro_timestep parameter: {self.inputs.hydro_timestep}."
-            )
 
         if self.inputs.use_spin_var:
             self.c_link_spin = modeling.add_c_link_spin(
@@ -663,6 +983,19 @@ class ModelBuilder:
                 spin_requirement=self.inputs.spin_requirement,
             )
 
+        ################################
+        # Non-dispatchables
+        ################################
+
+        # Energy storage
+        self._add_curtail_ess_constraints(step_k)
+
+        # Solar, wind, and import
+        self._add_unit_link_pu(step_k)
+
+        # Hydropower
+        self._add_hydropower_constraints(step_k)
+
         # Update the model just in case we want to check model structure
         self.model.update()
 
@@ -670,13 +1003,12 @@ class ModelBuilder:
         self,
         step_k: int,
         init_conds: dict[str, dict],
-    ) -> gp.Model:
+    ) -> PowerSystemModel:
         """Build the model for the unit commitment problem."""
         self.model = gp.Model(self.inputs.model_id)
         self.add_variables(step_k=step_k)
         self.set_objfunc(step_k=step_k)
         self.add_constraints(step_k=step_k, init_conds=init_conds)
-
         return PowerSystemModel(self.model)
 
     def _update_variables(self, step_k: int) -> None:
@@ -695,13 +1027,9 @@ class ModelBuilder:
             - `pthermal`: Thermal power output
             - `vpower`: Thermal unit commitment status (on/off)
             - `vpowerbar`: Thermal unit start-up status
-        - Hydropower:
-            - `phydro`: Hydropower output (if hydro_timestep is hourly)
-        - Renewables:
-            - `psolar`: Solar power output
-            - `pwind`: Wind power output
-        - Imports:
-            - `pimp`: Import power flow
+            - `pthermal_curtail`: Curtailed thermal power output
+        - Energy storage:
+            - `charge_state`: State of charge
         - Flow variables:
             - `flow`: Power flow on transmission lines (updates both lower and upper bounds)
 
@@ -741,51 +1069,74 @@ class ModelBuilder:
                 flow_variable.ub = line_capacity * self.inputs.line_capacity_factor
 
         # Update variable bounds
-        thermal_unit_vars = [self.pthermal, self.vpower, self.vpowerbar]
+        thermal_unit_vars = [
+            self.pthermal,
+            self.vpower,
+            self.vpowerbar,
+            self.pthermal_curtail,
+        ]
         for var_dict in thermal_unit_vars:
             _update_var_ub(var_dict, self.inputs.thermal_derated_capacity)
 
-        # Renewables and import
+        # Energy storage, renewables and import
         variable_capacity_pairs = [
-            (self.psolar, self.inputs.solar_capacity),
-            (self.pwind, self.inputs.wind_capacity),
-            (self.pimp, self.inputs.import_capacity),
+            (self.charge_state, self.inputs.ess_derated_capacity),
         ]
         for var_dict, capacity_df in variable_capacity_pairs:
             _update_var_ub(var_dict, capacity_df)
-
-        # Hydropower variable with *daily* timestep does not have an upper bound
-        if self.inputs.hydro_timestep == "hourly":
-            _update_var_ub(self.phydro, self.inputs.hydro_capacity)
 
         # Flow variables require updating both lower and upper bounds
         _update_flow_bounds(self.flow, self.inputs.line_capacity)
 
     def _update_objfunc(self, step_k: int) -> None:
         """Update the objective function with time-dependent terms."""
-        rnw_import_expr = self._build_rnw_import_objfunc_terms(step_k=step_k)
+        rnw_import_storage_expr = self._build_rnw_import_storage_objfunc_terms(
+            step_k=step_k
+        )
         self.model.setObjective(
             self.thermal_fixed_expr
             + self.thermal_opex_expr
             + self.thermal_startup_expr
+            + self.thermal_curtail_expr
             + self.load_shortfall_penalty_expr
             + self.spin_shortfall_penalty_expr
-            + rnw_import_expr
+            + rnw_import_storage_expr
         )
 
     def _update_constraints(self, step_k, init_conds: dict) -> None:
         """Constraints to be updated include:
+
+        *Thermal units*
         - c_link_uvw_init: initial_u is from the previous iteration
         - c_link_pu_upper: thermal_derated_capacity is a timeseries
         - c_min_down_init: initial_min_off is from the previous iteration
         - c_min_up_init: initial_min_on is from the previous iteration
         - c_ramp_down_init: initial vpower and u is from the previous iteration
         - c_ramp_up_init: initial vpower is from the previous iteration
+
+        *System-wide*
         - c_angle_diff: susceptance is a timeseries
         - c_kirchhoff: Susceptance is a timeseries
         - c_flow_balance: Electricity demand is a timeseries
-        - c_hydro_capacity: Hydropower capacity is a timeseries
         - c_reserve_req: Spinning reserve requirement is based on the electricity demand
+
+        *Upper bound of renewable units*
+        - c_link_hydro_pu: Hydropower capacity is a timeseries
+        - c_link_solar_pu: Solar capacity is a timeseries
+        - c_link_wind_pu: Wind capacity is a timeseries
+        - c_link_import_pu: Import capacity is a timeseries
+
+        - c_hydro_limit_daily: Hydropower capacity is a timeseries
+
+        *Curtailment*
+        - c_hydro_curtail_ess: Hydropower capacity is a timeseries
+        - c_daily_hydro_curtail_ess: Daily hydropower capacity is a timeseries
+        - c_solar_curtail_ess: Solar capacity is a timeseries
+        - c_wind_curtail_ess: Wind capacity is a timeseries
+        - c_import_curtail_ess: Import capacity is a timeseries
+
+        *Energy storage units*
+        - c_unit_ess_balance_init: initial condition changes
 
         """
         self.model.remove(self.c_link_uvw_init)
@@ -808,6 +1159,19 @@ class ModelBuilder:
             thermal_units=self.inputs.thermal_units,
             thermal_min_capacity=self.inputs.thermal_min_capacity,
             thermal_derated_capacity=self.inputs.thermal_derated_capacity,
+        )
+
+        self.model.remove(self.c_thermal_curtail)
+        self.c_thermal_curtail = modeling.add_c_thermal_curtail(
+            model=self.model,
+            pthermal=self.pthermal,
+            pthermal_curtail=self.pthermal_curtail,
+            pcharge=self.pcharge,
+            timesteps=self.timesteps,
+            step_k=step_k,
+            thermal_derated_capacity=self.inputs.thermal_derated_capacity,
+            thermal_must_take_units=self.inputs.thermal_must_take_units,
+            ess_attached=self.inputs.ess_thermal_units,
         )
 
         self.model.remove(self.c_min_down_init)
@@ -889,6 +1253,8 @@ class ModelBuilder:
             psolar=self.psolar,
             pwind=self.pwind,
             pimp=self.pimp,
+            pcharge=self.pcharge,
+            pdis=self.pdischarge,
             pos_pmismatch=self.pos_pmismatch,
             neg_pmismatch=self.neg_pmismatch,
             flow=self.flow,
@@ -902,22 +1268,12 @@ class ModelBuilder:
             nodes=self.inputs.nodes,
             node_edge=self.inputs.node_edge,
             node_generator=self.inputs.node_generator,
+            charge_storage=self.inputs.ess_substation_units,
+            discharge_storage=self.inputs.ess_attach_unit,
             demand_nodes=self.inputs.demand_nodes,
             demand=self.inputs.demand,
             line_loss_factor=self.inputs.line_loss_factor,
         )
-
-        if self.inputs.hydro_timestep == "daily":
-            self.model.remove(self.c_hydro_capacity)
-            self.c_hydro_capacity = modeling.add_c_hydro_capacity(
-                model=self.model,
-                phydro=self.phydro,
-                timesteps=self.timesteps,
-                step_k=step_k,
-                sim_horizon=self.inputs.sim_horizon,
-                hydro_units=self.inputs.hydro_units,
-                hydro_capacity=self.inputs.hydro_capacity,
-            )
 
         # Reserve requirement
         self.model.remove(self.c_reserve_req)
@@ -946,6 +1302,35 @@ class ModelBuilder:
                 spin_requirement=self.inputs.spin_requirement,
             )
 
+        # Renewables curtailment
+        self.model.remove(self.c_solar_curtail_ess)
+        self.model.remove(self.c_wind_curtail_ess)
+        self.model.remove(self.c_import_curtail_ess)
+        self._add_curtail_ess_constraints(step_k)
+
+        # Solar, wind, import link p and u.
+        self.model.remove(self.c_link_solar_pu)
+        self.model.remove(self.c_link_wind_pu)
+        self.model.remove(self.c_link_import_pu)
+        self._add_unit_link_pu(step_k)
+
+        # Hydropower
+        self._update_hydropower_constraints(step_k)
+
+        # Flow balance
+        self.model.remove(self.c_unit_ess_balance_init)
+        self.c_unit_ess_balance_init = modeling.add_c_unit_ess_balance_init(
+            model=self.model,
+            pcharge=self.pcharge,
+            pdischarge=self.pdischarge,
+            charge_state=self.charge_state,
+            units=self.inputs.storage_units,
+            charge_state_init=init_conds["initial_charge_state"],
+            charge_efficiency=self.inputs.ess_charge_efficiency,
+            discharge_efficiency=self.inputs.ess_discharge_efficiency,
+            self_discharge_rate=self.inputs.ess_self_discharge_rate,
+        )
+
     def update(
         self,
         step_k: int,
@@ -971,6 +1356,7 @@ class ModelBuilder:
             "c_link_pthermal",
             "c_link_pu_lower",
             "c_link_pu_upper",
+            "c_thermal_curtail",
             "c_min_down_init",
             "c_min_up_init",
             "c_min_down",
@@ -985,14 +1371,29 @@ class ModelBuilder:
             "c_angle_diff",
             "c_kirchhoff",
             "c_flow_balance",
-            "c_hydro_capacity",
             "c_link_spin",
             "c_link_ppbar",
             "c_reserve_req",
+            "c_hydro_curtail_ess",
+            "c_daily_hydro_curtail_ess",
+            "c_solar_curtail_ess",
+            "c_wind_curtail_ess",
+            "c_import_curtail_ess",
+            "c_link_hydro_pu",
+            "c_link_daily_hydro_pu",
+            "c_link_solar_pu",
+            "c_link_wind_pu",
+            "c_link_import_pu",
+            "c_hydro_limit_daily",
+            "c_link_ess_charge",
+            "c_link_discharge",
+            "c_link_ess_state",
+            "c_unit_ess_balance_init",
+            "c_unit_ess_balance",
         ]
 
         for attr_name in constraints_list:
-            if getattr(self, attr_name) is not None:
+            if getattr(self, attr_name):
                 added_constrs.append(attr_name)
             else:
                 not_added_constrs.append(attr_name)

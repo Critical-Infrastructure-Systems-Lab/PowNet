@@ -3,7 +3,7 @@
 
 from .model import PowerSystemModel
 from .variable import (
-    add_var_with_ub,
+    add_var_with_variable_ub,
     add_var_flow,
     add_var_voltage_angle,
 )
@@ -23,6 +23,7 @@ from .constraint import (
     add_c_link_ppbar,
     add_c_link_pu_lower,
     add_c_link_pu_upper,
+    add_c_thermal_curtail,
     add_c_min_down_init,
     add_c_min_up_init,
     add_c_min_down,
@@ -41,4 +42,13 @@ from .constraint import (
     add_c_reserve_req_1,
     add_c_reserve_req_2,
     add_c_hydro_limit_daily,
+    add_c_link_unit_pu,
+    add_c_link_unit_pu_constant,
+    add_c_unit_curtail_ess,
+    add_c_unit_curtail_ess_daily,
+    add_c_link_ess_charge,
+    add_c_link_ess_discharge,
+    add_c_link_ess_state,
+    add_c_unit_ess_balance_init,
+    add_c_unit_ess_balance,
 )

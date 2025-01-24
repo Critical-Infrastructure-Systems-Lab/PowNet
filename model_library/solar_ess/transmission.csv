@@ -1,0 +1,4 @@
+source,sink,user_line_cap,type,n_circuits,source_kv,sink_kv,distance,user_susceptance
+pGas,Node1,-1,acsr,2,275,275,120,-1
+pSolar,Node1,-1,acsr,2,275,275,50,-1
+Node1,Node2,-1,acsr,2,275,275,25,-1

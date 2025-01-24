@@ -12,7 +12,7 @@ def main():
     input_folder = "..//model_library"
     output_folder = "..//temptemp"
 
-    model_name = "dummy"
+    model_name = "solar_ess"
     model_year = 2016
 
     # Simulation parameters
@@ -42,7 +42,7 @@ def main():
 
     # Plot the results
     simulator.plot_fuelmix("bar", output_folder)
-    simulator.plot_unit_status(output_folder)
+    simulator.plot_thermal_units(output_folder)
 
 
 if __name__ == "__main__":

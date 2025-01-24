@@ -1,0 +1,2 @@
+﻿name,node,unit_type,fuel_type,fuel_contract,max_capacity,min_capacity,heat_rate,operation_cost,fixed_cost,startup_cost,ramp_rate,min_uptime,min_downtime,latitude,longitude,must_take
+pGas,pGas,gas_cc,gas,gas_unit,350,10,1,2,0,15,600,2,2,,,0

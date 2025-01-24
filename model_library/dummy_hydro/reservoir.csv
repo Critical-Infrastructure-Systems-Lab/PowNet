@@ -1,5 +1,0 @@
-name,runoff_coeff,basin_area,max_storage,min_level,max_level,max_head,min_day,max_day,max_release,max_generation,turbine_factor,cascade_level,basin
-kirirom1,0.48,99000000,30000000,500,534,373.5,150,310,1728000,12,0.9,0,mekong1
-kirirom3,0.48,105000000,30000000,500,540,271,150,310,3456000,18,0.9,1,mekong1
-kamchay,0.62,710000000,432000000,500,610,122,180,298,14126400,194,0.9,0,mekong2
-atay,0.75,1157000000,443800000,510,545,216,158,311,10800000,240,0.9,0,mekong3

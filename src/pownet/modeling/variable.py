@@ -12,7 +12,7 @@ Functions for adding thermal variables
 """
 
 
-def add_var_with_ub(
+def add_var_with_variable_ub(
     model: gp.Model,
     varname: str,
     timesteps: range,

@@ -20,8 +20,8 @@ class DataProcessor:
         is stored in the model_library/model_name folder. The required files are:
         1. transmission.csv: A file that contains the transmission data.
         2. thermal_unit.csv: A file that contains the thermal unit data.
-        3. unit_marginal_cost.csv: A file that contains the marginal cost of non-thermal units.
-        4. (Optional) solar.csv, wind.csv, hydropower.csv, import.csv: Files that contain the renewable unit data.
+        3. solar.csv, wind.csv, hydropower.csv, import.csv: Files that contain the renewable unit data.
+        4. energy_storage.csv: A file that contains the energy storage system data.
         """
         self.input_folder = input_folder
         self.model_name = model_name
@@ -29,9 +29,16 @@ class DataProcessor:
         self.frequency = frequency
 
         # Values that will be calculated
-        self.cycle_map: dict = {}
-        self.thermal_derate_factors: pd.DataFrame = get_dates(year)
-        self.marginal_costs: pd.DataFrame = get_dates(year)
+        self.cycle_map: dict = json.loads("{}")
+        self.thermal_derate_factors: pd.DataFrame = pd.DataFrame()
+        self.thermal_derated_capacity: pd.DataFrame = pd.DataFrame()
+
+        self.transmission_data: pd.DataFrame = pd.DataFrame()
+        self.transmission_params: dict = {}  # Default PowNet parameters
+        self.user_transmission: pd.DataFrame = pd.DataFrame()
+
+        self.ess_derate_factors: pd.DataFrame = pd.DataFrame()
+        self.ess_derated_capacity: pd.DataFrame = pd.DataFrame()
 
         # Maps frequency to wavelength
         wavelengths = {50: 6000, 60: 5000}
@@ -40,7 +47,7 @@ class DataProcessor:
         # Note that we will modify the original file
         self.model_folder = os.path.join(self.input_folder, model_name)
 
-    def load_data(self) -> None:
+    def load_transmission_data(self) -> None:
         # User inputs of transmission data
         self.user_transmission = pd.read_csv(
             os.path.join(self.model_folder, "transmission.csv"),
@@ -141,6 +148,9 @@ class DataProcessor:
         """Calculate the capacity of line segments. The unit is in MW.
         Line capacity is the minimum of the thermal limit and the steady-state
         stability limit (a function of distance).
+
+        Note the calculated values are overwritten by user provided values
+        in the transmission.csv file.
         """
         self.transmission_data["stability_limit"] = self.user_transmission.apply(
             lambda x: self.calc_stability_limit(
@@ -166,6 +176,19 @@ class DataProcessor:
             ["thermal_limit", "stability_limit"]
         ].min(axis=1)
 
+        # Overwrite calculated values with user provided values
+        excluded_list = [-1, None]
+        user_specified_capacity = self.user_transmission.loc[
+            ~self.user_transmission["user_line_cap"].isin(excluded_list)
+        ]
+        user_specified_capacity = user_specified_capacity.set_index(
+            ["source", "sink"]
+        ).rename(columns={"user_line_cap": "line_capacity"})
+
+        self.transmission_data = self.transmission_data.set_index(["source", "sink"])
+        self.transmission_data.update(user_specified_capacity)
+        self.transmission_data = self.transmission_data.reset_index()
+
     def calc_line_susceptance(self) -> None:
         """Calculate the susceptance of line segments. The unit is in Siemens (S)."""
         # Assume reactance based on the maximum voltage level of the two buses
@@ -178,15 +201,33 @@ class DataProcessor:
             axis=1,
         )
 
-        self.transmission_data["reactance_pu"] = (
+        self.transmission_data["reactance"] = (
             self.transmission_data["reactance_per_km"]
             * self.user_transmission["distance"]
         )
 
         self.transmission_data["susceptance"] = self.transmission_data.apply(
-            lambda x: int(x["source_kv"] * x["sink_kv"] / x["reactance_pu"]),
+            lambda x: int(x["source_kv"] * x["sink_kv"] / x["reactance"]),
             axis=1,
         )
+
+        # Replace with user-specified values
+        excluded_values = [-1, None]
+        user_specified_susceptance = self.user_transmission.loc[
+            ~self.user_transmission["user_susceptance"].isin(excluded_values),
+            ["source", "sink", "user_susceptance"],
+        ]
+        user_specified_susceptance = user_specified_susceptance.set_index(
+            ["source", "sink"]
+        )
+        # Change from float to int
+        user_specified_susceptance = user_specified_susceptance.astype(
+            {"user_susceptance": int}
+        )
+
+        self.transmission_data = self.transmission_data.set_index(["source", "sink"])
+        self.transmission_data.update(user_specified_susceptance)
+        self.transmission_data = self.transmission_data.reset_index()
 
     def write_transmission_data(self) -> None:
         self.transmission_data.to_csv(
@@ -205,7 +246,7 @@ class DataProcessor:
             target="sink",
         )
         cycles = nx.cycle_basis(graph)
-        # We save this map to use by the ModelBuilder
+        # Save this map to be uses by ModelBuilder
         self.cycle_map = {f"cycle_{idx+1}": cycle for idx, cycle in enumerate(cycles)}
 
     def write_cycle_map(self) -> None:
@@ -216,99 +257,128 @@ class DataProcessor:
         with open(os.path.join(self.model_folder, "pownet_cycle_map.json"), "w") as f:
             json.dump(self.cycle_map, f)
 
-    def create_thermal_derate_factors(self, derate_factor: float = 1.00) -> None:
-        """Assumes a constant derate factor for all thermal units. The derate factor is applied
-        to the nameplate capacity of thermal units.
+    def _create_derate_factors(
+        self, unit_type: str, derate_factor: float = 1.00
+    ) -> None:
+        """Creates derate factors for a given unit type (thermal or ess).
+
+        Args:
+            unit_type (str): The type of unit ('thermal' or 'ess').
+            derate_factor (float): The derate factor to apply. Defaults to 1.00.
         """
-        # Get the thermal units
+
         model_dir = os.path.join(self.input_folder, self.model_name)
-        thermal_units = pd.read_csv(os.path.join(model_dir, "thermal_unit.csv"))[
-            "name"
-        ].values
+
+        if unit_type == "thermal":
+            filename = "thermal_unit.csv"
+            attribute_name = "thermal_derate_factors"
+        elif unit_type == "ess":
+            filename = "energy_storage.csv"
+            attribute_name = "ess_derate_factors"
+        else:
+            raise ValueError(
+                f"Invalid unit type: {unit_type}. Must be 'thermal' or 'ess'."
+            )
+
+        if os.path.exists(os.path.join(model_dir, filename)):
+            units = pd.read_csv(os.path.join(model_dir, filename))["name"].values
+        else:
+            return
+
         temp_df = pd.DataFrame(
             derate_factor,
-            index=self.thermal_derate_factors.index,
-            columns=thermal_units,
+            index=range(0, 8760),  # Consider making 8760 a constant or parameter
+            columns=units,
         )
-        self.thermal_derate_factors = pd.concat(
-            [get_dates(year=self.year), temp_df], axis=1
+        setattr(
+            self,
+            attribute_name,
+            pd.concat([get_dates(year=self.year), temp_df], axis=1),
         )
+
+    def create_thermal_derate_factors(self, derate_factor: float = 1.00) -> None:
+        """Creates derate factors for thermal units."""
+        self._create_derate_factors("thermal", derate_factor)
+
+    def create_ess_derate_factors(self, derate_factor: float = 1.00) -> None:
+        """Creates derate factors for ESS units."""
+        self._create_derate_factors("ess", derate_factor)
 
     def write_thermal_derate_factors(self) -> None:
         self.thermal_derate_factors.to_csv(
             os.path.join(self.model_folder, "pownet_derate_factor.csv"), index=False
         )
 
-    def create_derated_capacity(self) -> None:
-        """Create a dataframe of hourly derated capacity of thermal units. The columns are names of thermal units."""
-        # Get the nameplate capacity of each thermal unit
-        max_cap = pd.read_csv(
-            os.path.join(self.model_folder, "thermal_unit.csv"),
-            header=0,
-            index_col="name",
-            usecols=["name", "max_capacity"],
-        ).to_dict()["max_capacity"]
+    def _create_derated_capacity(self, unit_type: str) -> None:
+        """Creates a dataframe of hourly derated capacity for a given unit type.
 
-        self.derated_max_cap = pd.DataFrame(
-            0,
-            columns=max_cap.keys(),
-            index=range(0, 8760),  # match index with get_dates
-        )
-        for thermal_unit in max_cap.keys():
-            self.derated_max_cap[thermal_unit] = (
-                self.thermal_derate_factors[thermal_unit] * max_cap[thermal_unit]
+        Args:
+            unit_type (str): The type of unit ('thermal' or 'ess').
+        """
+
+        if unit_type == "thermal":
+            filename = "thermal_unit.csv"
+            derate_factor_attr = "thermal_derate_factors"
+            derated_capacity_attr = "thermal_derated_capacity"
+        elif unit_type == "ess":
+            filename = "energy_storage.csv"
+            derate_factor_attr = "ess_derate_factors"
+            derated_capacity_attr = "ess_derated_capacity"
+        else:
+            raise ValueError(
+                f"Invalid unit type: {unit_type}. Must be 'thermal' or 'ess'."
             )
 
-        self.derated_max_cap = pd.concat(
-            [get_dates(year=self.year), self.derated_max_cap], axis=1
+        # Get the nameplate capacity of each unit
+        filepath = os.path.join(self.model_folder, filename)
+        if os.path.exists(filepath):
+            max_cap = pd.read_csv(
+                filepath,
+                index_col="name",
+                usecols=["name", "max_capacity"],
+            )[
+                "max_capacity"
+            ]  # Directly get the Series
+        else:
+            return
+
+        # Get the derate factors for the units
+        derate_factors = getattr(self, derate_factor_attr)
+
+        # Efficiently calculate derated capacity using vectorized operations
+        derated_capacity = derate_factors.drop(columns=["date", "hour"]).mul(
+            max_cap, axis=1
         )
-        self.derated_max_cap.index += 1
 
-    def write_derated_capacity(self) -> None:
-        self.derated_max_cap.to_csv(
-            os.path.join(self.model_folder, "pownet_derated_capacity.csv"), index=False
+        # Concatenate with dates and set the index
+        derated_capacity = pd.concat(
+            [get_dates(year=self.year), derated_capacity], axis=1
         )
+        derated_capacity.index += 1
 
-    def create_marginal_costs(self) -> None:
-        """Create a dataframe of hourly fuel prices (or marginal costs) of non-thermal units.
-        The columns are names of renewable and import units. The marginal cost is in $/MWh.
-        """
-        # unit_marginal_cost.csv has three columns: name, fuel_type, and marginal_cost.
-        # Now, we create a fuel_type to marginal_cost mapping
-        constant_prices = pd.read_csv(
-            os.path.join(self.model_folder, "unit_marginal_cost.csv"),
-            header=0,
-            index_col="fuel_type",
-        ).to_dict()["marginal_cost"]
+        setattr(self, derated_capacity_attr, derated_capacity)
 
-        # If there are solar.csv, hydropower.csv, and wind.csv files, then we need to
-        # include them in the fuel price file.
-        hours_in_year = range(8760)
-        unit_types = ["solar", "wind", "hydropower", "import"]
-        for unit_type in unit_types:
-            filename = os.path.join(self.model_folder, f"{unit_type}.csv")
-            if os.path.exists(filename):
-                units = pd.read_csv(filename, header=0).columns
-                units = units.drop(
-                    ["year", "month", "day", "hour"], errors="ignore"
-                ).to_list()
-                temp_df = pd.DataFrame(
-                    constant_prices[unit_type],
-                    index=hours_in_year,
-                    columns=units,
-                )
-                self.marginal_costs = pd.concat(
-                    [
-                        self.marginal_costs,
-                        temp_df,
-                    ],
-                    axis=1,
-                )
+    def create_thermal_derated_capacity(self) -> None:
+        """Creates a dataframe of hourly derated capacity of thermal units."""
+        self._create_derated_capacity("thermal")
 
-    def write_marginal_costs(self) -> None:
-        self.marginal_costs.to_csv(
-            os.path.join(self.model_folder, "pownet_marginal_cost.csv"), index=False
-        )
+    def create_ess_derated_capacity(self) -> None:
+        """Creates a dataframe of hourly derated capacity of ess units."""
+        self._create_derated_capacity("ess")
+
+    def write_thermal_derated_capacity(self) -> None:
+        if not self.thermal_derate_factors.empty:
+            self.thermal_derated_capacity.to_csv(
+                os.path.join(self.model_folder, "pownet_thermal_derated_capacity.csv"),
+                index=False,
+            )
+
+    def write_ess_derated_capacity(self) -> None:
+        if not self.ess_derated_capacity.empty:
+            self.ess_derated_capacity.to_csv(
+                os.path.join(self.model_folder, "pownet_ess_derated_capacity.csv"),
+                index=False,
+            )
 
     def check_user_line_capacities(self) -> None:
         """The user can provide their own line capacities under user_line_cap column
@@ -319,22 +389,30 @@ class DataProcessor:
 
     def run_all_processing_steps(self) -> None:
         """Run all the data processing steps"""
-        self.calc_line_capacity()
-        self.calc_line_susceptance()
-        self.create_cycle_map()
+        if not self.user_transmission.empty:
+            self.calc_line_capacity()
+            self.calc_line_susceptance()
+            self.create_cycle_map()
+
         self.create_thermal_derate_factors()
-        self.create_derated_capacity()
-        self.create_marginal_costs()
+        self.create_thermal_derated_capacity()
+
+        self.create_ess_derate_factors()
+        self.create_ess_derated_capacity()
 
     def write_data(self) -> None:
         """Write the processed data as csv files sharing a prefix "pownet_" to the model folder"""
-        self.write_transmission_data()
-        self.write_cycle_map()
-        self.write_thermal_derate_factors()
-        self.write_derated_capacity()
-        self.write_marginal_costs()
+
+        if not self.transmission_data.empty:
+            self.write_transmission_data()
+            self.write_cycle_map()
+
+        self.write_thermal_derated_capacity()
+        self.write_ess_derated_capacity()
 
     def execute_data_pipeline(self) -> None:
-        self.load_data()
+        if os.path.exists(os.path.join(self.model_folder, "transmission.csv")):
+            self.load_transmission_data()
+
         self.run_all_processing_steps()
         self.write_data()

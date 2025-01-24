@@ -101,11 +101,11 @@ def optimize_with_rounding(
     rounding_strategy: str,
     threshold: float,
     max_rounding_iter: int,
-    log_to_console: bool,
     mipgap: float,
     timelimit: int,
     num_threads: int,
-) -> gp.Model:
+    log_to_console: bool,
+) -> tuple[gp.Model, float, int]:
     """
     Optimize a Gurobi model using iterative rounding with a given threshold.
 
@@ -135,16 +135,18 @@ def optimize_with_rounding(
     rounding_model = model.relax()
     rounding_model.Params.LogToConsole = False
     binary_vars = get_variables(rounding_model)
+
+    rounding_optimization_time = 0
     for current_iter in range(max_rounding_iter):
-        # if log_to_console:
-        #     print(f"\nIterative rounding: Iteration: {current_iter}")
         rounding_model.optimize()
+
+        # Keep track of the optimization time
+        rounding_optimization_time += rounding_model.runtime
 
         # Fixing variables can cause infeasibility
         if rounding_model.status == 3:
             print("\nPowNet: Rounding is infeasible. Use the MIP method.")
-            model.optimize()
-            return model
+            break
         # The model should be feasible, but raise an error if not.
         elif rounding_model.status != 2:
             raise ValueError(f"Unrecognized model status: {rounding_model.status}")
@@ -154,7 +156,7 @@ def optimize_with_rounding(
 
         # An empty dict means we have an integer solution.
         if len(fraction_vars) == 0:
-            return rounding_model
+            return rounding_model, rounding_optimization_time, current_iter
 
         if rounding_strategy == "slow":
             slow_rounding(fraction_vars=fraction_vars, threshold=threshold)
@@ -169,4 +171,4 @@ def optimize_with_rounding(
         "\nPowNet: The rounding heuristic has terminated before finding an integer solution."
     )
     model.optimize()
-    return model
+    return model, None, None

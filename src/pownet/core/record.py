@@ -23,13 +23,25 @@ class SystemRecord:
     are also stored in the class.
     """
 
-    def __init__(self, system_input: SystemInput) -> None:
+    def __init__(
+        self,
+        system_input: SystemInput,
+        batch_mode: bool = True,
+        keep_record_each_step: bool = False,
+    ) -> None:
         """Initialize the SystemRecord object.
         Args:
             system_input (SystemInput): The input object containing the simulation parameters.
         """
 
         self.inputs: SystemInput = system_input
+        self.batch_mode: bool = batch_mode
+        self.keep_record_each_step: bool = keep_record_each_step
+
+        if not batch_mode and not keep_record_each_step:
+            print(
+                '\nWarning: No data will be stored because both "batch_mode" and "keep_record_each_step" are False.'
+            )
 
         # Format of variable name: var(node, t)
         self.node_vars: pd.DataFrame = pd.DataFrame()
@@ -45,12 +57,13 @@ class SystemRecord:
         self.runtimes: list = []
 
         # These are vpower, unit status, unit switching, etc.
-        self.current_p: dict[str, float] = {}
-        self.current_u: dict[str, int] = {}
-        self.current_v: dict[str, int] = {}
-        self.current_w: dict[str, int] = {}
-        self.current_min_on: dict[str, int] = {}
-        self.current_min_off: dict[str, int] = {}
+        self.current_p: dict[str] = {}
+        self.current_u: dict[str] = {}
+        self.current_v: dict[str] = {}
+        self.current_w: dict[str] = {}
+        self.current_min_on: dict[str] = {}
+        self.current_min_off: dict[str] = {}
+        self.current_charge_state: dict[str] = {}
 
     def keep(
         self,
@@ -93,28 +106,28 @@ class SystemRecord:
             pat_vartype, expand=True
         )
 
-        current_node_vars = parse_node_variables(
-            solution, self.inputs.sim_horizon, step_k
-        )
-
+        node_vars = parse_node_variables(solution, self.inputs.sim_horizon, step_k)
+        # Only keep 24-hours as we are doing rolling horizon
+        node_vars = node_vars[node_vars["timestep"] <= 24]
         ##################
         # Initial conditions: vpower (p), commitment (u),
-        # startup (v), and shutdown (w).
+        # startup (v), shutdown (w), and storage's charge_state
         ##################
-        self.current_p = _extract_vartype_data(current_node_vars, "vpower")
-        self.current_u = _extract_vartype_data(current_node_vars, "status")
-        self.current_v = _extract_vartype_data(current_node_vars, "startup")
-        self.current_w = _extract_vartype_data(current_node_vars, "shutdown")
+        self.current_p = _extract_vartype_data(node_vars, "vpower")
+        self.current_u = _extract_vartype_data(node_vars, "status")
+        self.current_v = _extract_vartype_data(node_vars, "startup")
+        self.current_w = _extract_vartype_data(node_vars, "shutdown")
+        self.current_charge_state = _extract_vartype_data(node_vars, "charge_state")
 
         # Need to calculate the minimum time on/off
         self.current_min_on = calc_remaining_on_duration(
-            current_node_vars,
+            node_vars,
             sim_horizon=24,
             thermal_units=self.inputs.thermal_units,
             TU=self.inputs.TU,
         )
         self.current_min_off = calc_remaining_off_duration(
-            current_node_vars,
+            node_vars,
             sim_horizon=24,
             thermal_units=self.inputs.thermal_units,
             TD=self.inputs.TD,
@@ -135,42 +148,48 @@ class SystemRecord:
             )
 
         ##################
-        # Append results to the existing dataframes
+        # Append results to the existing dataframes in batch mode
+        # otherwise, write to disk at each step_k if specified
         ##################
-        # Only keep the first 24-hours of the simulation
-        current_node_vars = current_node_vars[current_node_vars["timestep"] <= 24]
-        # Remove varname column from the three dataframes
-        # move the value column to the end
-        current_node_vars = current_node_vars.drop(["varname", "timestep"], axis=1)
-        self.node_vars = pd.concat([self.node_vars, current_node_vars], axis=0)
+        # Keep outputs from the first 24-hr under rolling horizon for day-ahead planning
+        node_vars = node_vars[node_vars["timestep"] <= 24]
+        node_vars = node_vars.drop(["varname", "timestep"], axis=1)
 
         flow_vars = parse_flow_variables(
             solution=solution, sim_horizon=self.inputs.sim_horizon, step_k=step_k
         )
-        # Only keep the first 24-hours of the simulation
         flow_vars = flow_vars[flow_vars["timestep"] <= 24]
         flow_vars = flow_vars.drop("timestep", axis=1)
-        self.flow_vars = pd.concat(
-            [
-                self.flow_vars,
-                flow_vars,
-            ],
-            axis=0,
-        )
 
         syswide_vars = parse_syswide_variables(
             solution=solution, sim_horizon=self.inputs.sim_horizon, step_k=step_k
         )
-        # Only keep the first 24-hours of the simulation
         syswide_vars = syswide_vars[syswide_vars["timestep"] <= 24]
         syswide_vars = syswide_vars.drop("timestep", axis=1)
-        self.syswide_vars = pd.concat(
-            [
-                self.syswide_vars,
-                syswide_vars,
-            ],
-            axis=0,
-        )
+
+        if self.batch_mode:
+            self.node_vars = pd.concat([self.node_vars, node_vars], axis=0)
+            self.flow_vars = pd.concat([self.flow_vars, flow_vars], axis=0)
+            self.syswide_vars = pd.concat([self.syswide_vars, syswide_vars], axis=0)
+
+        if self.keep_record_each_step:
+            output_folder = f"{self.inputs.model_id}_outputs"
+            data_to_write = [
+                (node_vars, f"node_variables_{step_k}"),
+                (flow_vars, f"flow_variables_{step_k}"),
+                (syswide_vars, f"system_variables_{step_k}"),
+                (
+                    pd.DataFrame({"objval": [objval], "runtime": [runtime]}),
+                    f"model_stats_{step_k}",
+                ),
+            ]
+            for df, output_name in data_to_write:
+                write_df(
+                    df,
+                    output_folder=output_folder,
+                    output_name=output_name,
+                    model_id=self.inputs.model_id,  # Use model_name as the identifier
+                )
 
     def get_init_conds(self) -> dict[str, dict]:
         """Return the initial conditions for the simulation."""
@@ -181,6 +200,7 @@ class SystemRecord:
             "initial_w": self.current_w,
             "initial_min_on": self.current_min_on,
             "initial_min_off": self.current_min_off,
+            "initial_charge_state": self.current_charge_state,
         }
 
     def get_node_variables(self) -> pd.DataFrame:
@@ -223,6 +243,10 @@ class SystemRecord:
         Returns:
             None
         """
+        if not self.batch_mode:
+            print("No data to write because batch_mode is False.")
+            return
+
         data_to_write = [
             (self.node_vars, "node_variables"),
             (self.flow_vars, "flow_variables"),

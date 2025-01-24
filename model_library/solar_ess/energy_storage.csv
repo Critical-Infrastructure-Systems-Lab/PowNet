@@ -1,0 +1,2 @@
+name,attach_to,inject_to,max_charge,max_discharge,max_capacity,min_capacity,charge_efficiency,discharge_efficiency,self_discharge_rate,cost_contract
+solar_ess,pSolar,pSolar,100,100,400,0,0.97,1,0.01,ess

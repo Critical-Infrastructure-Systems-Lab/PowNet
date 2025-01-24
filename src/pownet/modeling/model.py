@@ -25,7 +25,6 @@ class PowerSystemModel:
 
         # Rounding related variables
         self.status_vars: gp.tupledict = None
-        self.rounding_iter: int = 0
 
         # Define dictionaries of functions for Gurobi and HiGHs
         self.optimize_functions = {
@@ -56,6 +55,9 @@ class PowerSystemModel:
             "gurobi": self.solve_for_lmp_gurobi,
             "highs": self.solve_for_lmp_highs,
         }
+
+        self.rounding_optimization_time: float = None
+        self.rounding_iterations: int = None
 
     def write_mps(self, output_folder: str, filename: str):
         if not isinstance(self.model, gp.Model):
@@ -92,6 +94,8 @@ class PowerSystemModel:
         self.model.setOptionValue("mip_rel_gap", mipgap)
         self.model.setOptionValue("time_limit", timelimit)
         self.model.setOptionValue("threads", num_threads)
+
+        # Must faster than automatic selection
         self.model.setOptionValue("solver", "simplex")
 
         self.model.run()
@@ -123,24 +127,31 @@ class PowerSystemModel:
         rounding_strategy: str,
         max_rounding_iter: int,
         threshold: float = 0,
-        log_to_console: bool = True,
         mipgap: float = 1e-3,
         timelimit: int = 600,
         num_threads: int = 0,
+        log_to_console: bool = False,
     ) -> None:
-        self.model = optimize_with_rounding(
-            model=self.model,
-            rounding_strategy=rounding_strategy,
-            threshold=threshold,
-            max_rounding_iter=max_rounding_iter,
-            log_to_console=log_to_console,
-            mipgap=mipgap,
-            timelimit=timelimit,
-            num_threads=num_threads,
+        self.model, self.rounding_optimization_time, self.rounding_iterations = (
+            optimize_with_rounding(
+                model=self.model,
+                rounding_strategy=rounding_strategy,
+                threshold=threshold,
+                max_rounding_iter=max_rounding_iter,
+                log_to_console=log_to_console,
+                mipgap=mipgap,
+                timelimit=timelimit,
+                num_threads=num_threads,
+            )
         )
 
     def _check_feasible_gurobi(self) -> bool:
-        return self.model.status == gp.GRB.Status.OPTIMAL
+        not_allowed_statuses = [
+            gp.GRB.Status.INFEASIBLE,
+            gp.GRB.Status.INF_OR_UNBD,
+            gp.GRB.Status.UNBOUNDED,
+        ]
+        return self.model.status not in not_allowed_statuses
 
     def _check_feasible_highs(self) -> bool:
         model_status = self.model.getModelStatus()

@@ -5,7 +5,10 @@ import datetime
 import os
 
 import numpy as np
+import geopandas as gpd
 import pandas as pd
+from shapely.geometry import LineString, Point
+
 from .folder_utils import get_database_dir
 
 
@@ -56,7 +59,9 @@ def remove_29feb(timeseries: pd.Series) -> pd.Series:
     return cleaned_data
 
 
-def create_init_condition(thermal_units: list) -> dict[(str, int), dict]:
+def create_init_condition(
+    thermal_units: list, storage_units: list = None
+) -> dict[(str, int), dict]:
     """Return dicts of system statuses in the format {(unit, hour): value}"""
     # Assume thermal units in the systems are offline at the beginning
     initial_p = {unit_g: 0 for unit_g in thermal_units}
@@ -68,6 +73,14 @@ def create_init_condition(thermal_units: list) -> dict[(str, int), dict]:
     initial_min_on = {unit_g: 0 for unit_g in thermal_units}
     initial_min_off = initial_min_on.copy()
 
+    # Energy storage systems start with zero charge
+    if storage_units is None:
+        initial_charge_state = {}
+    elif len(storage_units) > 0:
+        initial_charge_state = {unit: 0 for unit in storage_units}
+    else:
+        initial_charge_state = {}
+
     return {
         "initial_p": initial_p,
         "initial_u": initial_u,
@@ -75,6 +88,7 @@ def create_init_condition(thermal_units: list) -> dict[(str, int), dict]:
         "initial_w": initial_w,
         "initial_min_on": initial_min_on,
         "initial_min_off": initial_min_off,
+        "initial_charge_state": initial_charge_state,
     }
 
 
@@ -88,7 +102,7 @@ def get_node_hour_from_flow_constraint(constraint_name: str) -> tuple[str, int]:
         The node and hour.
 
     """
-    flow_constraint_pattern = re.compile(r"flowBal\[(\w+),(\d+)\]")
+    flow_constraint_pattern = re.compile(r"flowBal\[(.+),(\d+)\]")
     match = flow_constraint_pattern.match(constraint_name)
     if match:
         node = match.group(1)
@@ -108,7 +122,7 @@ def get_unit_hour_from_varnam(var_name: str) -> tuple[str, int]:
         The unit and hour.
 
     """
-    node_var_pattern = re.compile(r"(\w+)\[(\w+),(\d+)\]")
+    node_var_pattern = re.compile(r"(\w+)\[(.+),(\d+)\]")
     match = node_var_pattern.match(var_name)
     if match:
         unit = match.group(2)
@@ -128,7 +142,7 @@ def get_edge_hour_from_varname(var_name: str) -> tuple[tuple[str, str], int]:
         The edge and hour.
 
     """
-    edge_var_pattern = re.compile(r"flow\[(\w+),(\w+),(\d+)\]")
+    edge_var_pattern = re.compile(r"flow\[(.+),(.+),(\d+)\]")
     match = edge_var_pattern.match(var_name)
     if match:
         edge = (match.group(1), match.group(2))
@@ -159,6 +173,8 @@ def write_df(
         None
     """
     # First check that the output directory exists. If not, create it.
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
     df.to_csv(
         os.path.join(output_folder, f"{model_id}_{output_name}.csv"),
         index=False,
@@ -275,8 +291,10 @@ def parse_node_variables(
     Returns:
         pd.DataFrame: The node variables DataFrame"""
 
-    node_var_pattern = r"(\w+)\[(\w+),(\d+)\]"
+    node_var_pattern = r"(\w+)\[(.+),(\d+)\]"
     current_node_vars = solution[solution["varname"].str.match(node_var_pattern)].copy()
+    # Flow should not be included in the node variables
+    current_node_vars = current_node_vars[current_node_vars["vartype"] != "flow"]
 
     current_node_vars[["node", "timestep"]] = current_node_vars["varname"].str.extract(
         node_var_pattern, expand=True
@@ -312,7 +330,7 @@ def parse_flow_variables(
     Returns:
         pd.DataFrame: The flow variables DataFrame
     """
-    flow_var_pattern = r"flow\[(\w+),(\w+),(\d+)\]"
+    flow_var_pattern = r"flow\[(.+),(.+),(\d+)\]"
     cur_flow_vars = solution[solution["varname"].str.match(flow_var_pattern)].copy()
 
     cur_flow_vars[["node_a", "node_b", "timestep"]] = cur_flow_vars[
@@ -339,7 +357,7 @@ def parse_syswide_variables(
     Returns:
         pd.DataFrame: The system-wide variables DataFrame
     """
-    syswide_var_pattern = r"(\w+)\[(\d+)\]"
+    syswide_var_pattern = r"(.+)\[(\d+)\]"
     cur_syswide_vars = solution[
         solution["varname"].str.match(syswide_var_pattern)
     ].copy()
@@ -401,3 +419,33 @@ def get_fuel_color_map() -> dict:
         .to_dict()["color"]
     )
     return fuel_color_map
+
+
+def get_lines_params() -> pd.DataFrame:
+    """Return a dataframe of line parameters, located in database/transmission_params.csv"""
+    return pd.read_csv(
+        os.path.join(get_database_dir(), "transmission_params.csv"),
+        header=0,
+    )
+
+
+def create_geoseries_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["geometry"] = df.apply(
+        lambda row: LineString(
+            [(row["source_lon"], row["source_lat"]), (row["sink_lon"], row["sink_lat"])]
+        ),
+        axis=1,
+    )
+
+    df["source_location"] = df.apply(
+        lambda row: Point(row["source_lon"], row["source_lat"]), axis=1
+    )
+    df["sink_location"] = df.apply(
+        lambda row: Point(row["sink_lon"], row["sink_lat"]), axis=1
+    )
+
+    # Plotting the substations requires columns to be a GeoSeries
+    df["source_location"] = gpd.GeoSeries(df["source_location"])
+    df["sink_location"] = gpd.GeoSeries(df["sink_location"])
+    return df

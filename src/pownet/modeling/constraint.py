@@ -6,6 +6,13 @@ import networkx as nx
 import pandas as pd
 
 
+def get_capacity_value(t: int, unit: str, step_k: int, capacity_df) -> float:
+    value = capacity_df.loc[t + (step_k - 1) * 24, unit]
+    if isinstance(value, pd.Series):
+        return value.iloc[0]
+    return value
+
+
 """Functions for thermal-unit constraints
 """
 
@@ -232,14 +239,46 @@ def add_c_link_pu_upper(
     """
     return model.addConstrs(
         (
-            pbar[unit_g, t] + thermal_min_capacity[unit_g] * u[unit_g, t]
-            <= thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit_g]
-            * u[unit_g, t]
-            for unit_g in thermal_units
+            pbar[unit, t] + thermal_min_capacity[unit] * u[unit, t]
+            <= thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit] * u[unit, t]
+            for unit in thermal_units
             for t in timesteps
         ),
         name="pthermal_ub",
     )
+
+
+def add_c_thermal_curtail(
+    model: gp.Model,
+    pthermal: gp.tupledict,
+    pthermal_curtail: gp.tupledict,
+    pcharge: gp.tupledict,
+    timesteps: range,
+    step_k: int,
+    thermal_must_take_units: list,
+    thermal_derated_capacity: pd.DataFrame,
+    ess_attached: dict,
+) -> gp.tupledict:
+    """For must-take thermal units, the curtailment is the difference between the derated capacity and the dispatched power."""
+    constraints = gp.tupledict()
+    for unit in thermal_must_take_units:
+        has_storage = unit in ess_attached
+        for t in timesteps:
+            pcharge_unit_t = 0
+            if has_storage:
+                # A unit may have multiple storage systems
+                for storage_unit in ess_attached[unit]:
+                    pcharge_unit_t += pcharge[storage_unit, t]
+
+            cname = f"thermal_curtail[{unit},{t}]"
+            constraints[cname] = model.addConstr(
+                (
+                    pthermal[unit, t] + pthermal_curtail[unit, t] + pcharge_unit_t
+                    == thermal_derated_capacity.loc[t + (step_k - 1) * 24, unit]
+                ),
+                name=cname,
+            )
+    return constraints
 
 
 def add_c_min_down_init(
@@ -368,7 +407,7 @@ def add_c_min_up(
         for t in range(TU_g, sim_horizon + 1):
             cname = f"minUp[{unit_g},{t}]"
             LHS = gp.quicksum([v[unit_g, i] for i in range(t - TU_g + 1, t + 1)])
-            model.addConstr(LHS <= u[unit_g, t], name=cname)
+            constraints[cname] = model.addConstr(LHS <= u[unit_g, t], name=cname)
     return constraints
 
 
@@ -844,6 +883,8 @@ def add_c_flow_balance(
     psolar: gp.tupledict,
     pwind: gp.tupledict,
     pimp: gp.tupledict,
+    pcharge: gp.tupledict,
+    pdis: gp.tupledict,
     pos_pmismatch: gp.tupledict,
     neg_pmismatch: gp.tupledict,
     flow: gp.tupledict,
@@ -857,6 +898,8 @@ def add_c_flow_balance(
     nodes: list,
     node_edge: dict,
     node_generator: dict,
+    charge_storage: dict,
+    discharge_storage: dict,
     demand_nodes: list,
     demand: pd.DataFrame,
     line_loss_factor: float,
@@ -871,6 +914,8 @@ def add_c_flow_balance(
         psolar (gp.tupledict): The power output of solar units
         pwind (gp.tupledict): The power output of wind units
         pimp (gp.tupledict): The power output of import units
+        pcharge (gp.tupledict): The charge of energy storage units
+        pdis (gp.tupledict): The discharge of energy storage units
         p_pmismatch (gp.tupledict): The positive power mismatch
         n_pmismatch (gp.tupledict): The negative power mismatch
         flow (gp.tupledict): The power flow
@@ -884,6 +929,8 @@ def add_c_flow_balance(
         nodes (list): The list of nodes
         node_edge (dict): The edges connected to a node
         node_generator (dict): The generators connected to a node
+        charge_ess (dict): Storage units to charge from this node
+        discharge_ess (dict): Storage units to discharge to this node
         demand_nodes (list): The list of demand nodes
         demand (pd.DataFrame): The demand data
         line_loss_factor (float): The transmission line loss factor
@@ -893,20 +940,20 @@ def add_c_flow_balance(
 
     """
 
-    def get_unit_generation(unit_g: str, t: int):
-        if unit_g in thermal_units:
-            return pthermal[unit_g, t]
-        elif unit_g in hydro_units:
-            return phydro[unit_g, t]
-        elif unit_g in solar_units:
-            return psolar[unit_g, t]
-        elif unit_g in wind_units:
-            return pwind[unit_g, t]
-        elif unit_g in import_units:
-            return pimp[unit_g, t]
+    def get_unit_generation(unit: str, t: int):
+        if unit in thermal_units:
+            return pthermal[unit, t]
+        elif unit in hydro_units:
+            return phydro[unit, t]
+        elif unit in solar_units:
+            return psolar[unit, t]
+        elif unit in wind_units:
+            return pwind[unit, t]
+        elif unit in import_units:
+            return pimp[unit, t]
         else:
             raise ValueError(
-                f"PowNet: Unit {unit_g} not found in any of the generation types but is connected to the node."
+                f"PowNet: Unit {unit} not found in any of the generation types but is connected to the node."
             )
 
     constraints = gp.tupledict()
@@ -919,6 +966,20 @@ def add_c_flow_balance(
             for unit_g in node_generator[node]:
                 generation += get_unit_generation(unit_g, t)
 
+            # A grid storage system charges from this node
+            storage_charge = 0
+            if node in charge_storage:
+                storage_systems = charge_storage[node]
+                for storage_system in storage_systems:
+                    storage_charge += pcharge[storage_system, t]
+
+            # If an ESS is to inject into this node
+            storage_discharge = 0
+            if node in discharge_storage:
+                storage_systems = discharge_storage[node]
+                for storage_system in storage_systems:
+                    storage_discharge += pdis[storage_system, t]
+
             # Get the demand of node n at time t
             if node in demand_nodes:
                 demand_n_t = demand.loc[t + (step_k - 1) * 24, node]
@@ -926,8 +987,6 @@ def add_c_flow_balance(
             else:
                 demand_n_t = 0
                 mismatch = 0
-
-            # mismatch = pos_pmismatch[node, t] - neg_pmismatch[node, t]
 
             # Flow into a node is positive, while flow out is negative
             arc_flow = 0
@@ -940,7 +999,13 @@ def add_c_flow_balance(
             # Given the above terms, we can specify the energy balance
             cname = f"flowBal[{node},{t}]"
             constraints[cname] = model.addConstr(
-                (generation * line_efficiency + arc_flow + mismatch == demand_n_t),
+                (
+                    generation * line_efficiency
+                    + arc_flow
+                    + mismatch
+                    + storage_discharge  # Already factored in discharge efficiency is the ESS balance
+                    == demand_n_t + storage_charge
+                ),
                 name=cname,
             )
     return constraints
@@ -1000,7 +1065,7 @@ def add_c_reserve_req_2(
     thermal_min_capacity: dict,
     demand_nodes: list,
     demand: pd.DataFrame,
-    spin_requirement: pd.DataFrame,
+    spin_requirement: pd.Series,
 ) -> gp.tupledict:
     """Equation 67 of Kneuven et al (2019) based on Carrion and Arroyo (2006)
     and Ostrowski et al. (2012). The spinning reserve is expressed in terms of the
@@ -1021,7 +1086,7 @@ def add_c_reserve_req_2(
         thermal_min_capacity (dict): The minimum capacity of the thermal unit
         demand_nodes (list): The list of demand nodes
         demand (pd.DataFrame): The demand data
-        spin_requirement (pd.DataFrame): The spinning reserve requirement at each hour (MW)
+        spin_requirement (pd.Series): The spinning reserve requirement at each hour (MW)
 
     Returns:
         gp.tupledict: The constraints for the spinning reserve requirement
@@ -1048,7 +1113,6 @@ def add_c_reserve_req_2(
 def add_c_hydro_limit_daily(
     model: gp.Model,
     phydro: gp.tupledict,
-    timesteps: range,
     step_k: int,
     sim_horizon: int,
     hydro_units: list,
@@ -1062,7 +1126,6 @@ def add_c_hydro_limit_daily(
     Args:
         model (gp.Model): The optimization model
         phydro (gp.tupledict): The power output of hydro units
-        timesteps (range): The range of timesteps
         step_k (int): The current iteration
         sim_horizon (int): The simulation horizon
         hydro_units (list): The list of hydro units
@@ -1082,12 +1145,238 @@ def add_c_hydro_limit_daily(
         raise ValueError(
             "The simulation horizon must be divisible by 24 when using daily hydropower capacity."
         )
+    constraints = gp.tupledict()
+    max_day = sim_horizon // 24
+    for day in range(step_k, step_k + max_day):
+        for hydro_unit in hydro_units:
+            cname = f"hydro_limit_daily[{hydro_unit},{day}]"
+            current_day = day - step_k + 1
+            constraints[cname] = model.addConstr(
+                gp.quicksum(
+                    phydro[hydro_unit, t]
+                    for t in range(1 + (current_day - 1) * 24, current_day * 24 + 1)
+                )
+                <= hydro_capacity.loc[day, hydro_unit],
+                name=cname,
+            )
+    return constraints
 
-    model.addConstrs(
+
+def add_c_link_unit_pu(
+    model: gp.Model,
+    pdispatch: gp.tupledict,
+    u: gp.tupledict,
+    type: str,  # "wind" or "solar" or "hydro" or "import"
+    timesteps: range,
+    step_k: int,
+    units: list,
+    capacity_df: pd.DataFrame,
+) -> gp.tupledict:
+    return model.addConstrs(
         (
-            gp.quicksum(phydro[hydro_unit, t] for t in timesteps)
-            <= hydro_capacity.loc[step_k : sim_horizon % 24 + 1, hydro_unit].sum()
-            for hydro_unit in hydro_units
+            pdispatch[unit, t]
+            <= u[unit, t] * get_capacity_value(t, unit, step_k, capacity_df)
+            for unit in units
+            for t in timesteps
         ),
-        name="hydroLimit_day",
+        name=f"link_{type}_pu",
+    )
+
+
+def add_c_link_unit_pu_constant(
+    model: gp.Model,
+    pdispatch: gp.tupledict,
+    u: gp.tupledict,
+    timesteps: range,
+    units: list,
+    contracted_capacity: dict[str, float],
+) -> gp.tupledict:
+    """Similar to add_c_link_unit_pu, but the upper bound has a constant capacity"""
+    return model.addConstrs(
+        pdispatch[unit, t] <= u[unit, t] * contracted_capacity[unit]
+        for unit in units
+        for t in timesteps
+    )
+
+
+def add_c_unit_curtail_ess(
+    model: gp.Model,
+    pdispatch: gp.tupledict,
+    pcurtail: gp.tupledict,
+    pcharge: gp.tupledict,
+    type: str,  # "wind" or "solar"
+    timesteps: range,
+    step_k: int,
+    units: list,
+    capacity_df: pd.DataFrame,
+    ess_attached: dict[str, list[str]],
+) -> gp.tupledict:
+
+    constraints = gp.tupledict()
+    for unit in units:
+        has_storage = unit in ess_attached
+        for t in timesteps:
+            pcharge_unit_t = 0
+            if has_storage:
+                # A unit may have multiple storage systems
+                for storage_unit in ess_attached[unit]:
+                    pcharge_unit_t += pcharge[storage_unit, t]
+
+            cname = f"{type}_curtail_ess[{unit},{t}]"
+            constraints[cname] = model.addConstr(
+                (
+                    pdispatch[unit, t] + pcurtail[unit, t] + pcharge_unit_t
+                    == get_capacity_value(t, unit, step_k, capacity_df)
+                ),
+                name=cname,
+            )
+    return constraints
+
+
+def add_c_unit_curtail_ess_daily(
+    model: gp.Model,
+    pdispatch: gp.tupledict,
+    pcurtail: gp.tupledict,
+    pcharge: gp.tupledict,
+    type: str,  # "wind" or "solar"
+    sim_horizon: int,
+    step_k: int,
+    units: list,
+    capacity_df: pd.DataFrame,
+    ess_attached: dict[str, list[str]],
+) -> gp.tupledict:
+
+    constraints = gp.tupledict()
+    max_day = sim_horizon // 24
+    for unit in units:
+        has_storage = unit in ess_attached
+        for day in range(step_k, step_k + max_day):
+
+            current_day = day - step_k + 1
+            timesteps_in_day = range(1 + (current_day - 1) * 24, current_day * 24 + 1)
+
+            pcharge_unit_day = 0
+            if has_storage:
+                # A unit may have multiple storage systems
+                for storage_unit in ess_attached[unit]:
+                    pcharge_unit_day += gp.quicksum(
+                        pcharge[storage_unit, t] for t in timesteps_in_day
+                    )
+
+            cname = f"{type}_curtail_ess[{unit},{day}]"
+            constraints[cname] = model.addConstr(
+                (
+                    gp.quicksum(
+                        pdispatch[unit, t] + pcurtail[unit, t] for t in timesteps_in_day
+                    )
+                    + pcharge_unit_day
+                    == capacity_df.loc[day, unit]
+                ),
+                name=cname,
+            )
+    return constraints
+
+
+""" Energy storage constraints
+"""
+
+
+def add_c_link_ess_charge(
+    model: gp.Model,
+    pcharge: gp.tupledict,
+    ucharge: gp.tupledict,
+    timesteps: range,
+    units: list,
+    max_charge: dict[str, float],
+) -> gp.tupledict:
+    return model.addConstrs(
+        (
+            pcharge[unit, t] <= ucharge[unit, t] * max_charge[unit]
+            for unit in units
+            for t in timesteps
+        ),
+        name="link_ess_charge",
+    )
+
+
+def add_c_link_ess_discharge(
+    model: gp.Model,
+    pdischarge: gp.tupledict,
+    udischarge: gp.tupledict,
+    timesteps: range,
+    units: list,
+    max_discharge: dict[str, float],
+) -> gp.tupledict:
+    return model.addConstrs(
+        (
+            pdischarge[unit, t] <= udischarge[unit, t] * max_discharge[unit]
+            for unit in units
+            for t in timesteps
+        ),
+        name="link_ess_discharge",
+    )
+
+
+def add_c_link_ess_state(
+    model: gp.Model,
+    ucharge: gp.tupledict,
+    udischarge: gp.tupledict,
+    timesteps: range,
+    units: list,
+) -> gp.tupledict:
+    return model.addConstrs(
+        (
+            ucharge[unit, t] + udischarge[unit, t] <= 1
+            for unit in units
+            for t in timesteps
+        ),
+        name="link_ess_state",
+    )
+
+
+def add_c_unit_ess_balance_init(
+    model: gp.Model,
+    pcharge: gp.tupledict,
+    pdischarge: gp.tupledict,
+    charge_state: gp.tupledict,
+    units: list,
+    charge_state_init: dict[str, float],
+    charge_efficiency: dict[str, float],
+    discharge_efficiency: dict[str, float],
+    self_discharge_rate: dict[str, float],
+) -> gp.tupledict:
+    t = 1
+    return model.addConstrs(
+        (
+            charge_state[unit, t]
+            == (1 - self_discharge_rate[unit]) * charge_state_init[unit]
+            + charge_efficiency[unit] * pcharge[unit, t]
+            - pdischarge[unit, t] / discharge_efficiency[unit]
+            for unit in units
+        ),
+        name="unit_ess_balance_init",
+    )
+
+
+def add_c_unit_ess_balance(
+    model: gp.Model,
+    pcharge: gp.tupledict,
+    pdischarge: gp.tupledict,
+    charge_state: gp.tupledict,
+    units: list,
+    sim_horizon: int,
+    charge_efficiency: dict[str, float],
+    discharge_efficiency: dict[str, float],
+    self_discharge_rate: dict[str, float],
+) -> gp.tupledict:
+    return model.addConstrs(
+        (
+            charge_state[unit, t]
+            == (1 - self_discharge_rate[unit]) * charge_state[unit, t - 1]
+            + charge_efficiency[unit] * pcharge[unit, t]
+            - pdischarge[unit, t] / discharge_efficiency[unit]
+            for unit in units
+            for t in range(2, sim_horizon + 1)
+        ),
+        name="unit_ess_balance",
     )
