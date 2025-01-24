@@ -198,6 +198,12 @@ class Visualizer:
         cbar = plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap="binary"), ax=ax)
         cbar.set_label("Unit status")
 
+        legend = fig.legend(
+            loc="outside lower center",
+            fontsize="small",
+            bbox_to_anchor=(0.5, -0.12),
+        )
+
         if output_folder is not None:
             figure_name = f"{self.model_id}_thermal_unit_status.png"
             fig.savefig(
