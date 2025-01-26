@@ -12,7 +12,7 @@ def main():
     input_folder = "..//model_library"
     output_folder = "..//temptemp"
 
-    model_name = "solar_ess"
+    model_name = "dummy"
     model_year = 2016
 
     # Simulation parameters

@@ -12,14 +12,14 @@ from shapely.geometry import LineString, Point
 from .folder_utils import get_database_dir
 
 
-def get_dates(year):
+def get_dates(year, num_days=365):
     """Return a dataframe of dates for the given year. The dataframe will have
     365 rows, one for each day of the year. The columns are 'date' and 'hour'.
     Exclude 29th February.
     """
     # Create dates to concatenate with the new dataframes
     dates = pd.DataFrame(
-        {"date": pd.date_range(start=str(year), periods=366, freq="D")}
+        {"date": pd.date_range(start=str(year), periods=num_days + 1, freq="D")}
     )
     # Remove 29th Feb because we do not deal with them
     dates = dates.loc[dates.date.dt.strftime("%m-%d") != "02-29"]
@@ -28,7 +28,7 @@ def get_dates(year):
 
     # In case we need three columns: date, hour, and day
     dates = dates.loc[dates.index.repeat(24)]
-    dates["hour"] = np.tile(range(1, 25), 365)
+    dates["hour"] = np.tile(range(1, 25), num_days)
     dates = dates.reset_index(drop=True)
     return dates
 
