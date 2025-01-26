@@ -75,6 +75,7 @@ class Simulator:
         self,
         sim_horizon: int,
         steps_to_run: int,
+        num_sim_days: int = 365,
         to_process_inputs: bool = True,
         solver: str = "gurobi",
         log_to_console: bool = True,
@@ -101,7 +102,7 @@ class Simulator:
         """
 
         if steps_to_run is None:
-            steps_to_run = 365 - (sim_horizon // 24 - 1)
+            steps_to_run = num_sim_days - (sim_horizon // 24 - 1)
 
         # To create files with "pownet_" prefix
         if to_process_inputs:
@@ -118,6 +119,7 @@ class Simulator:
             model_name=self.model_name,
             year=self.model_year,
             sim_horizon=sim_horizon,
+            num_sim_days=num_sim_days,
             use_spin_var=self.use_spin_var,
             dc_opf=self.dc_opf,
             spin_reserve_factor=self.spin_reserve_factor,
@@ -130,6 +132,7 @@ class Simulator:
         )
         # Produce an error if the data is not making sense
         self.inputs.load_and_check_data()
+        self.inputs.print_summary()
 
         ####################### Simulation
         self.system_record = SystemRecord(self.inputs)

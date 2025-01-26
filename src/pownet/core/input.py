@@ -20,6 +20,7 @@ class SystemInput:
         model_name: str,
         year: int,
         sim_horizon: int,
+        num_sim_days: int = 365,
         use_spin_var: bool = True,
         dc_opf: str = "kirchhoff",
         spin_reserve_factor: float = 0.15,
@@ -36,6 +37,10 @@ class SystemInput:
         self.model_dir: str = os.path.join(input_folder, model_name)
         self.year: int = year
         self.sim_horizon: int = sim_horizon
+
+        self.num_sim_days: int = num_sim_days
+        self.num_sim_hours: int = num_sim_days * 24
+
         self.use_spin_var: bool = use_spin_var
 
         # The timestamp is used to create a unique folder for the model
@@ -433,9 +438,11 @@ class SystemInput:
             "contract_cost.csv", header_levels=0
         )
 
-        # Check that the contract costs timeseries is of length 8760
-        if len(contract_costs_df) not in [0, 8760]:
-            raise ValueError("PowNet: Marginal cost timeseries must be of length 8760.")
+        # Check that the contract costs timeseries is of length num_sim_hours
+        if len(contract_costs_df) not in [0, self.num_sim_hours]:
+            raise ValueError(
+                f"PowNet: Marginal cost timeseries must be of length {self.num_sim_hours}."
+            )
 
         self.contract_costs = {
             (col, idx): value
@@ -517,7 +524,7 @@ class SystemInput:
             columns=[column_name],
         ).T
         # Repeat values for every hour of the year
-        df = df.loc[df.index.repeat(365 * 24)].reset_index(drop=True)
+        df = df.loc[df.index.repeat(self.num_sim_hours)].reset_index(drop=True)
         df.index += 1
         return df
 
@@ -699,7 +706,7 @@ class SystemInput:
         #################
         if self.spin_reserve_mw is not None:
             self.spin_requirement = pd.Series(
-                self.spin_reserve_mw, index=range(1, 8761)
+                self.spin_reserve_mw, index=range(1, self.num_sim_hours + 1)
             )
         else:
             self.spin_requirement = self.demand.sum(axis=1) * self.spin_reserve_factor
@@ -782,8 +789,10 @@ class SystemInput:
         # Timeseries have the correct length
         ##################################
 
-        if len(self.demand) != 8760:
-            raise ValueError("PowNet: Demand timeseries must be of length 8760.")
+        if len(self.demand) != self.num_sim_hours:
+            raise ValueError(
+                f"PowNet: Demand timeseries must be of length {self.num_sim_hours} but got {len(self.demand)}."
+            )
 
         attrs_to_check = [
             "solar_capacity",
@@ -795,12 +804,14 @@ class SystemInput:
         ]
         for attr in attrs_to_check:
             temp_df = getattr(self, attr)
-            if (not temp_df.empty) and (len(temp_df) != 8760):
-                raise ValueError(f"PowNet: {attr} must be of length 8760.")
+            if (not temp_df.empty) and (len(temp_df) != self.num_sim_hours):
+                raise ValueError(
+                    f"PowNet: {attr} must be of length {self.num_sim_hours} but got {len(temp_df)}."
+                )
 
-        if len(self.daily_hydro_capacity) not in [0, 365]:
+        if len(self.daily_hydro_capacity) not in [0, self.num_sim_days]:
             raise ValueError(
-                "PowNet: Daily hydropower timeseries must be of length 365."
+                f"PowNet: Daily hydropower timeseries must be of length {self.num_sim_days}."
             )
 
         ##################################
@@ -941,6 +952,7 @@ class SystemInput:
 
         ---- Modeling parameters ----
         {'Simulation horizon':<25} = {self.sim_horizon} hours
+        {'Number of simulation days':<25} = {self.num_sim_days}
         {'Use spin variable':<25} = {self.use_spin_var}
         {'Power flow':<25} = {self.dc_opf}
         {'Spin reserve factor:':<25} = {self.spin_reserve_factor if self.spin_reserve_mw is None else 'Use an absolute value in MW.'}

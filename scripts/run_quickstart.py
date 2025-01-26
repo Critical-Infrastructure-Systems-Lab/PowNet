@@ -12,11 +12,12 @@ def main():
     input_folder = "..//model_library"
     output_folder = "..//temptemp"
 
-    model_name = "solar_ess"
+    model_name = "dummy_test"
     model_year = 2016
 
     # Simulation parameters
     sim_horizon = 24
+    num_sim_days = 2
     steps_to_run = 2
     solver = "gurobi"  # or highs
 
@@ -31,6 +32,7 @@ def main():
 
     simulator.run(
         sim_horizon=sim_horizon,
+        num_sim_days=num_sim_days,
         steps_to_run=steps_to_run,
         solver=solver,
     )
@@ -42,7 +44,7 @@ def main():
 
     # Plot the results
     simulator.plot_fuelmix("bar", output_folder)
-    simulator.plot_thermal_units(output_folder)
+    # simulator.plot_thermal_units(output_folder)
 
 
 if __name__ == "__main__":

@@ -285,9 +285,10 @@ class DataProcessor:
         else:
             return
 
+        num_hrs_in_year = 8760
         temp_df = pd.DataFrame(
             derate_factor,
-            index=range(0, 8760),  # Consider making 8760 a constant or parameter
+            index=range(0, num_hrs_in_year),
             columns=units,
         )
         setattr(
