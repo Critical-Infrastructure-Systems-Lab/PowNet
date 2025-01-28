@@ -17,7 +17,7 @@ Content
    pages/support
    pages/release
    pages/glossary
-   pages/license
+   pages/license_page
    pages/acknowledgement
    pages/publications
    api_pages/api

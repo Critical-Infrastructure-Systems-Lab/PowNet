@@ -9,34 +9,65 @@ PowNet is a least-cost optimization model for simulating the Unit Commitment and
 Read the PowNet Documentation here: https://pownet.readthedocs.io/en/latest
 
 
-## Installation
+## Installing and using PowNet
+To use PowNet, a user needs to supply it with CSV files. For guidance on creating these CSV files, please see examples provided [here](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/tree/master/model_library). Please ensure that column names matches with those from the examples.
 
-Download or clone the PowNet 2.0 repository to your local machine. For example: if we want to clone to "C://user/pownet",
+As for installing PowNet, there are multiple options depending on whether we want to modify the source code. However, the following step is highly recommended for any user: creating a virtual environment to manage dependencies. If using Conda, we can create an envrionment with the following command
+
+```
+conda create --name your_env_name_here
+conda activate your_env_name_here
+```
+
+If deciding on a name for the environment takes too long, please feel free to name the environment as "pownet".
+
+### Option 1: Regular user
+A regular user is someone who has created their input files and wish to just run PowNet. In this case, it is best to simply install PowNet as a package from PyPI. We can achieve this with the following command:
+
+```
+pip install pownet
+```
+
+Once the package has been installed, we can now go to our working directory. In this example, we assume the following folder structure:
+
+```
+working_directory/
+├── scripts/
+│   └── [run_quickstart.py](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/blob/master/scripts/run_quickstart.py)
+├── model_library/
+│   └── dummy/
+│       ├── demand_export.csv
+│       ├── thermal_unit.csv
+│       ├── nondispatch_unit.csv
+│       ├── hydropower.csv
+│       ├── import.csv
+│       ├── contract_cost.csv
+│       └── transmission.csv
+└── outputs/
+```
+
+A Python script called "[run_quickstart.py](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/blob/master/scripts/run_quickstart.py)" provides an example on running a simulation, saving the simulation outputs, and visualizing the outputs.
+
+### Option 2: Power user (no pun intended)
+In case we wish to modify the source code, PowNet should be installed as an editable package. First, download or clone the PowNet repository to your local machine. For example: if we want to clone to "C://user/pownet",
 
 ```
 git clone https://github.com/your-username/pownet.git C://user/pownet
 ```
 
-Next, open a terminal and navigate to the directory where you cloned the repository:
+Next, open a terminal and navigate to the directory where we cloned the repository:
 
 ```
 cd C://user/pownet
 ```
 
-The following step is highly recommended: creating a virtual environment to manage dependencies. If using Conda, you can create an envrionment named "pownet":
-
-```
-conda create --name pownet
-conda activate pownet
-```
-
-Now, you can install this PowNet package using pip, which is a manager for Python packages:
+Now, we can install this PowNet package using pip, which is a manager for Python packages:
 
 ```
 pip install -e .
 ```
 
-This command installs the package in "editable" mode (-e) using pyproject.toml that is located in the root directory of PowNet. The editable mode allows you to edit PowNet codebase when you need to modify or implement new features. The pyproject.toml file specifies the dependencies required to run PowNet.
+This command installs the package in "editable" mode (-e) using pyproject.toml that is located in the root directory of PowNet. The editable mode allows us to edit PowNet codebase when we need to modify or implement new features. The pyproject.toml file specifies the dependencies required to run PowNet.
 
 A quick start tutorial to run a simple case study is provided here: https://pownet.readthedocs.io/en/latest/pages/quickstarter.html
 

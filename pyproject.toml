@@ -9,18 +9,19 @@ where = ["src"]
 pownet = ["database/*.csv"]
 
 [project]
-name = "cisl-pownet"
-version = "2.0.0"
+name = "pownet"
+version = "2.2.0"
 description = "A simple production cost model of framework for power systems"
 readme = "README.md"
 authors = [{ name = "Phumthep Bunnak", email = "pb585@cornell.edu" }]
-keywords = ["power_system", "optimization", "production_cost_model"]
+license = { file = "LICENSE" }
+keywords = ["power_system", "optimization", "production_cost_model", "unit_commitment"]
 dependencies = [
     "gurobipy >= 11.0.3",
     "highspy >= 1.7.2",
     "matplotlib >= 3.7.1",
     "networkx >= 3.1.0",
-    "numpy == 1.26.4",
+    "numpy == 2.2.0",
     "pandas >= 2.1.1",
     "pmdarima >= 2.0.4",
     "scipy >= 1.11.3",
@@ -30,3 +31,7 @@ dependencies = [
     "contextily >= 1.6.2",
 ]
 requires-python = ">=3.10"
+
+[project.urls]
+Homepage = "https://github.com/Critical-Infrastructure-Systems-Lab/PowNet"
+Documentation = "https://pownet.readthedocs.io/en/latest/index.html"

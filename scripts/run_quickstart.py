@@ -10,14 +10,14 @@ def main():
     # --------- User inputs
 
     input_folder = "..//model_library"
-    output_folder = "..//temptemp"
+    output_folder = "..//outputs"
 
     model_name = "dummy"
     model_year = 2016
 
     # Simulation parameters
     sim_horizon = 24
-    steps_to_run = 2
+    steps_to_run = 2  # 2 Simulation days or 48 hours
     solver = "gurobi"  # or highs
 
     # --------- End of user inputs
