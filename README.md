@@ -33,7 +33,7 @@ Once the package has been installed, we can now go to our working directory. In 
 ```
 working_directory/
 ├── scripts/
-│   └── [run_quickstart.py](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/blob/master/scripts/run_quickstart.py)
+│   └── run_quickstart.py
 ├── model_library/
 │   └── dummy/
 │       ├── demand_export.csv
