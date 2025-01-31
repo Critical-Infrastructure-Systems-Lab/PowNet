@@ -8,9 +8,8 @@ PowNet is a least-cost optimization model for simulating the Unit Commitment and
 
 Read the PowNet Documentation here: https://pownet.readthedocs.io/en/latest
 
-
 ## Installing and using PowNet
-To use PowNet, a user needs to supply it with CSV files. For guidance on creating these CSV files, please see examples provided [here](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/tree/master/model_library). Please ensure that column names matches with those from the examples.
+To use PowNet, a user needs to supply it with CSV files. For guidance on creating these CSV files, please see examples provided [here](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/tree/master/model_library). Please ensure that column names matches with those from the examples. Details on preparing some input files can be found [here](https://critical-infrastructure-systems-lab.github.io/manual/docs/CIS-Lab-software).
 
 As for installing PowNet, there are multiple options depending on whether we want to modify the source code. However, the following step is highly recommended for any user: creating a virtual environment to manage dependencies. If using Conda, we can create an envrionment with the following command
 
