@@ -13,7 +13,7 @@ from pownet.data_utils import create_init_condition
 to_process_inputs = True
 sim_horizon = 24
 model_name = "dummy"
-steps_to_run = 3  # Default is None
+steps_to_run = 2  # Default is None
 do_plot = True
 #######################
 
@@ -81,43 +81,20 @@ for step_k in range(1, steps_to_run):
 
 
 # Process the results
-output_processor = OutputProcessor(inputs)
-node_var_df = record.get_node_variables()
-output_processor.load_from_dataframe(node_var_df)
+output_processor = OutputProcessor()
+output_processor.load(inputs)
+node_variables = record.get_node_variables()
 
 # Visualize the results
 if do_plot:
     visualizer = Visualizer(inputs.model_id)
     if steps_to_run <= 3:
         visualizer.plot_fuelmix_bar(
-            dispatch=output_processor.get_hourly_dispatch(),
-            demand=output_processor.get_hourly_demand(),
+            dispatch=output_processor.get_hourly_generation(node_variables),
+            demand=output_processor.get_hourly_demand(inputs.demand),
         )
     else:
-        visualizer = Visualizer(inputs.model_id)
         visualizer.plot_fuelmix_area(
-            dispatch=output_processor.get_daily_dispatch(),
-            demand=output_processor.get_daily_demand(),
+            dispatch=output_processor.get_monthly_generation(node_variables),
+            demand=output_processor.get_monthly_demand(inputs.demand),
         )
-
-# # Save other modeling statistics
-# import os
-# from pownet.folder_utils import get_output_dir
-# import pandas as pd
-
-# folder_dir = get_output_dir()
-# prefix_name = "warmstart"
-# df = pd.DataFrame(
-#     {
-#         "build_time": build_times,
-#         "opt_time": opt_times,
-#         "objval": objvals,
-#     }
-# )
-# df.to_csv(
-#     os.path.join(
-#         folder_dir,
-#         f"branch{prefix_name}_{inputs.model_name}_{sim_horizon}_modelstats.csv",
-#     ),
-#     index=False,
-# )
