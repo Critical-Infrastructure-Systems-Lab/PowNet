@@ -1,5 +1,4 @@
-""" This script provides an example of how to run PowNet 2.0.
-"""
+"""This script provides an example of how to run PowNet 2.0."""
 
 import os
 from pownet.core import Simulator
@@ -9,8 +8,8 @@ def main():
 
     # --------- User inputs
 
-    input_folder = "..//model_library"
-    output_folder = "..//outputs"
+    input_folder = os.path.join("..", "model_library")
+    output_folder = os.path.join("..", "outputs")
 
     model_name = "dummy"
     model_year = 2016
