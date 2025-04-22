@@ -399,7 +399,7 @@ def get_fuel_mix_order() -> list[str]:
 
     Returns
         list[str]: The order of fuel mix.
-    -------
+
     """
     return pd.read_csv(
         os.path.join(get_database_dir(), "fuels.csv"),

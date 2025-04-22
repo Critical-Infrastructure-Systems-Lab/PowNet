@@ -5,16 +5,19 @@ sys.path.insert(0, os.path.abspath("../../src/"))
 
 # Import mock modules for readthedocs
 autodoc_mock_imports = [
+    "__future__",
     "datetime",
-    "pandas",
+    "re",
+    "contextily",
+    "geopandas",
     "gurobipy",
     "highspy",
     "networkx",
-    "numpy",
-    "matplotlib.pyplot",
+    "matplotlib",
     "math",
-    "__future__",
-    "re",
+    "numpy",
+    "pandas",
+    "shapely",
 ]
 
 # -- Project information
@@ -59,10 +62,7 @@ html_static_path = ["_static"]
 # -- Options for HTML output
 
 html_theme = "sphinx_rtd_theme"
-html_theme_options = {
-    "version": "",
-    "release": "",
-}
+html_theme_options = {"version": "", "release": "", "navigation_depth": 2}
 
 html_context = {
     "display_github": True,  # Add 'Edit on Github' link instead of 'View page source'
