@@ -1,5 +1,4 @@
-"""visualizer.py: This module contains the Visualizer class, which provides methods to visualize the output from PowNet.
-"""
+"""visualizer.py: This module contains the Visualizer class, which provides methods to visualize the output from PowNet."""
 
 import os
 
@@ -152,7 +151,7 @@ class Visualizer:
         for unit in thermal_units:
             # Extract the dispatch of each thermal unit and plot the value
             df1 = thermal_dispatch[thermal_dispatch.node == unit]
-            df2 = unit_status[unit_status["node"] == unit]
+            df2 = unit_status[unit]
 
             fig, ax1 = plt.subplots(figsize=(8, 5))
             ax2 = ax1.twinx()
@@ -164,9 +163,7 @@ class Visualizer:
             ax1.set_xlabel("Hour")
             ax1.set_ylabel("Power (MW)")
 
-            ax2.bar(
-                df2["hour"], df2["value"], color="k", alpha=0.2, label="Unit status"
-            )
+            ax2.bar(df2.index, df2.values, color="k", alpha=0.2, label="Unit status")
             ax2.set_ylim(bottom=0, top=1)
             ax2.set_ylabel("Unit Status")
             plt.title(unit)
@@ -352,7 +349,7 @@ class Visualizer:
             hourly_storage_state (pd.Series): Hourly storage state data.
         """
         storage_units = hourly_storage_charge.columns
-        for unit in storage_units[:2]:
+        for unit in storage_units:
             fig, axes = plt.subplots(
                 2, 1, figsize=(10, 6), sharex=True, height_ratios=[3, 1]
             )  # Set height ratios
