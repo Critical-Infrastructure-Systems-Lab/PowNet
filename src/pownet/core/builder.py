@@ -2,17 +2,13 @@
 """
 
 from .input import SystemInput
-import logging
 
 from gurobipy import GRB
 import gurobipy as gp
 import pandas as pd
 
 import pownet.modeling as modeling
-from pownet.modeling import PowerSystemModel
 from pownet.data_utils import get_unit_hour_from_varnam, get_edge_hour_from_varname
-
-logger = logging.getLogger(__name__)
 
 
 class ModelBuilder:
@@ -35,7 +31,7 @@ class ModelBuilder:
     def __init__(self, inputs: SystemInput) -> None:
         self.inputs = inputs
         self.timesteps = range(1, self.inputs.sim_horizon + 1)
-        self.model: gp.Model = None
+        self.model: gp.Model = gp.Model(self.inputs.model_id)
 
         # Variables
         # Thermal units
@@ -51,6 +47,7 @@ class ModelBuilder:
         # Energy storage
         self.pcharge = gp.tupledict()
         self.pdischarge = gp.tupledict()
+        self.pdischarge_shortfall = gp.tupledict()
 
         self.charge_state = gp.tupledict()  # State of charge
         self.ucharge = gp.tupledict()  # Charging indicator
@@ -92,6 +89,7 @@ class ModelBuilder:
 
         self.load_shortfall_penalty_expr = gp.LinExpr()
         self.spin_shortfall_penalty_expr = gp.LinExpr()
+        self.pdischarge_shortfall_penalty_expr = gp.LinExpr()
 
         # Thermal unit constraints
         self.c_link_uvw_init = gp.tupledict()
@@ -161,6 +159,7 @@ class ModelBuilder:
         -----------------
         - `pcharge`: Power charging an energy storage system. Unit: MW.
         - `pdischarge`: Power discharging an energy storage system. Unit: MW.
+        - `pdischarge_shortfall`: Shortfall in discharging power. Unit: MW.
         - `charge_state`: State of charge of an energy storage system. Unit: MWh.
         - `ucharge`: Indicator that an ESS is charging. Unitless.
         - `udischarge`: Indicator that an ESS is discharging. Unitless.
@@ -205,28 +204,33 @@ class ModelBuilder:
             (
                 "phydro_curtail",
                 self.inputs.hydro_units,
-                self.inputs.hydro_contracted_capacity,
+                self.inputs.hydro_max_capacity,
             ),
             ("psolar", self.inputs.solar_units, self.inputs.solar_contracted_capacity),
             (
                 "psolar_curtail",
                 self.inputs.solar_units,
-                self.inputs.solar_contracted_capacity,
+                self.inputs.solar_max_capacity,
             ),
             ("pwind", self.inputs.wind_units, self.inputs.wind_contracted_capacity),
             (
                 "pwind_curtail",
                 self.inputs.wind_units,
-                self.inputs.wind_contracted_capacity,
+                self.inputs.wind_max_capacity,
             ),
             ("pimp", self.inputs.import_units, self.inputs.import_contracted_capacity),
             (
                 "pimp_curtail",
                 self.inputs.import_units,
-                self.inputs.import_contracted_capacity,
+                self.inputs.import_max_capacity,
             ),
             ("pcharge", self.inputs.storage_units, self.inputs.ess_max_charge),
             ("pdischarge", self.inputs.storage_units, self.inputs.ess_max_discharge),
+            (
+                "pdischarge_shortfall",
+                self.inputs.storage_units,
+                self.inputs.ess_max_discharge,
+            ),
         ]
 
         for varname, units, capacity_dict in var_with_u_tuples:
@@ -474,6 +478,12 @@ class ModelBuilder:
             self.inputs.spin_shortfall_penalty_factor * gp.quicksum(self.spin_shortfall)
         )
 
+        # Penalize discharge shortfall
+        self.pdischarge_shortfall_penalty_expr = (
+            self.inputs.ess_discharge_shortfall_penalty_factor
+            * gp.quicksum(self.pdischarge_shortfall)
+        )
+
         ################################
         # Renewable energy, import sources, and energy storage
         ################################
@@ -491,6 +501,7 @@ class ModelBuilder:
                 + self.thermal_curtail_expr
                 + self.load_shortfall_penalty_expr
                 + self.spin_shortfall_penalty_expr
+                + self.pdischarge_shortfall_penalty_expr
                 + rnw_import_expr
             ),
             sense=GRB.MINIMIZE,
@@ -503,7 +514,7 @@ class ModelBuilder:
             model=self.model,
             pdispatch=self.phydro,
             u=self.uhydro,
-            type="hydro",
+            unit_type="hydro",
             timesteps=self.timesteps,
             step_k=step_k,
             units=self.inputs.hydro_unit_node.keys(),
@@ -514,7 +525,7 @@ class ModelBuilder:
             pdispatch=self.phydro,
             pcurtail=self.phydro_curtail,
             pcharge=self.pcharge,
-            type="hydro",
+            unit_type="hydro",
             timesteps=self.timesteps,
             step_k=step_k,
             units=self.inputs.hydro_unit_node.keys(),
@@ -538,7 +549,7 @@ class ModelBuilder:
             pdispatch=self.phydro,
             pcurtail=self.phydro_curtail,
             pcharge=self.pcharge,
-            type="hydro",
+            unit_type="hydro",
             sim_horizon=self.inputs.sim_horizon,
             step_k=step_k,
             units=self.inputs.daily_hydro_unit_node.keys(),
@@ -549,13 +560,15 @@ class ModelBuilder:
     def _add_hydropower_constraints(self, step_k: int) -> None:
 
         self._add_hourly_hydropower_constraints(step_k=step_k)
-        self._add_daily_hydropower_constraints(step_k=step_k)
 
-        # Does not update every step_k for this constraint
+        self._add_daily_hydropower_constraints(step_k=step_k)
+        # With daily formulation, each hour is still limited by turbine capacity
+        # Not updated every step_k
         self.c_link_daily_hydro_pu = modeling.add_c_link_unit_pu_constant(
             model=self.model,
             pdispatch=self.phydro,
             u=self.uhydro,
+            unit_type="hydro",
             timesteps=self.timesteps,
             units=self.inputs.daily_hydro_unit_node.keys(),
             contracted_capacity=self.inputs.hydro_contracted_capacity,
@@ -593,15 +606,15 @@ class ModelBuilder:
                 "capacity_df": self.inputs.import_capacity,
             },
         }
-        for type, params in unit_params.items():
+        for unit_type, params in unit_params.items():
             setattr(
                 self,
-                f"c_link_{type}_pu",
+                f"c_link_{unit_type}_pu",
                 modeling.add_c_link_unit_pu(
                     model=self.model,
                     pdispatch=params["p"],
                     u=params["u"],
-                    type=type,
+                    unit_type=unit_type,
                     timesteps=self.timesteps,
                     step_k=step_k,
                     units=params["units"],
@@ -647,7 +660,7 @@ class ModelBuilder:
                     pdispatch=params["pdispatch"],
                     pcurtail=params["pcurtail"],
                     pcharge=params["pcharge"],
-                    type=unit_type,
+                    unit_type=unit_type,
                     timesteps=self.timesteps,
                     step_k=step_k,
                     units=params["units"],
@@ -1003,13 +1016,12 @@ class ModelBuilder:
         self,
         step_k: int,
         init_conds: dict[str, dict],
-    ) -> PowerSystemModel:
+    ) -> modeling.PowerSystemModel:
         """Build the model for the unit commitment problem."""
-        self.model = gp.Model(self.inputs.model_id)
         self.add_variables(step_k=step_k)
         self.set_objfunc(step_k=step_k)
         self.add_constraints(step_k=step_k, init_conds=init_conds)
-        return PowerSystemModel(self.model)
+        return modeling.PowerSystemModel(self.model)
 
     def _update_variables(self, step_k: int) -> None:
         """
@@ -1100,6 +1112,7 @@ class ModelBuilder:
             + self.thermal_curtail_expr
             + self.load_shortfall_penalty_expr
             + self.spin_shortfall_penalty_expr
+            + self.pdischarge_shortfall_penalty_expr
             + rnw_import_storage_expr
         )
 
@@ -1343,64 +1356,4 @@ class ModelBuilder:
         self._update_objfunc(step_k=step_k)
         self._update_constraints(step_k=step_k, init_conds=init_conds)
         self.model.update()
-
-        return PowerSystemModel(self.model)
-
-    def print_added_constraints(self):
-        added_constrs = []
-        not_added_constrs = []
-
-        constraints_list = [
-            "c_link_uvw_init",
-            "c_link_uvw",
-            "c_link_pthermal",
-            "c_link_pu_lower",
-            "c_link_pu_upper",
-            "c_thermal_curtail",
-            "c_min_down_init",
-            "c_min_up_init",
-            "c_min_down",
-            "c_min_up",
-            "c_peak_down_bound",
-            "c_peak_up_bound",
-            "c_ramp_down_init",
-            "c_ramp_up_init",
-            "c_ramp_down",
-            "c_ramp_up",
-            "c_ref_node",
-            "c_angle_diff",
-            "c_kirchhoff",
-            "c_flow_balance",
-            "c_link_spin",
-            "c_link_ppbar",
-            "c_reserve_req",
-            "c_hydro_curtail_ess",
-            "c_daily_hydro_curtail_ess",
-            "c_solar_curtail_ess",
-            "c_wind_curtail_ess",
-            "c_import_curtail_ess",
-            "c_link_hydro_pu",
-            "c_link_daily_hydro_pu",
-            "c_link_solar_pu",
-            "c_link_wind_pu",
-            "c_link_import_pu",
-            "c_hydro_limit_daily",
-            "c_link_ess_charge",
-            "c_link_discharge",
-            "c_link_ess_state",
-            "c_unit_ess_balance_init",
-            "c_unit_ess_balance",
-        ]
-
-        for attr_name in constraints_list:
-            if getattr(self, attr_name):
-                added_constrs.append(attr_name)
-            else:
-                not_added_constrs.append(attr_name)
-
-        log_message = "\nAdded constraints:\n"
-        log_message += "\n".join(added_constrs)
-        log_message += "\n\nNot added constraints:\n"
-        log_message += "\n".join(not_added_constrs)
-
-        logger.warning(log_message)
+        return modeling.PowerSystemModel(self.model)

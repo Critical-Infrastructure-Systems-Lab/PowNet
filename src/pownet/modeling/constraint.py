@@ -1166,7 +1166,7 @@ def add_c_link_unit_pu(
     model: gp.Model,
     pdispatch: gp.tupledict,
     u: gp.tupledict,
-    type: str,  # "wind" or "solar" or "hydro" or "import"
+    unit_type: str,  # "wind" or "solar" or "hydro" or "import"
     timesteps: range,
     step_k: int,
     units: list,
@@ -1179,7 +1179,7 @@ def add_c_link_unit_pu(
             for unit in units
             for t in timesteps
         ),
-        name=f"link_{type}_pu",
+        name=f"link_{unit_type}_pu",
     )
 
 
@@ -1187,15 +1187,19 @@ def add_c_link_unit_pu_constant(
     model: gp.Model,
     pdispatch: gp.tupledict,
     u: gp.tupledict,
+    unit_type: str,
     timesteps: range,
     units: list,
     contracted_capacity: dict[str, float],
 ) -> gp.tupledict:
     """Similar to add_c_link_unit_pu, but the upper bound has a constant capacity"""
     return model.addConstrs(
-        pdispatch[unit, t] <= u[unit, t] * contracted_capacity[unit]
-        for unit in units
-        for t in timesteps
+        (
+            pdispatch[unit, t] <= u[unit, t] * contracted_capacity[unit]
+            for unit in units
+            for t in timesteps
+        ),
+        name=f"link_{unit_type}_pu_constant",
     )
 
 
@@ -1204,7 +1208,7 @@ def add_c_unit_curtail_ess(
     pdispatch: gp.tupledict,
     pcurtail: gp.tupledict,
     pcharge: gp.tupledict,
-    type: str,  # "wind" or "solar"
+    unit_type: str,  # "wind" or "solar"
     timesteps: range,
     step_k: int,
     units: list,
@@ -1222,7 +1226,7 @@ def add_c_unit_curtail_ess(
                 for storage_unit in ess_attached[unit]:
                     pcharge_unit_t += pcharge[storage_unit, t]
 
-            cname = f"{type}_curtail_ess[{unit},{t}]"
+            cname = f"{unit_type}_curtail_ess[{unit},{t}]"
             constraints[cname] = model.addConstr(
                 (
                     pdispatch[unit, t] + pcurtail[unit, t] + pcharge_unit_t
@@ -1238,7 +1242,7 @@ def add_c_unit_curtail_ess_daily(
     pdispatch: gp.tupledict,
     pcurtail: gp.tupledict,
     pcharge: gp.tupledict,
-    type: str,  # "wind" or "solar"
+    unit_type: str,  # "wind" or "solar"
     sim_horizon: int,
     step_k: int,
     units: list,
@@ -1263,7 +1267,7 @@ def add_c_unit_curtail_ess_daily(
                         pcharge[storage_unit, t] for t in timesteps_in_day
                     )
 
-            cname = f"{type}_curtail_ess[{unit},{day}]"
+            cname = f"{unit_type}_curtail_ess[{unit},{day}]"
             constraints[cname] = model.addConstr(
                 (
                     gp.quicksum(

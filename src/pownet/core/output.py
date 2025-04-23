@@ -56,6 +56,22 @@ class OutputProcessor:
         power_variables.loc[power_variables["vartype"] == "pcharge", "value"] *= -1
         return power_variables
 
+    def get_hourly_curtailment(
+        self, node_variables: pd.DataFrame, unit_type: str
+    ) -> pd.DataFrame:
+        unit_type_map = {
+            "hydro": "phydro_curtail",
+            "solar": "psolar_curtail",
+            "wind": "pwind_curtail",
+            "import": "pimp_curtail",
+        }
+        if unit_type not in unit_type_map:
+            raise ValueError(f"PowNet: {unit_type} is not a supported.")
+
+        return node_variables.loc[
+            node_variables["vartype"] == unit_type_map[unit_type]
+        ].pivot(columns="node", index="hour", values="value")
+
     def get_hourly_generation(self, node_variables: pd.DataFrame) -> pd.DataFrame:
         power_variables = self._get_power_variables(node_variables)
         hourly_generation = (
@@ -140,6 +156,14 @@ class OutputProcessor:
         thermal_unit_hourly_status["timestep"] = thermal_unit_hourly_status["hour"] % 24
         return thermal_unit_hourly_status.pivot_table(
             columns="node", index="timestep", values="value", aggfunc="mean"
+        ).sum()
+
+    def get_thermal_unit_hourly_status(
+        self, node_variables: pd.DataFrame
+    ) -> pd.DataFrame:
+        status_variables = node_variables[node_variables["vartype"] == "status"].copy()
+        return status_variables.pivot_table(
+            columns="node", index="hour", values="value"
         )
 
     def get_thermal_unit_daily_duration(
@@ -152,7 +176,26 @@ class OutputProcessor:
             columns="node", index="day", values="value", aggfunc="sum"
         )
 
+    def get_thermal_unit_total_duration(
+        self, node_variables: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Return the total online duration of each thermal unit over the whole simulation period."""
+        status_variables = node_variables[node_variables["vartype"] == "status"].copy()
+        return status_variables.pivot_table(
+            columns="node", index="hour", values="value", aggfunc="sum"
+        ).sum()
+
     def get_thermal_unit_startup_frequency(
+        self, node_variables: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Return the frequency of startups for each thermal unit over the whole simulation period."""
+        startup_vars = node_variables[node_variables["vartype"] == "startup"].copy()
+        startup_vars["day"] = (startup_vars["hour"] - 1) // 24 + 1
+        return startup_vars.pivot_table(
+            columns="node", index="day", values="value"
+        ).sum()
+
+    def get_thermal_unit_daily_startup_frequency(
         self, node_variables: pd.DataFrame
     ) -> pd.DataFrame:
         """Return the frequency of startups for each thermal unit over the whole simulation period."""
@@ -189,42 +232,49 @@ class OutputProcessor:
 
     def get_nondispatch_hourly_capacity_factor(
         self,
-        type: str,
+        unit_type: str,
         node_variables: pd.DataFrame,
-        unit_capacities: dict[str, float],
+        contracted_capacities: dict[str],
         energy_storage_attach: dict[str, str],
     ) -> pd.DataFrame:
         """Return the capacity factor which is a function of generation and storage charging."""
         type_map = {
-            "hydropower": "phydro",
+            "hydro": "phydro",
             "solar": "psolar",
             "wind": "pwind",
             "import": "pimp",
         }
         # Power output variables
         generation = (
-            node_variables[node_variables["vartype"] == type_map[type]]
+            node_variables[node_variables["vartype"] == type_map[unit_type]]
             .copy()
             .drop(columns=["vartype"])
         )
+        # If there are no generation variables, return an empty dataframe
+        if generation.empty:
+            return pd.DataFrame()
+
         units = generation["node"].unique()
         generation = generation.set_index(["node", "hour"])
 
         # Process charging variables
         charging = node_variables[node_variables["vartype"] == "pcharge"].copy()
-        if not charging.empty:
-            charging["unit"] = charging.apply(
-                lambda x: energy_storage_attach.get(x["node"], None), axis=1
-            )
-            charging = charging[charging["unit"].isin(units)]
-            charging = charging.drop(columns=["vartype", "node"]).set_index(
-                ["unit", "hour"]
-            )
+        charging["unit"] = charging.apply(
+            lambda x: energy_storage_attach.get(x["node"], None), axis=1
+        )
+        charging = charging[charging["unit"].isin(units)]
+        charging = charging.drop(columns=["vartype", "node"]).set_index(
+            ["unit", "hour"]
+        )
+        if charging.empty:
+            charging = 0
+
         # Capacity factor is the sum of generation and charging divided by the unit capacity
         output = generation + charging
         output = output.reset_index()
+
         output["capacity_factor"] = output.apply(
-            lambda x: x["value"] / unit_capacities[x["node"]], axis=1
+            lambda x: x["value"] / (contracted_capacities[x["node"]]), axis=1
         )
         return output.pivot(columns="node", index="hour", values="capacity_factor")
 
@@ -266,6 +316,10 @@ class OutputProcessor:
         node_variables: pd.DataFrame,
         max_storage: dict[str, float],
     ) -> pd.DataFrame:
+
+        if len(max_storage) == 0:
+            return pd.DataFrame()
+
         hourly_storage_state = self._get_hourly_charge_state_fraction(
             node_variables, max_storage
         )
@@ -296,7 +350,9 @@ class OutputProcessor:
         )
         return import_values
 
-    def get_co2_emission(self, co2_map: dict[str:float]) -> pd.DataFrame:
+    def get_co2_emission(
+        self, hourly_generation: pd.DataFrame, co2_map: dict[str:float] = None
+    ) -> pd.DataFrame:
         """Return the CO2 emissions for timestep.
         From Chowdhury, Dang, Nguyen, Koh, & Galelli. (2021).
 
@@ -308,6 +364,9 @@ class OutputProcessor:
         From https://www.eia.gov/environment/emissions/co2_vol_mass.php:
         solid_waste: 49.89 kg/MMBtu
               = 49.89 kg/MMBtu * 3.412 MMBtu/MWh * 1 Mton/1000 kg = 0.170
+
+
+        TODO: Fix this function
         """
         if co2_map is None:
             co2_map = {
@@ -322,7 +381,7 @@ class OutputProcessor:
                 "slack": 0.0,
             }
 
-        df = self.get_hourly_thermal_dispatch()
+        df = self.get_thermal_unit_hourly_dispatch()
         co2_emissions = pd.DataFrame()
         for fuel in df.columns:
             co2_emissions[fuel] = df[fuel] * co2_map[fuel]
@@ -379,10 +438,6 @@ class OutputProcessor:
         """Return the total generation for the whole simulation period."""
         return hourly_generation.sum().round(0)
 
-    def get_curtailed_power(self):
-        """Return the statistics of curtailed energy by hydro, solar, wind, and import."""
-        pass
-
     def get_contract_hourly_generation(
         self, node_variables: pd.DataFrame, unit_contract: dict[str, str]
     ) -> pd.DataFrame:
@@ -392,28 +447,50 @@ class OutputProcessor:
         power_variables["contract"] = power_variables.apply(
             lambda x: unit_contract.get(x["node"], None), axis=1
         )
-        return power_variables[["contract", "hour", "value"]]
+
+        return power_variables[["contract", "hour", "value"]].pivot_table(
+            index="hour", columns="contract", values="value"
+        )
 
     def get_contract_generation(
         self, node_variables: pd.DataFrame, unit_contract: dict[str, str]
     ) -> pd.DataFrame:
-        hourly_generation = self.get_contract_hourly_generation(
+        contract_hourly_generation = self.get_contract_hourly_generation(
             node_variables=node_variables, unit_contract=unit_contract
         )
-        return hourly_generation[["contract", "value"]].groupby("contract").sum()
+        return contract_hourly_generation.sum(axis=0).T
 
-    def get_contract_cost(
+    def get_contract_hourly_cost(
         self,
         node_variables: pd.DataFrame,
         unit_contract: dict[str, str],
         contract_costs: dict[str, float],
     ) -> pd.DataFrame:
-        hourly_generation = self.get_contract_hourly_generation(
+        contract_hourly_generation = self.get_contract_hourly_generation(
             node_variables=node_variables, unit_contract=unit_contract
         )
-        hourly_generation["cost"] = hourly_generation.apply(
-            lambda x: x["value"] * contract_costs[(x.contract, x.hour)], axis=1
+
+        # Create a dataframe of contract costs for ease of multiplication
+        rows = []
+        for (name, timestep), value in contract_costs.items():
+            rows.append({"contract_name": name, "timestep": timestep, "value": value})
+        contract_cost_df = pd.DataFrame(rows)
+        contract_cost_df = contract_cost_df.pivot_table(
+            index="timestep", columns="contract_name", values="value"
         )
-        return (
-            hourly_generation.drop(columns=["hour", "value"]).groupby("contract").sum()
+
+        # Multiply the generation by the cost
+        contract_hourly_cost = contract_hourly_generation.copy()
+        contract_hourly_cost = (
+            contract_hourly_generation
+            * contract_cost_df.loc[contract_hourly_generation.index]
         )
+        # Some contracts maybe superfluous and not have any associated generation
+        contract_hourly_cost = contract_hourly_cost.dropna(axis=1)
+        return contract_hourly_cost
+
+    def get_variables(
+        self, node_variables: pd.DataFrame, variables: list
+    ) -> pd.DataFrame:
+        """Return unit-level shortfall variables."""
+        return node_variables[node_variables["vartype"].isin(variables)]

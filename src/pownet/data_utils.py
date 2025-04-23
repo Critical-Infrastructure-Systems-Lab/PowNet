@@ -35,7 +35,7 @@ def get_dates(year, num_days=365):
 
 def get_datetime_index(year: int) -> pd.DatetimeIndex:
     """Return a datetime index for the given year. The index will have 8760 entries, one for each hour of the year. Exclude 29th February."""
-    dates = pd.date_range(start=f"{year}-01-01", end=f"{year+1}-01-01", freq="H")
+    dates = pd.date_range(start=f"{year}-01-01", end=f"{year+1}-01-01", freq="h")
     # Remove 29th February
     dates = dates[~((dates.month == 2) & (dates.day == 29))]
     return dates[dates.year == year]
@@ -60,7 +60,9 @@ def remove_29feb(timeseries: pd.Series) -> pd.Series:
 
 
 def create_init_condition(
-    thermal_units: list, storage_units: list = None
+    thermal_units: list,
+    storage_units: list = None,
+    ess_max_capacity: dict[str, float] = None,
 ) -> dict[(str, int), dict]:
     """Return dicts of system statuses in the format {(unit, hour): value}"""
     # Assume thermal units in the systems are offline at the beginning
@@ -78,6 +80,9 @@ def create_init_condition(
         initial_charge_state = {}
     elif len(storage_units) > 0:
         initial_charge_state = {unit: 0 for unit in storage_units}
+        if ess_max_capacity is not None:
+            for unit in ess_max_capacity:
+                initial_charge_state[unit] = ess_max_capacity[unit]
     else:
         initial_charge_state = {}
 
@@ -399,7 +404,6 @@ def get_fuel_mix_order() -> list[str]:
 
     Returns
         list[str]: The order of fuel mix.
-
     """
     return pd.read_csv(
         os.path.join(get_database_dir(), "fuels.csv"),

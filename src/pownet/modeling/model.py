@@ -17,6 +17,10 @@ from pownet.data_utils import (
 
 from .rounding_algo import optimize_with_rounding
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class PowerSystemModel:
     def __init__(self, model: gp.Model):
@@ -301,3 +305,20 @@ class PowerSystemModel:
         )
         export_prices = export_prices[export_prices["node"].isin(shared_nodes)]
         return export_prices.pivot(index="hour", columns="node", values="value")
+
+    def print_added_constraints(self):
+        added_constrs = set()
+
+        # TODO: instead of defining a list,
+        # extract the constraint names from the model itself
+
+        for attr_name in self.model.getConstrs():
+            constr_type = attr_name.ConstrName.split("[")[0]
+            added_constrs.add(constr_type)
+
+        # Sort the constraints for better readability
+        added_constrs = sorted(list(added_constrs))
+
+        log_message = "\nAdded constraints:\n"
+        log_message += "\n".join(added_constrs)
+        logger.warning(log_message)

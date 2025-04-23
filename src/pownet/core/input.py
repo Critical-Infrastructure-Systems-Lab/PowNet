@@ -28,8 +28,9 @@ class SystemInput:
         line_loss_factor: float = 0.075,
         line_capacity_factor: float = 0.9,
         load_shortfall_penalty_factor: float = 1000,
-        load_curtail_penalty_factor: float = 900,
-        spin_shortfall_penalty_factor: float = 1000,
+        load_curtail_penalty_factor: float = 1000,
+        spin_shortfall_penalty_factor: float = 900,
+        ess_discharge_shortfall_penalty_factor: float = 900,
     ) -> None:
         """This class reads the input data for the power system model."""
 
@@ -76,6 +77,11 @@ class SystemInput:
 
         # The reserve penalty is the cost of not meeting the reserve requirement. (USD/MWh)
         self.spin_shortfall_penalty_factor: float = spin_shortfall_penalty_factor
+
+        # The energy storage system discharge shortfall penalty. (USD/MWh)
+        self.ess_discharge_shortfall_penalty_factor: float = (
+            ess_discharge_shortfall_penalty_factor
+        )
 
         #################
         # Complex attributes that will be defined in load_data
@@ -130,20 +136,24 @@ class SystemInput:
         # Hydropower (hourly and daily timeseries)
         self.hydro_contracted_capacity: dict[str, float] = {}
         self.hydro_capacity: pd.DataFrame = pd.DataFrame()
+        self.hydro_max_capacity: dict[str, float] = {}
         self.hydro_unit_node: dict[str, str] = {}
         self.daily_hydro_capacity: pd.DataFrame = pd.DataFrame()
         self.daily_hydro_unit_node: dict[str, str] = {}
 
         self.solar_contracted_capacity: dict[str, float] = {}
         self.solar_capacity: pd.DataFrame = pd.DataFrame()
+        self.solar_max_capacity: dict[str, float] = {}
         self.solar_unit_node: dict[str, str] = {}
 
         self.wind_contracted_capacity: dict[str, float] = {}
         self.wind_capacity: pd.DataFrame = pd.DataFrame()
+        self.wind_max_capacity: dict[str, float] = {}
         self.wind_unit_node: dict[str, str] = {}
 
         self.import_contracted_capacity: dict[str, float] = {}
         self.import_capacity: pd.DataFrame = pd.DataFrame()
+        self.import_max_capacity: dict[str, float] = {}
         self.import_unit_node: dict[str, str] = {}
 
         self.edges: gp.tuplelist = gp.tuplelist()
@@ -459,6 +469,7 @@ class SystemInput:
                     "hydropower.csv", fuel_type="hydropower"
                 )
             )
+            self.hydro_max_capacity = self.hydro_capacity.max().to_dict()
 
         # Units with daily timeseries
         if os.path.exists(os.path.join(self.model_dir, "hydropower_daily.csv")):
@@ -467,6 +478,8 @@ class SystemInput:
                     "hydropower_daily.csv", fuel_type="hydropower"
                 )
             )
+            daily_hydro_max_capacity = self.daily_hydro_capacity.max().to_dict()
+            self.hydro_max_capacity.update(daily_hydro_max_capacity)
 
         # Check that the names do not repeat across different types
         repeated_units = set(self.hydro_unit_node.keys()).intersection(
@@ -599,14 +612,19 @@ class SystemInput:
                 "solar.csv", "solar"
             )
         )
+        self.solar_max_capacity = self.solar_capacity.max().to_dict()
+
         self.wind_capacity, self.wind_unit_node = (
             self._load_capacity_and_update_fuelmap_and_get_unit_node("wind.csv", "wind")
         )
+        self.wind_max_capacity = self.wind_capacity.max().to_dict()
+
         self.import_capacity, self.import_unit_node = (
             self._load_capacity_and_update_fuelmap_and_get_unit_node(
                 "import.csv", "import"
             )
         )
+        self.import_max_capacity = self.import_capacity.max().to_dict()
 
         self._load_contracted_capacity()
 
@@ -972,22 +990,39 @@ class SystemInput:
         self.check_data()
         self.print_summary()
 
-    def update_hydro_capacity(self, hydropower: pd.DataFrame):
-        """Update the hydropower timeseries."""
-        # Check that the dimension of the hydropower timeseries remains the same
-        if len(hydropower) != len(self.hydro_capacity):
+    def update_capacity(self, capacity_df: pd.DataFrame, unit_type: str) -> None:
+        """Update a capacity timeseries of a given unit type (hydro, solar, wind, and import).
+
+        Args:
+            capacity_df: The new capacity timeseries.
+            unit_type: The type of the unit (hydro, solar, wind, import).
+
+        Raises:
+            ValueError: If the given unit type is not supported.
+            ValueError: If the length of the timeseries does not match the existing capacity timeseries.
+            ValueError: If the timeseries does not contain all units of the given type.
+        """
+
+        allowed_unit_types = ["hydro", "solar", "wind", "import"]
+        if unit_type not in allowed_unit_types:
+            raise ValueError(f"Given unit type: {unit_type} not supported.")
+
+        current_capacity = getattr(self, f"{unit_type}_capacity")
+
+        if len(capacity_df) != len(current_capacity):
             raise ValueError(
                 "PowNet: The length of the hydropower timeseries must remain the same."
             )
         # Check that all hydropower units are present
-        if set(hydropower.columns) != set(self.hydro_capacity.columns):
+        if set(capacity_df.columns) != set(current_capacity.columns):
             raise ValueError(
                 "PowNet: The hydropower timeseries must contain all hydropower units."
             )
-        self.hydro_capacity = hydropower.copy()
+        # Save a copy to prevent unintended changes
+        setattr(self, f"{unit_type}_capacity", capacity_df.copy())
 
     def get_unit_contracts(self) -> dict[str, str]:
-        temp_dict = self.fuel_contracts.copy()
-        temp_dict.update(self.nondispatch_contracts)
-        temp_dict.update(self.ess_contracts)
-        return temp_dict
+        all_contracts = self.fuel_contracts.copy()
+        all_contracts.update(self.nondispatch_contracts)
+        all_contracts.update(self.ess_contracts)
+        return all_contracts

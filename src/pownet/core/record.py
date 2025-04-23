@@ -2,10 +2,10 @@
 TODO: self.current_hydro, self.current_import for model coupling
 """
 
-from .input import SystemInput
-
+import json
 import pandas as pd
 
+from .input import SystemInput
 from pownet.data_utils import (
     parse_node_variables,
     parse_flow_variables,
@@ -203,6 +203,11 @@ class SystemRecord:
             "initial_charge_state": self.current_charge_state,
         }
 
+    def write_init_conds(self, output_folder: str) -> None:
+        init_conds = self.get_init_conds()
+        with open(f"{output_folder}/ilp_init_conds.json", "w") as f:
+            json.dump(init_conds, f, indent=4)
+
     def get_node_variables(self) -> pd.DataFrame:
         """Return node-specific variables. These variables include
         dispatch, unit status, unit switching, etc.
@@ -232,6 +237,9 @@ class SystemRecord:
         return self.lmp_df.pivot_table(
             index="hour", columns="node", values="value", aggfunc="first"
         )
+
+    def get_model_stats(self) -> pd.DataFrame:
+        return pd.DataFrame({"objval": self.objvals, "runtime": self.runtimes})
 
     def write_simulation_results(self, output_folder: str) -> None:
         """
@@ -266,7 +274,7 @@ class SystemRecord:
 
         # Objective values and runtimes
         write_df(
-            pd.DataFrame({"objval": self.objvals, "runtime": self.runtimes}),
+            self.get_model_stats(),
             output_folder=output_folder,
             output_name="model_stats",
             model_id=self.inputs.model_id,
