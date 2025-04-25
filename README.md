@@ -4,12 +4,23 @@
 [![Read the Docs](https://img.shields.io/readthedocs/pownet)](https://pownet.readthedocs.io/en/latest/)
 [![status](https://joss.theoj.org/papers/f7509a62fde550bec7ae3d1da0181b7d/status.svg)](https://joss.theoj.org/papers/f7509a62fde550bec7ae3d1da0181b7d)
 
-# PowNet: Unit Commitment / Economic Dispatch model in Python
-PowNet is a least-cost optimization model for simulating the Unit Commitment and Economic Dispatch (UC/ED) of large-scale (regional to country) power systems. In PowNet, a power system is represented by a set of nodes that include power plants, high-voltage substations, and import/export stations (for cross-border systems). The model schedules and dispatches the electricity supply from power plant units to meet hourly electricity demand in substations at a minimum cost. It considers the techno-economic constraints of both generating units and high-voltage transmission network. The power flow calculation is based on a Direct Current (DC) network (with N-1 criterion), which provides a reasonable balance between modelling accuracy and data and computational requirements. PowNet can easily integrate information about variable renewable resources (e.g., hydro, wind, solar) into the UC/ED process. For example, it can be linked with models that estimate the electricity supply available from renewable resources as a function of the climatic conditions. In addition, PowNet has provision to account for the effect of droughts on the generation of dispatchable thermal units (e.g., coal, oil, gas-fired units) that depend on freshwater availability. These features facilitate the application of PowNet to problems in the water-energy nexus domain that investigate the impact of water availability on electricity supply and demand. 
+# PowNet: A Production Cost Modeling Framework for Large-scale Power Systems
+Designed for power system analysis rather than complex model setup, PowNet uses simple spreadsheets as inputs. It is an open-source production cost modeling framework (PCM) built to simulate the scheduling of large-scale (regional or national) power systems. The software is written in Python.
 
-Read the PowNet Documentation here: https://pownet.readthedocs.io/en/latest
+PowNet finds the least-cost generation schedule by solving the unit commitment/economic dispatch (UC/ED) to meet hourly electricity demand.
 
-## Installing and using PowNet
+## Key functionalities
+- Models power systems including generator techno-economic constraints and network limits
+- Uses computationally efficient linearized DC power flow for network analysis
+- Supports variable renewable energy (VRE) sources, such as hydro, wind, and solar
+- Built for computational speed using the high-performance Gurobipy modeling framework with support for the open-source HiGHS solver
+- Includes features allowing the analysis of water-energy nexus impacts (e.g., drought effects on thermal units)
+
+PowNet enables analysts to readily study grid operations, VRE integration, and water-energy interactions in a low-code environment. For advanced users, it retains the flexibility needed to explore complex model configurations and research modeling algorithms.
+
+Read the Documentation for more information at https://pownet.readthedocs.io/en/latest.
+
+## Using PowNet
 To use PowNet, a user needs to supply it with CSV files. For guidance on creating these CSV files, please see examples provided [here](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/tree/master/model_library). Please ensure that column names matches with those from the examples. Details on preparing some input files can be found [here](https://critical-infrastructure-systems-lab.github.io/manual/docs/CIS-Lab-software).
 
 As for installing PowNet, there are multiple options depending on whether we want to modify the source code. However, the following step is highly recommended for any user: creating a virtual environment to manage dependencies. If using Conda, we can create an envrionment with the following command
