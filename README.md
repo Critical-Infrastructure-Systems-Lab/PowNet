@@ -5,9 +5,7 @@
 [![status](https://joss.theoj.org/papers/f7509a62fde550bec7ae3d1da0181b7d/status.svg)](https://joss.theoj.org/papers/f7509a62fde550bec7ae3d1da0181b7d)
 
 # PowNet: A Production Cost Modeling Framework for Large-scale Power Systems
-Designed for power system analysis rather than complex model setup, PowNet uses simple spreadsheets as inputs. It is an open-source production cost modeling framework (PCM) built to simulate the scheduling of large-scale (regional or national) power systems. The software is written in Python.
-
-PowNet finds the least-cost generation schedule by solving the unit commitment/economic dispatch (UC/ED) to meet hourly electricity demand.
+PowNet is an open-source production cost model (PCM) framework written in Python, designed to simulate the operational scheduling of large-scale (regional or national) power systems. It determines the least-cost schedule for power generation by solving the unit commitment (UC) and economic dispatch (ED) problems – a process commonly used for applications like day-ahead market simulation. Designed for users focused on power system analysis rather than complex model development, PowNet uses simple spreadsheet files for data inputs, significantly simplifying model setup and modification. As for advanced users, the framework's modular design provides modeling flexibility to implement customized analysis or explore complex modeling algorithms.
 
 ## Key functionalities
 - Models power systems including generator techno-economic constraints and network limits
