@@ -7,7 +7,12 @@ build:
 
 python:
   install:
+    # Install dependencies for Read the Docs
     - requirements: docs/requirements.txt
+    # Install PowNet package
+    - method: pip
+      path: .
 
 sphinx:
   configuration: docs/source/conf.py
+
