@@ -29,7 +29,7 @@ copyright = "2021-2025, Critical Infrastructure Systems (CIS) Lab, Cornell Unive
 author = "Critical Infrastructure Systems Lab (CIS), Cornell University"
 
 # TODO: Show version and release in the documentation
-release = get_version(project)
+release = get_version("pownet")
 version = ".".join(release.split(".")[:1])
 
 # -- General configuration
