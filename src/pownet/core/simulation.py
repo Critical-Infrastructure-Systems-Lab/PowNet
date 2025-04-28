@@ -1,4 +1,4 @@
-""" simulation.py: Main class to run the simulation of the power system model """
+"""simulation.py: Main class to run the simulation of the power system model"""
 
 import pandas as pd
 from pownet.data_utils import (
@@ -132,7 +132,6 @@ class Simulator:
         )
         # Produce an error if the data is not making sense
         self.inputs.load_and_check_data()
-        self.inputs.print_summary()
 
         ####################### Simulation
         self.system_record = SystemRecord(self.inputs)

@@ -1,5 +1,4 @@
-""" builder.py: ModelBuilder class builds and updates the unit commitment problem.
-"""
+"""builder.py: ModelBuilder class builds and updates the unit commitment problem."""
 
 from .input import SystemInput
 
@@ -12,20 +11,13 @@ from pownet.data_utils import get_unit_hour_from_varnam, get_edge_hour_from_varn
 
 
 class ModelBuilder:
-    """Build an instance of the Unit Commitment Problem.
-    We keep the instance of the Gurobi model throughout simulation to minimize
-    the overhead of creating a new model for each iteration and also benefit from
-    the warm start feature of Gurobi. This means the following:
-    * Variable names are unchanged across iterations
-    * Only a subset of constraints are updated at each iteration
-      - Remove and build the objective function
-      - Update the upper bounds of variables
-      - Remove and add constraints that are time-dependent, such as
+    """Builds a model instance of the optimization Problem for each timestep. The model instance
+    is built from scratch at the first timestep and updated at each subsequent timesteps to
+    minimize the runtime and allow for warm start. The update process includes:
 
-    Define the lower/upper bounds explicitly at the variable level instead of
-    defining them as constraints. This approach can leverage gurobi's presolve
-    and reduce the size of the model.
-
+        - Removing and adding time-dependent terms in the objective function
+        - Updating the upper bounds of time-dependent variables
+        - Removing and adding time-dependent constraints
     """
 
     def __init__(self, inputs: SystemInput) -> None:
@@ -145,7 +137,7 @@ class ModelBuilder:
         """Add variables to the model.
 
         Thermal-unit variables:
-        -----------------
+        --------------------------------
         - `pthermal`: Power output by a thermal unit (also called dispatch). Unit: MW.
         - `vpower`: Power output *ABOVE* the minimum capacity of a thermal unit. Unit: MW.
         - `vpowerbar`: Maximum power output *ABOVE* the minimum capacity of a thermal unit. Unit: MW.
@@ -156,7 +148,7 @@ class ModelBuilder:
         - `pthermal_curtail`: Curtailed power output by a thermal unit. Unit: MW.
 
         Energy-storage variables:
-        -----------------
+        --------------------------------
         - `pcharge`: Power charging an energy storage system. Unit: MW.
         - `pdischarge`: Power discharging an energy storage system. Unit: MW.
         - `pdischarge_shortfall`: Shortfall in discharging power. Unit: MW.
@@ -165,7 +157,7 @@ class ModelBuilder:
         - `udischarge`: Indicator that an ESS is discharging. Unitless.
 
         Renewable energy and import variables:
-        -----------------
+        ------------------------------------------
         - `phydro`: Hydropower output. Unit: MW.
         - `psolar`: Solar power output. Unit: MW.
         - `pwind`: Wind power output. Unit: MW.
@@ -182,11 +174,11 @@ class ModelBuilder:
         - `theta`: Voltage angle. Unit: Radians.
 
         Flow variables:
-        -----------------
+        ------------------
         - `flow`: Power flow on transmission lines. Unit: MW/hr.
 
         System variables:
-        -----------------
+        ------------------
         - `spin_shortfall`: Spinning reserve shortfall. Unit: MW.
 
         Args:

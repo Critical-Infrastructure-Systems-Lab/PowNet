@@ -1,5 +1,4 @@
-""" output.py: Contains the OutputProcessor class, which processes the output from PowNet and provides methods to access the data.
-"""
+"""output.py: the OutputProcessor class processes modeling outputs in typical formats."""
 
 import pandas as pd
 
@@ -9,7 +8,6 @@ from pownet.data_utils import get_dates, get_fuel_mix_order
 
 class OutputProcessor:
     def __init__(self) -> None:
-        """Initialize the OutputProcessor object."""
         self.year: int = None
         self.fuelmap: dict = {}
         self.dates: pd.DataFrame = pd.DataFrame()
@@ -23,6 +21,7 @@ class OutputProcessor:
         self.dates.index += 1
 
     def _get_power_variables(self, node_variables: pd.DataFrame) -> pd.DataFrame:
+        """Return variables related to power generation and storage from units."""
         power_vars = {
             "pthermal",
             "psolar",
@@ -363,10 +362,8 @@ class OutputProcessor:
 
         From https://www.eia.gov/environment/emissions/co2_vol_mass.php:
         solid_waste: 49.89 kg/MMBtu
-              = 49.89 kg/MMBtu * 3.412 MMBtu/MWh * 1 Mton/1000 kg = 0.170
+        (From 49.89 kg/MMBtu * 3.412 MMBtu/MWh * 1 Mton/1000 kg = 0.170 Mton/MWh)
 
-
-        TODO: Fix this function
         """
         if co2_map is None:
             co2_map = {

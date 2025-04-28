@@ -1,9 +1,3 @@
-pownet.core package
-===================
-
-Submodules
-----------
-
 pownet.core.builder module
 --------------------------
 
@@ -56,14 +50,6 @@ pownet.core.visualizer module
 -----------------------------
 
 .. automodule:: pownet.core.visualizer
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: pownet.core
    :members:
    :undoc-members:
    :show-inheritance:

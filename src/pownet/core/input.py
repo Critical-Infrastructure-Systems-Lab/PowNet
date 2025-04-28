@@ -1,4 +1,4 @@
-""" input.py: SystemInput class loads and checks the input data. It is used by other PowNet objects to access the input data. """
+"""input.py: SystemInput class loads and checks the input data. It is used by other PowNet objects to access the input data."""
 
 from datetime import datetime
 import logging
