@@ -37,7 +37,6 @@ School of Civil and Environmental Engineering, Cornell University.
 
 * :doc:`examples/custom_workflow`
 * :doc:`examples/synthetic_solar`
-* :doc:`examples/rounding_heuristic`
 * :doc:`examples/reservoir_simulation`
 
 .. toctree::
@@ -47,7 +46,6 @@ School of Civil and Environmental Engineering, Cornell University.
 
    examples/custom_workflow
    examples/synthetic_solar
-   examples/rounding_heuristic
    examples/reservoir_simulation
 
 
