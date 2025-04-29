@@ -36,6 +36,7 @@ School of Civil and Environmental Engineering, Cornell University.
 **Examples**
 
 * :doc:`examples/custom_workflow`
+* :doc:`examples/synthetic_load`
 * :doc:`examples/synthetic_solar`
 * :doc:`examples/reservoir_simulation`
 
@@ -45,6 +46,7 @@ School of Civil and Environmental Engineering, Cornell University.
    :maxdepth: 1
 
    examples/custom_workflow
+   examples/synthetic_load
    examples/synthetic_solar
    examples/reservoir_simulation
 
