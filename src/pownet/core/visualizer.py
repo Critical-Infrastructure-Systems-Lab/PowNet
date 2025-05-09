@@ -43,7 +43,7 @@ class Visualizer:
         fig, ax = plt.subplots(figsize=(8, 5))
 
         dispatch.plot.bar(
-            stacked=True, ax=ax, linewidth=0, color=self.fuel_color_map, legend=False
+            stacked=True, ax=ax, linewidth=0, color=self.fuel_color_map, legend=True
         )
         ax.plot(
             range(0, total_timesteps),
@@ -73,6 +73,7 @@ class Visualizer:
                 bbox_inches="tight",
                 dpi=350,
             )
+        plt.tight_layout()
         plt.show()
 
     def plot_fuelmix_area(

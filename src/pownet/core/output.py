@@ -56,6 +56,23 @@ class OutputProcessor:
         power_variables.loc[power_variables["vartype"] == "pcharge", "value"] *= -1
         return power_variables
 
+    def get_unit_hourly_generation(self, node_variables: pd.DataFrame) -> pd.DataFrame:
+        power_variables = self._get_power_variables(node_variables)
+        hourly_generation = (
+            power_variables[["node", "value", "hour"]]
+            .groupby(["node", "hour"])
+            .sum()
+        )
+        hourly_generation = hourly_generation.reset_index()
+        hourly_generation = hourly_generation.pivot(
+            columns=["hour"], index=["node"]
+        ).T.reset_index(drop=True)
+        # PowNet indexing starts at 1
+        hourly_generation.index += 1
+        hourly_generation.index.name = "Hour"
+
+        return hourly_generation
+
     def get_hourly_generation(self, node_variables: pd.DataFrame) -> pd.DataFrame:
         power_variables = self._get_power_variables(node_variables)
         hourly_generation = (

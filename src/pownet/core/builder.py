@@ -122,6 +122,7 @@ class ModelBuilder:
 
         self.c_hydro_curtail_ess = gp.tupledict()
         self.c_daily_hydro_curtail_ess = gp.tupledict()
+        self.c_weekly_hydro_curtail_ess = gp.tupledict()
         self.c_solar_curtail_ess = gp.tupledict()
         self.c_wind_curtail_ess = gp.tupledict()
         self.c_import_curtail_ess = gp.tupledict()
@@ -130,11 +131,13 @@ class ModelBuilder:
         # and provides indicators if the unit is online
         self.c_link_hydro_pu = gp.tupledict()
         self.c_link_daily_hydro_pu = gp.tupledict()
+        self.c_link_weekly_hydro_pu = gp.tupledict()
         self.c_link_solar_pu = gp.tupledict()
         self.c_link_wind_pu = gp.tupledict()
         self.c_link_import_pu = gp.tupledict()
 
         self.c_hydro_limit_daily = gp.tupledict()
+        self.c_hydro_limit_weekly = gp.tupledict()
 
         # Energy storage constraints
         self.c_link_ess_charge = gp.tupledict()
@@ -380,6 +383,12 @@ class ModelBuilder:
                 self.inputs.daily_hydro_must_take_units,
                 self.inputs.nondispatch_contracts,
             ),
+            # Weekly hydro
+            (
+                self.phydro_curtail,
+                self.inputs.weekly_hydro_must_take_units,
+                self.inputs.nondispatch_contracts,
+            ),
             (self.psolar, self.inputs.solar_units, self.inputs.nondispatch_contracts),
             (
                 self.psolar_curtail,
@@ -531,6 +540,7 @@ class ModelBuilder:
             sim_horizon=self.inputs.sim_horizon,
             hydro_units=self.inputs.daily_hydro_unit_node.keys(),
             hydro_capacity=self.inputs.daily_hydro_capacity,
+            hydro_capacity_min=self.inputs.hydro_capacity_min,
         )
         # (2) The curtailment is enforced for the day and not the hour.
         self.c_daily_hydro_curtail_ess = modeling.add_c_unit_curtail_ess_daily(
@@ -546,10 +556,36 @@ class ModelBuilder:
             ess_attached=self.inputs.ess_daily_hydro_units,
         )
 
+    def _add_weekly_hydropower_constraints(self, step_k: int) -> None:
+        # (1) Define the weekly upper bound.
+        self.c_hydro_limit_weekly = modeling.add_c_hydro_limit_weekly(
+            model=self.model,
+            phydro=self.phydro,
+            step_k=step_k,
+            sim_horizon=self.inputs.sim_horizon,
+            hydro_units=self.inputs.weekly_hydro_unit_node.keys(),
+            hydro_capacity=self.inputs.weekly_hydro_capacity,
+            hydro_capacity_min=self.inputs.hydro_capacity_min,
+        )
+        # (2) The curtailment is enforced for the day and not the hour.
+        # self.c_weekly_hydro_curtail_ess = modeling.add_c_unit_curtail_ess_weekly(
+        #     model=self.model,
+        #     pdispatch=self.phydro,
+        #     pcurtail=self.phydro_curtail,
+        #     pcharge=self.pcharge,
+        #     type="hydro",
+        #     sim_horizon=self.inputs.sim_horizon,
+        #     step_k=step_k,
+        #     units=self.inputs.weekly_hydro_unit_node.keys(),
+        #     capacity_df=self.inputs.weekly_hydro_capacity,
+        #     ess_attached=self.inputs.ess_weekly_hydro_units,
+        # )
+
     def _add_hydropower_constraints(self, step_k: int) -> None:
 
         self._add_hourly_hydropower_constraints(step_k=step_k)
         self._add_daily_hydropower_constraints(step_k=step_k)
+        self._add_weekly_hydropower_constraints(step_k=step_k)
 
         # Does not update every step_k for this constraint
         self.c_link_daily_hydro_pu = modeling.add_c_link_unit_pu_constant(
@@ -558,6 +594,16 @@ class ModelBuilder:
             u=self.uhydro,
             timesteps=self.timesteps,
             units=self.inputs.daily_hydro_unit_node.keys(),
+            contracted_capacity=self.inputs.hydro_contracted_capacity,
+        )
+
+        # Does not update every step_k for this constraint
+        self.c_link_weekly_hydro_pu = modeling.add_c_link_unit_pu_constant(
+            model=self.model,
+            pdispatch=self.phydro,
+            u=self.uhydro,
+            timesteps=self.timesteps,
+            units=self.inputs.weekly_hydro_unit_node.keys(),
             contracted_capacity=self.inputs.hydro_contracted_capacity,
         )
 
@@ -570,6 +616,10 @@ class ModelBuilder:
         self.model.remove(self.c_hydro_limit_daily)
         self.model.remove(self.c_daily_hydro_curtail_ess)
         self._add_daily_hydropower_constraints(step_k=step_k)
+
+        self.model.remove(self.c_hydro_limit_weekly)
+        # self.model.remove(self.c_weekly_hydro_curtail_ess)
+        self._add_weekly_hydropower_constraints(step_k=step_k)
 
     def _add_unit_link_pu(self, step_k: int) -> None:
         # Define parameters
@@ -1127,10 +1177,13 @@ class ModelBuilder:
         - c_link_import_pu: Import capacity is a timeseries
 
         - c_hydro_limit_daily: Hydropower capacity is a timeseries
+        - c_hydro_limit_weekly: Hydropower capacity is a timeseries
 
         *Curtailment*
         - c_hydro_curtail_ess: Hydropower capacity is a timeseries
         - c_daily_hydro_curtail_ess: Daily hydropower capacity is a timeseries
+        - c_weekly_hydro_curtail_ess: Weekly hydropower capacity is a timeseries
+
         - c_solar_curtail_ess: Solar capacity is a timeseries
         - c_wind_curtail_ess: Wind capacity is a timeseries
         - c_import_curtail_ess: Import capacity is a timeseries
@@ -1376,15 +1429,18 @@ class ModelBuilder:
             "c_reserve_req",
             "c_hydro_curtail_ess",
             "c_daily_hydro_curtail_ess",
+            "c_weekly_hydro_curtail_ess",
             "c_solar_curtail_ess",
             "c_wind_curtail_ess",
             "c_import_curtail_ess",
             "c_link_hydro_pu",
             "c_link_daily_hydro_pu",
+            "c_link_weekly_hydro_pu",
             "c_link_solar_pu",
             "c_link_wind_pu",
             "c_link_import_pu",
             "c_hydro_limit_daily",
+            "c_hydro_limit_weekly",
             "c_link_ess_charge",
             "c_link_discharge",
             "c_link_ess_state",

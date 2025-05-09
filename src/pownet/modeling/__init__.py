@@ -42,6 +42,7 @@ from .constraint import (
     add_c_reserve_req_1,
     add_c_reserve_req_2,
     add_c_hydro_limit_daily,
+    add_c_hydro_limit_weekly,
     add_c_link_unit_pu,
     add_c_link_unit_pu_constant,
     add_c_unit_curtail_ess,

@@ -9,15 +9,15 @@ def main():
 
     # --------- User inputs
 
-    input_folder = "..//model_library"
-    output_folder = "..//outputs"
+    input_folder = ".//model_library"
+    output_folder = ".//outputs"
 
-    model_name = "dummy"
+    model_name = "cumberland"
     model_year = 2016
 
     # Simulation parameters
     sim_horizon = 24
-    steps_to_run = 2  # 2 Simulation days or 48 hours
+    steps_to_run = 30  # 2 Simulation days or 48 hours
     solver = "gurobi"  # or highs
 
     # --------- End of user inputs
@@ -42,6 +42,8 @@ def main():
 
     # Plot the results
     simulator.plot_fuelmix("bar", output_folder)
+    simulator.plot_thermal_units(output_folder)
+
     simulator.plot_thermal_units(output_folder)
 
 
