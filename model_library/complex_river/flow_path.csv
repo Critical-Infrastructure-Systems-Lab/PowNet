@@ -1,0 +1,4 @@
+source,sink,lag_time,flow_fraction
+atay,kamchay,0,1
+kamchay,kirirom1,0,0.25
+kamchay,kirirom2,0,0.75

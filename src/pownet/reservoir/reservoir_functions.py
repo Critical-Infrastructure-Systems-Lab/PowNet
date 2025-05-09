@@ -1,7 +1,58 @@
-""" reservoir_functions.py: Functions for operating reservoirs."""
+"""reservoir_functions.py: Functions for operating reservoirs."""
 
+import networkx as nx
 import numpy as np
 import pandas as pd
+
+
+def find_upstream_units(flow_paths: pd.DataFrame, unit_name: str) -> list[str]:
+    """Find upstream units for a given unit.
+
+    Args:
+        flow_paths (pd.DataFrame): DataFrame containing flow paths between units.
+        unit_name (str): The name of the unit to find upstream units for.
+
+    Returns:
+        list[str]: List of upstream unit names.
+    """
+    return flow_paths[flow_paths["sink"] == unit_name]["source"].unique().tolist()
+
+
+def find_downstream_flow_fractions(
+    flow_paths: pd.DataFrame, unit_name: str
+) -> list[str, float]:
+    """Find downstream units for a given unit.
+
+    Args:
+        flow_paths (pd.DataFrame): DataFrame containing flow paths between units.
+        unit_name (str): The name of the unit to find downstream units for.
+
+    Returns:
+        list[str, float]: List of downstream unit names and their flow fractions.
+    """
+    return (
+        flow_paths.loc[flow_paths["source"] == unit_name, ["sink", "flow_fraction"]]
+        .set_index("sink")
+        .to_dict()["flow_fraction"]
+    )
+
+
+def find_simulation_order(flow_paths: pd.DataFrame) -> list[str]:
+    """Determine the order in which reservoirs are simulated based on their upstream/downstream relationships.
+
+    Args:
+        flow_paths (pd.DataFrame): DataFrame containing flow paths represented by the source and sink columns.
+
+    Returns:
+        list[str]: A list of reservoir names in the order they should be simulated.
+
+    """
+    edgelist = [(a, b) for a, b in zip(flow_paths["source"], flow_paths["sink"])]
+    G = nx.DiGraph(edgelist)
+    try:
+        return list(nx.topological_sort(G))
+    except nx.NetworkXUnfeasible:
+        raise ValueError("The reservoir network has cycles.")
 
 
 def adjust_hydropeaking(
@@ -99,12 +150,22 @@ def calc_min_environ_flow(
         return min(medium_fraction * inflow, max_release)
 
 
-def calc_min_flow(
+def calc_minflow(
     inflow: pd.Series, mean_annual_flow: pd.Series, max_release: float
-) -> None:
-    """Find the minimum environmental flow for each day."""
+) -> pd.Series:
+    """Find the minimum environmental flow.
+
+    Args:
+        inflow (pd.Series): The inflow to the reservoir
+        mean_annual_flow (pd.Series): The mean annual flow
+        max_release (float): The maximum release
+
+    Returns:
+        pd.Series: The minimum environmental flow
+
+    """
     df = pd.DataFrame({"inflow": inflow, "mean_annual_flow": mean_annual_flow})
-    min_flow = df.apply(
+    minflow = df.apply(
         lambda x: calc_min_environ_flow(
             inflow=x.inflow,
             mean_annual_flow=x.mean_annual_flow,
@@ -112,7 +173,7 @@ def calc_min_flow(
         ),
         axis=1,
     )
-    return min_flow
+    return minflow
 
 
 def calc_target_level(
@@ -338,7 +399,7 @@ def calc_max_release(
     total_inflow_t: float,
     release_t0: float,
     storage_t0: float,
-    min_flow_t: float,
+    minflow_t: float,
     max_release: float,
     hydropeak_factor: float,
 ) -> float:
@@ -348,7 +409,7 @@ def calc_max_release(
     # Release cannot be larger than the turbine capacity
     max_release_t = min(max_release, max_release_hydropeak_t)
     # Release cannot be less than the min environmental flow
-    max_release_t = max(min_flow_t, max_release_t)
+    max_release_t = max(minflow_t, max_release_t)
     # Cannot release more than the amount of water in the reservoir
     if storage_t0 + total_inflow_t - max_release_t < 0:
         max_release_t = storage_t0 + total_inflow_t
@@ -359,7 +420,7 @@ def calc_min_release(
     total_inflow_t: float,
     release_t0: float,
     storage_t0: float,
-    min_flow_t: float,
+    minflow_t: float,
     max_release: float,
     hydropeak_factor: float,
 ) -> float:
@@ -367,7 +428,7 @@ def calc_min_release(
     # Release is limited by the hydropeaking factor
     min_release_hydropeak_t = release_t0 - max_release * hydropeak_factor
     # Limited by the minimum environmental flow
-    min_release_t = max(min_flow_t, min_release_hydropeak_t)
+    min_release_t = max(minflow_t, min_release_hydropeak_t)
     # Release cannot make the storage become negative
     if storage_t0 + total_inflow_t - min_release_t < 0:
         min_release_t = storage_t0 + total_inflow_t

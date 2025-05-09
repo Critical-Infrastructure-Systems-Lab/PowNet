@@ -1,11 +1,9 @@
-""" reservoir_operator.py: Defines the ReservoirOperator class """
+"""reservoir_operator.py: Defines the ReservoirOperator class"""
 
 import os
 
 import numpy as np
 import pandas as pd
-
-from pownet.folder_utils import get_reservoir_file
 
 from .basin import Basin
 from .reservoir import Reservoir

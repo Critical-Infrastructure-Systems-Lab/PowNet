@@ -1,26 +1,21 @@
-""" basin.py: Basin class
-"""
+"""basin.py: Basin class"""
 
 import os
 
 import pandas as pd
 
-from pownet.folder_utils import get_reservoir_file
 from .reservoir import Reservoir
 
 
 class Basin:
     def __init__(
         self,
-        model_name: str,
         basin_name: str,
         sim_horizon: int = 365,
     ) -> None:
         """
         A class to manage reservoirs in a basin.
         """
-
-        self.model_name: str = model_name
         self.basin_name: str = basin_name
         self.sim_horizon: int = sim_horizon
 
