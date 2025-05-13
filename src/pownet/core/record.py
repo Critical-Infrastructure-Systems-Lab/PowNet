@@ -1,11 +1,11 @@
-""" record.py: This module contains the SystemRecord class, which processes stores the modeling outputs from each iteration.
+"""record.py: The SystemRecord class processes stores the modeling outputs from each iteration.
 TODO: self.current_hydro, self.current_import for model coupling
 """
 
 import json
 import pandas as pd
 
-from .input import SystemInput
+from ..input import SystemInput
 from pownet.data_utils import (
     parse_node_variables,
     parse_flow_variables,

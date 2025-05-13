@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from .input import SystemInput
+from ..input import SystemInput
 from pownet.data_utils import get_dates, get_fuel_mix_order
 
 

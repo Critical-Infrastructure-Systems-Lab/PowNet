@@ -117,7 +117,7 @@ def get_node_hour_from_flow_constraint(constraint_name: str) -> tuple[str, int]:
         return None, None
 
 
-def get_unit_hour_from_varnam(var_name: str) -> tuple[str, int]:
+def get_unit_hour_from_varname(var_name: str) -> tuple[str, int]:
     """Get the unit and hour from the variable name.
 
     Args:
@@ -138,23 +138,25 @@ def get_unit_hour_from_varnam(var_name: str) -> tuple[str, int]:
 
 
 def get_edge_hour_from_varname(var_name: str) -> tuple[tuple[str, str], int]:
-    """Get the edge and hour from the variable name: flow[a,b,t].
+    """Get the edge and hour from the variable name: flow_fwd[a,b,t] or flow_bwd[a,b,t].
 
     Args:
         var_name: The name of the variable.
 
     Returns:
-        The edge and hour.
+        The edge (tuple of two strings) and hour (int).
 
     """
-    edge_var_pattern = re.compile(r"flow\[(.+),(.+),(\d+)\]")
+    edge_var_pattern = re.compile(r"flow_(?:fwd|bwd)\[([^,]+),([^,]+),(\d+)\]")
     match = edge_var_pattern.match(var_name)
-    if match:
-        edge = (match.group(1), match.group(2))
-        hour = int(match.group(3))
-        return edge, hour
-    else:
-        raise ValueError("Invalid variable name format")
+    if not match:
+        raise ValueError(f"Invalid variable name format: {var_name}")
+
+    node1 = match.group(1)
+    node2 = match.group(2)
+    hour = int(match.group(3))
+    edge = (node1, node2)
+    return edge, hour
 
 
 def get_current_time() -> str:
@@ -453,3 +455,21 @@ def create_geoseries_columns(df: pd.DataFrame) -> pd.DataFrame:
     df["source_location"] = gpd.GeoSeries(df["source_location"])
     df["sink_location"] = gpd.GeoSeries(df["sink_location"])
     return df
+
+
+def get_capacity_value(t: int, unit: str, step_k: int, capacity_df) -> float:
+    """Get the capacity value for a given unit and timestep.
+    Args:
+        t: The timestep.
+        unit: The unit name.
+        step_k: The current simulation period.
+        capacity_df: The dataframe containing the capacity values.
+
+    Returns:
+        The capacity value for the given unit and timestep.
+    """
+    hours_per_timestep = 24  # For rolling horizon
+    value = capacity_df.loc[t + (step_k - 1) * hours_per_timestep, unit]
+    if isinstance(value, pd.Series):
+        return value.iloc[0]
+    return value

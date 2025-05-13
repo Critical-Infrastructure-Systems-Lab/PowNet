@@ -25,7 +25,8 @@ class SystemInput:
         dc_opf: str = "kirchhoff",
         spin_reserve_factor: float = 0.15,
         spin_reserve_mw: float = None,
-        line_loss_factor: float = 0.075,
+        gen_loss_factor: float = 0.01,
+        line_loss_factor: float = 0.0,
         line_capacity_factor: float = 0.9,
         load_shortfall_penalty_factor: float = 1000,
         load_curtail_penalty_factor: float = 1000,
@@ -62,8 +63,7 @@ class SystemInput:
         self.spin_reserve_factor: float = spin_reserve_factor
         self.spin_reserve_mw: float = spin_reserve_mw
 
-        # The line loss factor is also called the inefficiency factor.
-        # It is the fraction of power lost in the transmission line.
+        self.gen_loss_factor: float = gen_loss_factor
         self.line_loss_factor: float = line_loss_factor
 
         # The line capacity factor is the fraction of the line capacity
@@ -130,6 +130,7 @@ class SystemInput:
 
         # Demand
         self.demand: pd.DataFrame = pd.DataFrame()
+        self.total_demand: pd.Series = pd.Series()
         self.demand_nodes: list[str] = []
         self.max_demand_node: str = ""
 
@@ -592,6 +593,8 @@ class SystemInput:
             "demand_export.csv", header_levels=0
         )
 
+        self.total_demand = self.demand.sum(axis=1)
+
         # Demand nodes
         self.demand_nodes = self.demand.columns.tolist()
         # Identify the node with the maximum demand
@@ -798,6 +801,8 @@ class SystemInput:
 
         if not 0 <= self.spin_reserve_factor <= 1:
             raise ValueError("PowNet: Spin reserve factor must be between 0 and 1.")
+        if not 0 <= self.gen_loss_factor <= 1:
+            raise ValueError("PowNet: Generation loss factor must be between 0 and 1.")
         if not 0 <= self.line_loss_factor <= 1:
             raise ValueError("PowNet: Line loss factor must be between 0 and 1.")
         if not 0 <= self.line_capacity_factor <= 1:
@@ -975,6 +980,7 @@ class SystemInput:
         {'Power flow':<25} = {self.dc_opf}
         {'Spin reserve factor:':<25} = {self.spin_reserve_factor if self.spin_reserve_mw is None else 'Use an absolute value in MW.'}
         {'Spin reserve amount (MW):':<25} = {self.spin_reserve_mw if self.spin_reserve_mw is not None else 'Using a factor.'}
+        {'Generation loss factor':<25} = {self.gen_loss_factor}
         {'Line loss factor':<25} = {self.line_loss_factor}
         {'Line capacity factor':<25} = {self.line_capacity_factor}
         {'Load shortfall penalty':<25} = {self.load_shortfall_penalty_factor}
