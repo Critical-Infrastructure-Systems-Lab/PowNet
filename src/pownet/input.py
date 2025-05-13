@@ -26,7 +26,7 @@ class SystemInput:
         spin_reserve_factor: float = 0.15,
         spin_reserve_mw: float = None,
         gen_loss_factor: float = 0.01,
-        line_loss_factor: float = 0.0,
+        line_loss_factor: float = 0.0001,
         line_capacity_factor: float = 0.9,
         load_shortfall_penalty_factor: float = 1000,
         load_curtail_penalty_factor: float = 1000,
