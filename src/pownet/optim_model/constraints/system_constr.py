@@ -167,7 +167,7 @@ def add_c_flow_balance(
     demand_nodes: list,
     demand: pd.DataFrame,
     gen_loss_factor: float,
-    line_loss_factor: float = 0.0,
+    line_loss_factor: float,
 ) -> gp.tupledict:
     """Adds power flow balance constraints to the optimization model.
 
