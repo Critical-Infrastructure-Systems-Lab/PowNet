@@ -390,42 +390,76 @@ class OutputProcessor:
         line_locations: pd.DataFrame,
         rated_line_capacities: dict[tuple[str, str], int],
     ) -> pd.DataFrame:
+        """Calculates the maximum utilization for each transmission line.
+
+        This function takes the flow results from an optimization model,
+        determines the peak flow on each line over the entire simulation horizon,
+        and then calculates the utilization of each line as a percentage of its
+        rated capacity. It also merges location data for the lines.
+
+        Args:
+            flow_variables (pd.DataFrame): DataFrame containing flow values for each
+                line at each timestep. Expected columns: 'node_a', 'node_b',
+                'value' (flow magnitude), and 'hour'.
+            line_locations (pd.DataFrame): DataFrame containing location or other
+                metadata for each line. Expected to be indexed by a
+                MultiIndex ('source', 'sink').
+            rated_line_capacities (dict[tuple[str, str], int]): Dictionary mapping
+                line tuples (source_node, sink_node) to their rated
+                power capacity (e.g., in MW).
+
+        Returns:
+            pd.DataFrame: A DataFrame indexed by ('source', 'sink') with columns
+                including 'max_line_usage' (peak flow / rated capacity),
+                columns from `line_locations`, and 'rated_capacity'.
+        """
 
         # Prevent unintentional modification to the original dataframe
-        flow_variables = flow_variables.copy()
+        flow_vars = flow_variables.copy()
 
-        flow_variables = flow_variables.rename(
+        # Standardize column names and remove unnecessary columns
+        flow_vars = flow_vars.rename(
             columns={"node_a": "source", "node_b": "sink"}
-        ).drop("hour", axis=1)
-        # Flow can be negative due to flow being directional
-        flow_variables["value"] = flow_variables["value"].abs()
+        ).drop(
+            "hour", axis=1
+        )  # Assuming 'hour' is not needed for max usage across all time
 
         # Find the max_value for each line segment across the whole time horizon
-        flow_variables["max_value"] = flow_variables.groupby(["source", "sink"])[
+        # Flow variables are non-negative, so we can use max() to find the peak flow.
+        flow_vars["max_value"] = flow_vars.groupby(["source", "sink"])[
             "value"
         ].transform("max")
-        # Drop duplicates because we are only interested in the maximum flow
-        # over the whole simulation
-        flow_variables = flow_variables.drop_duplicates(subset=["source", "sink"])
 
-        # Max utilization rate
-        flow_variables["max_line_usage"] = flow_variables.apply(
+        # Drop duplicates because we are only interested in the maximum flow
+        # over the whole simulation for each unique line
+        flow_vars = flow_vars.drop_duplicates(subset=["source", "sink"])
+
+        # Calculate maximum utilization rate
+        # Ensure that the (row["source"], row["sink"]) tuple exactly matches the keys in rated_line_capacities
+        flow_vars["max_line_usage"] = flow_vars.apply(
             lambda row: row["max_value"]
             / rated_line_capacities[(row["source"], row["sink"])],
             axis=1,
         ).round(4)
 
-        flow_variables = flow_variables[["source", "sink", "max_line_usage"]].set_index(
-            ["source", "sink"]
-        )
-        flow_variables = flow_variables.merge(
+        # Select and re-index the DataFrame
+        flow_vars = flow_vars[
+            ["source", "sink", "max_value", "max_line_usage"]
+        ].set_index(["source", "sink"])
+
+        # Merge with line location data
+        # The index of flow_vars is now (source, sink)
+        # line_locations should also be indexed by (source, sink) for a clean merge
+        flow_vars = flow_vars.merge(
             line_locations, how="left", left_index=True, right_index=True
         )
-        # Append rated capacities
-        flow_variables["rated_capacity"] = [
-            rated_line_capacities[idx] for idx in flow_variables.index
+
+        # Ensure that the index of flow_vars (which is (source, sink))
+        # correctly aligns with the keys in rated_line_capacities
+        flow_vars["rated_capacity"] = [
+            rated_line_capacities[idx] for idx in flow_vars.index
         ]
-        return flow_variables
+        return flow_vars
 
     def get_fuel_mix(self, hourly_generation: pd.DataFrame) -> pd.DataFrame:
         """Return the fuel mix (%) for the whole simulation period."""

@@ -256,7 +256,7 @@ class Visualizer:
     def plot_line_usage(
         self,
         max_line_usage: pd.DataFrame,
-        output_folder: str,
+        output_folder: str = None,
     ) -> None:
         """Flow variables must have the max_line_usage column"""
         max_line_usage = create_geoseries_columns(max_line_usage)
@@ -273,7 +273,7 @@ class Visualizer:
             max_linewidth = 6
             # Scale capacity to between 1 and 10 to avoid log(0) errors
             scaled_capacity = 1 + 9 * (capacity - min_capacity) / (
-                max_capacity - min_capacity
+                max_capacity - min_capacity + 0.0001  # to avoid division by zero
             )
             log_capacity = np.log10(scaled_capacity)
             # Scale the log value to the desired linewidth range.
@@ -324,7 +324,7 @@ class Visualizer:
         plt.tight_layout()
         plt.subplots_adjust(bottom=0.2)
 
-        if output_folder is not None:
+        if output_folder:
             figure_name = f"{self.model_id}_line_usage.png"
             fig = ax.get_figure()
             fig.savefig(

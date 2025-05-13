@@ -327,27 +327,49 @@ def parse_flow_variables(
     solution: pd.DataFrame, sim_horizon: int, step_k: int
 ) -> pd.DataFrame:
     """
-    The flow variables are in the (node, node, t) format.
+    Parses flow variables from the solution DataFrame.
+    The flow variables are expected in the format:
+    flow_fwd[node_a,node_b,t] or flow_bwd[node_a,node_b,t].
 
     Args:
-        solution: The solution DataFrame.
-        sim_horizon: The length of the simulation horizon.
-        step_k: The current simulation period.
+        solution: The solution DataFrame with a 'varname' column.
+        sim_horizon: The length of the simulation horizon for a single step_k (e.g., 24 hours).
+        step_k: The current simulation period (1-indexed).
 
     Returns:
-        pd.DataFrame: The flow variables DataFrame
+        pd.DataFrame: A DataFrame with parsed flow variables, including
+                      columns for 'node_a', 'node_b', 'type' (fwd/bwd),
+                      'value', 'timestep' (relative to step_k), and 'hour' (absolute).
     """
-    flow_var_pattern = r"flow\[(.+),(.+),(\d+)\]"
-    cur_flow_vars = solution[solution["varname"].str.match(flow_var_pattern)].copy()
+    # Matches flow_fwd[node_a,node_b,t] or flow_bwd[node_a,node_b,t]
+    # It captures the type (fwd or bwd), node_a, node_b, and t.
+    flow_var_pattern = r"flow_(fwd|bwd)\[([^,]+),([^,]+),(\d+)\]"
 
-    cur_flow_vars[["node_a", "node_b", "timestep"]] = cur_flow_vars[
-        "varname"
-    ].str.extract(flow_var_pattern, expand=True)
+    # Filter rows that match the flow variable pattern
+    flow_vars_mask = solution["varname"].str.contains(
+        r"flow_(?:fwd|bwd)\[.+,.+,\d+\]", regex=True
+    )
+    cur_flow_vars = solution[flow_vars_mask].copy()
 
+    if cur_flow_vars.empty:
+        return pd.DataFrame(
+            columns=["node_a", "node_b", "type", "value", "timestep", "hour"]
+        )
+
+    # Extract components from varname
+    extracted_data = cur_flow_vars["varname"].str.extract(flow_var_pattern, expand=True)
+    cur_flow_vars[["type", "node_a", "node_b", "timestep"]] = extracted_data
+
+    # Convert timestep to integer
     cur_flow_vars["timestep"] = cur_flow_vars["timestep"].astype(int)
+
+    # Calculate absolute hour
+    # Assuming sim_horizon is the number of timesteps within one step_k
+    # and step_k is 1-indexed.
     cur_flow_vars["hour"] = cur_flow_vars["timestep"] + sim_horizon * (step_k - 1)
-    cur_flow_vars = cur_flow_vars.drop("varname", axis=1)
-    return cur_flow_vars
+
+    final_columns = ["node_a", "node_b", "value", "type", "timestep", "hour"]
+    return cur_flow_vars[final_columns]
 
 
 def parse_syswide_variables(
