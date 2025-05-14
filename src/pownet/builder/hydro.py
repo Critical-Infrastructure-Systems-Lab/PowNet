@@ -109,7 +109,7 @@ class HydroUnitBuilder(ComponentBuilder):
             unit_type="hydro",
             timesteps=self.timesteps,
             step_k=step_k,
-            units=self.inputs.hydro_units,
+            units=self.inputs.hydro_unit_node.keys(),
             capacity_df=self.inputs.hydro_capacity,
         )
         # Daily upper bound
@@ -143,7 +143,7 @@ class HydroUnitBuilder(ComponentBuilder):
             unit_type="hydro",
             timesteps=self.timesteps,
             step_k=step_k,
-            units=self.inputs.hydro_units,
+            units=self.inputs.hydro_unit_node.keys(),
             capacity_df=self.inputs.hydro_capacity,
         )
 
