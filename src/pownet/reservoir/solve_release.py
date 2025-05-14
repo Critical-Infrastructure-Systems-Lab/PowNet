@@ -1,5 +1,5 @@
 """
-This script uses the Gurobi solver to solve for release.
+solve_release.py: Functions to solve the release given other values from a reservoir.
 """
 
 import gurobipy as gp

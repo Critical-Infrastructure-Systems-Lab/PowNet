@@ -1,6 +1,6 @@
-import os
+"""manager.py: ReservoirManager class for managing reservoir operations and simulations."""
 
-import networkx as nx
+import os
 import pandas as pd
 
 from .reservoir import Reservoir

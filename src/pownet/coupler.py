@@ -1,9 +1,11 @@
-from pownet.core import ModelBuilder
-from .manager import ReservoirManager
+"""coupler.py: PowerWaterCoupler class to couple the power and water systems."""
 
-import gurobipy as gp
+from .core import ModelBuilder
+from .reservoir.manager import ReservoirManager
 
-from ..data_utils import get_unit_hour_from_varname
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PowerWaterCoupler:
@@ -15,7 +17,21 @@ class PowerWaterCoupler:
         mip_gap: float = 0.0001,
         timelimit: float = 600,
         log_to_console: bool = False,
-    ):
+    ) -> None:
+        """
+        Coupler class to couple the power and water systems.
+
+        Args:
+            model_builder (ModelBuilder): ModelBuilder object to build the power system model.
+            reservoir_manager (ReservoirManager): ReservoirManager object to manage the water system.
+            solver (str): Solver to use for optimization. Default is "gurobi".
+            mip_gap (float): MIP gap for optimization. Default is 0.0001.
+            timelimit (float): Time limit for optimization in seconds. Default is 600.
+            log_to_console (bool): Whether to log to console. Default is False.
+
+        Returns:
+            None
+        """
         self.model_builder = model_builder
         self.reservoir_manager = reservoir_manager
 
@@ -38,7 +54,16 @@ class PowerWaterCoupler:
     def reoperate(
         self,
         step_k: int,
-    ):
+    ) -> None:
+        """Reoperate the reservoirs based on the daily dispatch of the power system model.
+        Note that we don't reoperate on the first day of the simulation period.
+
+        Args:
+            step_k (int): Current step in the simulation.
+
+        Returns:
+            None
+        """
 
         # Assume optimization is rolling horizon of 24 hours
         days_in_step = range(step_k, step_k + self.num_days_in_step)
@@ -47,8 +72,6 @@ class PowerWaterCoupler:
         reop_k = 0
 
         while not reop_converge:
-            print(f"\nReservoirs reoperation iteration {reop_k}")
-
             # --- PowNet returns the hydropower dispatch in hourly resolution across the simulation horizon
             hydropower_dispatch = {
                 (unit, day): 0
@@ -94,11 +117,11 @@ class PowerWaterCoupler:
                 for day in days_in_step
             ):
                 reop_converge = True
-                print(
+                logger.info(
                     f"PowNet: Day {step_k+1} - Reservoirs converged at iteration {reop_k}"
                 )
 
-            print("Max deviation:", max_deviation)
+            logger.info("Max deviation:", max_deviation)
 
             if reop_k > 50:
                 raise ValueError(
