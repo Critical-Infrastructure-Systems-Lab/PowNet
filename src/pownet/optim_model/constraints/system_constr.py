@@ -95,7 +95,7 @@ def add_c_reserve_req_2(
     return model.addConstrs(
         (
             gp.quicksum(
-                pbar[unit_g, t] + thermal_min_capacity[unit] * u[unit, t]
+                pbar[unit, t] + thermal_min_capacity[unit] * u[unit, t]
                 for unit in thermal_units
             )
             + gp.quicksum(charge_state[unit, t] for unit in storage_units)
