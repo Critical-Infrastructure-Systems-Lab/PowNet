@@ -1,0 +1,4 @@
+name,max_storage,min_level,max_level,max_head,min_day,max_day,max_release,max_generation,turbine_factor
+kirirom,30000000,500,540,271,150,310,3456000,18,0.9
+kamchay,432000000,500,610,122,180,298,14126400,194,0.9
+atay,443800000,510,545,216,158,311,10800000,240,0.9
