@@ -172,3 +172,15 @@ class ModelBuilder:
 
         self.model.update()
         return PowerSystemModel(self.model)
+
+    def get_phydro(self) -> gp.tupledict:
+        """Get the hydro power variable from the model."""
+        return self.hydro_builder.phydro
+
+    def update_daily_hydropower_capacity(
+        self, step_k: int, new_capacity: dict[(str, int), float]
+    ) -> None:
+        """Update the daily hydro capacity in the model."""
+        self.hydro_builder.update_daily_hydropower_capacity(step_k, new_capacity)
+        self.model.update()
+        return PowerSystemModel(self.model)

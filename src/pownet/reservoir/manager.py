@@ -12,6 +12,22 @@ from .reservoir_functions import (
 )
 
 
+def find_upstream_flow(
+    reservoir: Reservoir, reservoirs: dict[str, Reservoir]
+) -> pd.Series:
+    unit_name = reservoir.name
+    total_upstream_flow = pd.Series(
+        0, index=range(1, reservoir.sim_days + 1), name="upstream_flow"
+    )
+    for upstream_unit in reservoir.upstream_units:
+        upstream_reservoir = reservoirs[upstream_unit]
+        # Get the release and spill from the upstream reservoir
+        total_upstream_flow += (
+            upstream_reservoir.release + upstream_reservoir.spill
+        ) * upstream_reservoir.downstream_flow_fracs[unit_name]
+    return total_upstream_flow
+
+
 class ReservoirManager:
     def __init__(self):
         self.reservoirs: dict[str, Reservoir] = {}
@@ -78,35 +94,21 @@ class ReservoirManager:
         #############################################################################
         # Process the network topology
         ##############################################################################
-        self.simulation_order = find_simulation_order(flow_paths)
-        # Ensure that all reservoirs are in the simulation order // The two sets must be equal
-        if set(self.simulation_order) != set(self.reservoirs.keys()):
-            raise ValueError(
-                "The simulation order does not include all reservoirs: "
-                f"{set(self.simulation_order) - set(self.reservoirs.keys())}"
-            )
+        self.simulation_order = find_simulation_order(
+            reservoir_names=self.reservoirs.keys(), flow_paths=flow_paths
+        )
 
     def simulate(self) -> None:
         """Simulate the reservoir operations to get hydropower time series."""
         for unit_name in self.simulation_order:
             reservoir = self.reservoirs[unit_name]
-            # Find the upstream flow
-            total_upstream_flow = pd.Series(
-                0, index=range(1, reservoir.sim_days + 1), name="upstream_flow"
-            )
-
-            for upstream_unit in reservoir.upstream_units:
-                upstream_reservoir = self.reservoirs[upstream_unit]
-                # Get the release and spill from the upstream reservoir
-                total_upstream_flow += (
-                    upstream_reservoir.release + upstream_reservoir.spill
-                ) * upstream_reservoir.downstream_flow_fracs[unit_name]
-
-            # Simulate
+            total_upstream_flow = find_upstream_flow(reservoir, self.reservoirs)
             reservoir.set_upstream_flow(total_upstream_flow)
             reservoir.simulate()
 
-    def get_hydropower_ts(self) -> pd.DataFrame:
+    def get_hydropower_ts(
+        self, unit_node_mapping: dict[str, str] = None
+    ) -> pd.DataFrame:
         """Get the hydropower time series for all reservoirs."""
         df = pd.DataFrame()
         for unit_name in self.simulation_order:
@@ -119,10 +121,40 @@ class ReservoirManager:
             df = pd.concat([df, temp_df], axis=1)
 
         df.index = range(1, len(df) + 1)
+        # Create multi-level column index if unit_node_mapping is provided
+        if unit_node_mapping:
+            df.columns = pd.MultiIndex.from_tuples(
+                [(unit, unit_node_mapping[unit]) for unit in df.columns]
+            )
         return df
 
-    def write_hydropower_to_csv(self, output_filepath: str) -> None:
+    def write_hydropower_to_csv(
+        self, output_filepath: str, unit_node_mapping: dict[str, str] = None
+    ) -> None:
         """Write the hydropower time series to CSV files."""
-        os.makedirs(output_filepath, exist_ok=True)
-        for reservoir in self.reservoirs:
-            reservoir.hydropower.to_csv(output_filepath, index=False)
+        hydropower_df = self.get_hydropower_ts(unit_node_mapping)
+        hydropower_df.to_csv(output_filepath, index=False)
+
+    def reoperate(
+        self, daily_dispatch: dict[(str, int), float], days_in_step: range
+    ) -> dict[str, float]:
+        """Reoperate the reservoirs based on the daily dispatch of the power system model.
+        Note that we don't reoperate on the first day of the simulation period.
+        """
+        proposed_capacity = {k: 0 for k in daily_dispatch.keys()}
+
+        for unit_name in self.simulation_order:
+            for day in days_in_step:
+                reservoir = self.reservoirs[unit_name]
+                # Find the upstream flow
+                total_upstream_flow = find_upstream_flow(reservoir, self.reservoirs)
+
+                # Simulate
+                reservoir.set_upstream_flow(total_upstream_flow)
+                proposed_capacity[unit_name, day] = reservoir.reoperate(
+                    day=day,
+                    daily_dispatch=daily_dispatch[unit_name, day],
+                    upstream_flow_t=total_upstream_flow.loc[day],
+                )
+
+        return proposed_capacity

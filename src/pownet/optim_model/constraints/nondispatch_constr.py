@@ -81,14 +81,64 @@ def add_c_hydro_limit_daily(
     max_day = sim_horizon // 24
     for day in range(step_k, step_k + max_day):
         for hydro_unit in hydro_units:
-            cname = f"hydro_limit_daily[{hydro_unit},{day}]"
             current_day = day - step_k + 1
+            cname = f"hydro_limit_daily[{hydro_unit},{current_day}]"
             constraints[cname] = model.addConstr(
                 gp.quicksum(
                     phydro[hydro_unit, t]
                     for t in range(1 + (current_day - 1) * 24, current_day * 24 + 1)
                 )
                 <= hydro_capacity.loc[day, hydro_unit],
+                name=cname,
+            )
+    return constraints
+
+
+def add_c_hydro_limit_daily_dict(
+    model: gp.Model,
+    phydro: gp.tupledict,
+    step_k: int,
+    sim_horizon: int,
+    hydro_units: list,
+    hydro_capacity_dict: pd.DataFrame,
+) -> gp.tupledict:
+    """
+    Add constraints to limit hydropower by the daily amount. The sum of dispatch variables
+    for each hydro unit over a 24-hour period must be less than or equal to the daily capacity.
+
+    Args:
+        model (gp.Model): The optimization model
+        phydro (gp.tupledict): The power output of hydro units
+        step_k (int): The current iteration
+        sim_horizon (int): The simulation horizon
+        hydro_units (list): The list of hydro units
+        hydro_capacity_dict: The daily capacity of the hydro unit
+
+    Returns:
+        gp.tupledict: The constraints for the daily hydro limit
+
+    Raises:
+        ValueError: If the simulation horizon is not divisible by 24
+
+    """
+    # When formulating with daily hydropower, sim_horizon must be divisible
+    # by 24 because the hydro_capacity is daily.
+    if sim_horizon % 24 != 0:
+        raise ValueError(
+            "The simulation horizon must be divisible by 24 when using daily hydropower capacity."
+        )
+    constraints = gp.tupledict()
+    max_day = sim_horizon // 24
+    for day in range(step_k, step_k + max_day):
+        for hydro_unit in hydro_units:
+            current_day = day - step_k + 1
+            cname = f"hydro_limit_daily[{hydro_unit},{current_day}]"
+            constraints[cname] = model.addConstr(
+                gp.quicksum(
+                    phydro[hydro_unit, t]
+                    for t in range(1 + (current_day - 1) * 24, current_day * 24 + 1)
+                )
+                <= hydro_capacity_dict[hydro_unit, day],
                 name=cname,
             )
     return constraints

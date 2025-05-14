@@ -37,10 +37,13 @@ def find_downstream_flow_fractions(
     )
 
 
-def find_simulation_order(flow_paths: pd.DataFrame) -> list[str]:
+def find_simulation_order(
+    reservoir_names: list[str], flow_paths: pd.DataFrame
+) -> list[str]:
     """Determine the order in which reservoirs are simulated based on their upstream/downstream relationships.
 
     Args:
+        reservoir_names (list[str]): List of reservoir names.
         flow_paths (pd.DataFrame): DataFrame containing flow paths represented by the source and sink columns.
 
     Returns:
@@ -50,7 +53,14 @@ def find_simulation_order(flow_paths: pd.DataFrame) -> list[str]:
     edgelist = [(a, b) for a, b in zip(flow_paths["source"], flow_paths["sink"])]
     G = nx.DiGraph(edgelist)
     try:
-        return list(nx.topological_sort(G))
+        simulation_order = list(nx.topological_sort(G))
+        # The current list excludes reservoirs that are not in the flow paths,
+        # so we need to add them to the end of the list
+        reservoirs_not_in_paths = []
+        for reservoir in reservoir_names:
+            if reservoir not in simulation_order:
+                reservoirs_not_in_paths.append(reservoir)
+        return reservoirs_not_in_paths + simulation_order
     except nx.NetworkXUnfeasible:
         raise ValueError("The reservoir network has cycles.")
 
@@ -404,11 +414,11 @@ def calc_max_release(
     hydropeak_factor: float,
 ) -> float:
     """Calculate the maximum allowable release of the current timestep."""
-    # Release is limited by the hydropeaking factor
+    # Limited by the hydropeaking factor
     max_release_hydropeak_t = release_t0 + max_release * hydropeak_factor
-    # Release cannot be larger than the turbine capacity
+    # Cannot be larger than the turbine capacity
     max_release_t = min(max_release, max_release_hydropeak_t)
-    # Release cannot be less than the min environmental flow
+    # Cannot be less than the min environmental flow
     max_release_t = max(minflow_t, max_release_t)
     # Cannot release more than the amount of water in the reservoir
     if storage_t0 + total_inflow_t - max_release_t < 0:
@@ -425,7 +435,7 @@ def calc_min_release(
     hydropeak_factor: float,
 ) -> float:
     """Calculate the minimum allowable release of the current timestep."""
-    # Release is limited by the hydropeaking factor
+    # Limited by the hydropeaking factor
     min_release_hydropeak_t = release_t0 - max_release * hydropeak_factor
     # Limited by the minimum environmental flow
     min_release_t = max(minflow_t, min_release_hydropeak_t)

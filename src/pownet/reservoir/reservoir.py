@@ -186,8 +186,12 @@ class Reservoir:
         )
 
     def reoperate(
-        self, day: int, daily_dispatch: float, upstream_flow: float
-    ) -> pd.DataFrame:
+        self,
+        day: int,
+        daily_dispatch: float,
+        upstream_flow_t: float,
+        hydropeak_factor: float = 0.15,
+    ) -> float:
         """Reoperate the reservoir based on the daily dispatch of the power system model.
         There are seven cases which are outlined in the code.
         Note t-1 is denoted as t0; t is denoted as t; t+1 is denoted as t1.
@@ -196,13 +200,14 @@ class Reservoir:
             day (int): The current day for which the reoperation is being calculated.
             daily_dispatch (float): The daily dispatch value from the power system model.
             upstream_flow (float): The flow of water from upstream.
+            hydropeak_factor (float): The hydropeak factor for the reservoir.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the reoperation results for the reservoir.
+            float: New daily hydropower value after reoperation.
         """
         # Upstream flow may change every reoperation iteration because
         # reservoirs located upstream may reoperate.
-        self.reop_upstream_flow.loc[day] = upstream_flow
+        self.reop_upstream_flow.loc[day] = upstream_flow_t
 
         # Since release is fixed on the first day, we do not reoperate and
         # return the original dispatch.
@@ -210,32 +215,23 @@ class Reservoir:
             self.reop_release.loc[day] = self.release.loc[day]
             self.reop_spill.loc[day] = self.spill.loc[day]
             self.reop_storage.loc[day] = self.storage.loc[day]
-            self.reop_level.loc[day] = calc_level_from_storage(
-                storage=self.reop_storage.loc[day],
-                min_level=self.min_level,
-                max_level=self.max_level,
-                max_storage=self.max_storage,
-            )
+            self.reop_level.loc[day] = self.level.loc[day]
             self.reop_daily_hydropower.loc[day] = self.daily_hydropower.loc[day]
             return daily_dispatch
 
-        # Values for calculations are from previous reoperation attemps
-        total_inflow_t = self.inflow.loc[day] + upstream_flow
+        total_inflow_t = self.inflow_ts.loc[day] + upstream_flow_t
+        minflow_t = self.minflow_ts.loc[day]
+
+        # Previous values of release, storage, and level determine
+        # the ability to reoperate the reservoir
         release_t0 = self.reop_release.loc[day - 1]
         storage_t0 = self.reop_storage.loc[day - 1]
-        level_t0 = calc_level_from_storage(
-            storage=storage_t0,
-            min_level=self.min_level,
-            max_level=self.max_level,
-            max_storage=self.max_storage,
-        )
-        minflow_t = self.minflow_ts.loc[day]
+        level_t0 = self.reop_level.loc[day - 1]
 
         #########################################################
         ##### Max release and its corresponding values
         #########################################################
-        # Change in release is limited to 15% of the maximum release
-        hydropeak_factor = 0.15
+
         max_release_t = calc_max_release(
             total_inflow_t=total_inflow_t,
             release_t0=release_t0,
@@ -244,6 +240,7 @@ class Reservoir:
             max_release=self.max_release,
             hydropeak_factor=hydropeak_factor,
         )
+
         # Reservoir state due to max_release_t
         (
             spill_from_max_release_t,
@@ -381,7 +378,7 @@ class Reservoir:
                 reop_mismatch_t,
             ) = solve_release_from_dispatch(
                 reservoir_name=self.name,
-                dispatch=daily_dispatch,
+                daily_dispatch=daily_dispatch,
                 turbine_factor=self.turbine_factor,
                 max_head=self.max_head,
                 max_level=self.max_level,

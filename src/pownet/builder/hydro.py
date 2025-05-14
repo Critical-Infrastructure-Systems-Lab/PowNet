@@ -157,6 +157,19 @@ class HydroUnitBuilder(ComponentBuilder):
             hydro_capacity=self.inputs.daily_hydro_capacity,
         )
 
+    def update_daily_hydropower_capacity(
+        self, step_k: int, new_capacity: dict[(str, int), float]
+    ) -> None:
+        self.model.remove(self.c_hydro_limit_daily)
+        self.c_hydro_limit_daily = nondispatch_constr.add_c_hydro_limit_daily_dict(
+            model=self.model,
+            phydro=self.phydro,
+            step_k=step_k,
+            sim_horizon=self.inputs.sim_horizon,
+            hydro_units=self.inputs.daily_hydro_unit_node.keys(),
+            hydro_capacity_dict=new_capacity,
+        )
+
     def get_variables(self) -> dict[str, gp.tupledict]:
         """Get hydro unit variables.
 
