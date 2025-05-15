@@ -8,10 +8,21 @@ Subpackages
    :maxdepth: 4
 
    pownet.core
-   pownet.modeling
+   pownet.data_model
+   pownet.optim_model
+   pownet.reservoir
+   pownet.stochastic
 
 Submodules
 ----------
+
+pownet.coupler module
+---------------------
+
+.. automodule:: pownet.coupler
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 pownet.data\_utils module
 -------------------------
@@ -25,6 +36,14 @@ pownet.folder\_utils module
 ---------------------------
 
 .. automodule:: pownet.folder_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pownet.input module
+-------------------
+
+.. automodule:: pownet.input
    :members:
    :undoc-members:
    :show-inheritance:

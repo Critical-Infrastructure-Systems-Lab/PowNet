@@ -1,3 +1,9 @@
+pownet.core package
+===================
+
+Submodules
+----------
+
 pownet.core.builder module
 --------------------------
 
@@ -10,14 +16,6 @@ pownet.core.data\_processor module
 ----------------------------------
 
 .. automodule:: pownet.core.data_processor
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-pownet.core.input module
-------------------------
-
-.. automodule:: pownet.core.input
    :members:
    :undoc-members:
    :show-inheritance:
@@ -46,10 +44,26 @@ pownet.core.simulation module
    :undoc-members:
    :show-inheritance:
 
+pownet.core.user\_constraint module
+-----------------------------------
+
+.. automodule:: pownet.core.user_constraint
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pownet.core.visualizer module
 -----------------------------
 
 .. automodule:: pownet.core.visualizer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: pownet.core
    :members:
    :undoc-members:
    :show-inheritance:
