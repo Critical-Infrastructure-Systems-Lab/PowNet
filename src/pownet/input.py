@@ -912,7 +912,7 @@ class SystemInput:
         # Number of edges in the node_edge dictionary must be equal to TWICE the number of edges
         if sum(len(v) for v in self.node_edge.values()) != 2 * len(self.edges):
             raise ValueError(
-                f"PowNet: The number of edges in the node_edge dictionary must be equal to the number of edges. {sum(len(v) for v in self.node_edge.values())} != {2*len(self.edges)}"
+                f"PowNet: The number of edges in the node_edge dictionary must be equal to the number of edges. {sum(len(v) for v in self.node_edge.values())} != {2 * len(self.edges)}"
             )
 
         ##################################

@@ -252,7 +252,7 @@ class DataProcessor:
         )
         cycles = nx.cycle_basis(graph)
         # Save this map to be uses by ModelBuilder
-        self.cycle_map = {f"cycle_{idx+1}": cycle for idx, cycle in enumerate(cycles)}
+        self.cycle_map = {f"cycle_{idx + 1}": cycle for idx, cycle in enumerate(cycles)}
 
     def write_cycle_map(self) -> None:
         """

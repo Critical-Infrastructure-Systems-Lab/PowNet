@@ -24,7 +24,7 @@ def get_dates(year, num_days=365):
     # Remove 29th Feb because we do not deal with them
     dates = dates.loc[dates.date.dt.strftime("%m-%d") != "02-29"]
     # Remove 1st Jan of the next year in case it is included when it is not a leap year
-    dates = dates.loc[dates.date.dt.strftime("%Y-%m-%d") != f"{year+1}-01-01"]
+    dates = dates.loc[dates.date.dt.strftime("%Y-%m-%d") != f"{year + 1}-01-01"]
 
     # In case we need three columns: date, hour, and day
     dates = dates.loc[dates.index.repeat(24)]
@@ -35,7 +35,7 @@ def get_dates(year, num_days=365):
 
 def get_datetime_index(year: int) -> pd.DatetimeIndex:
     """Return a datetime index for the given year. The index will have 8760 entries, one for each hour of the year. Exclude 29th February."""
-    dates = pd.date_range(start=f"{year}-01-01", end=f"{year+1}-01-01", freq="h")
+    dates = pd.date_range(start=f"{year}-01-01", end=f"{year + 1}-01-01", freq="h")
     # Remove 29th February
     dates = dates[~((dates.month == 2) & (dates.day == 29))]
     return dates[dates.year == year]

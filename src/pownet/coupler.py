@@ -118,7 +118,7 @@ class PowerWaterCoupler:
             ):
                 reop_converge = True
                 logger.info(
-                    f"PowNet: Day {step_k+1} - Reservoirs converged at iteration {reop_k}"
+                    f"PowNet: Day {step_k + 1} - Reservoirs converged at iteration {reop_k}"
                 )
 
             logger.info("Max deviation:", max_deviation)
