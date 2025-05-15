@@ -1,9 +1,7 @@
-""" rounding_algo.py: Functions to perform iterative rounding.
-"""
+"""rounding_algo.py: Functions to perform iterative rounding."""
 
 import gurobipy as gp
 import numpy as np
-import pandas as pd
 
 
 def get_variables(model: gp.Model, target_varnames: list[str] = None) -> dict:

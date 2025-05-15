@@ -1,5 +1,4 @@
-""" This is test_data_processor.py
-"""
+"""test_data_processor.py"""
 
 import os
 import unittest
@@ -7,14 +6,14 @@ from pownet.core.data_processor import (
     DataProcessor,
 )
 
-from pownet.folder_utils import get_model_dir
+from pownet.folder_utils import get_pownet_dir
 
 
 class TestDataProcessor(unittest.TestCase):
     def test_initialization(self):
         # Arrange
         test_model_library_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "test_model_library")
+            os.path.join(get_pownet_dir(), "model_library")
         )
         model_name = "dummy"
         year = 2024
@@ -37,7 +36,7 @@ class TestDataProcessor(unittest.TestCase):
         self.assertEqual(processor.wavelength, 6000)
         self.assertEqual(
             processor.model_folder,
-            os.path.join(get_model_dir(), test_model_library_path, model_name),
+            os.path.join(test_model_library_path, model_name),
         )
         # Timeseries should have 8760 rows
         self.assertEqual(processor.cycle_map, {})
