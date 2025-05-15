@@ -1,14 +1,10 @@
-"""Tests for the ModelBuilder class."""
+""" Unit tests for the ModelBuilder class.
+"""
 
 import os
 import unittest
-from pownet import ModelBuilder, SystemInput
-
-from pownet.builder.thermal import ThermalUnitBuilder
-from pownet.builder.hydro import HydroUnitBuilder
-from pownet.builder.nondispatch import NonDispatchUnitBuilder
-from pownet.builder.energy_storage import EnergyStorageUnitBuilder
-from pownet.builder.system import SystemBuilder
+from pownet.core import ModelBuilder, SystemInput
+from pownet.folder_utils import get_model_dir
 
 
 class TestModelBuilder(unittest.TestCase):
@@ -16,10 +12,9 @@ class TestModelBuilder(unittest.TestCase):
 
     def setUp(self) -> None:
         # Load the test data
-        test_model_library_path = os.path.join(
-            os.path.dirname(__file__), "..", "test_model_library"
+        test_model_library_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "test_model_library")
         )
-        print(f"Test model library path: {test_model_library_path}")
 
         self.inputs = SystemInput(
             input_folder=test_model_library_path,
@@ -33,18 +28,9 @@ class TestModelBuilder(unittest.TestCase):
         self.model_builder = ModelBuilder(self.inputs)
 
     def test_init(self):
-        self.assertIsInstance(self.model_builder.thermal_builder, ThermalUnitBuilder)
-        self.assertIsInstance(self.model_builder.hydro_builder, HydroUnitBuilder)
-        self.assertIsInstance(
-            self.model_builder.nondispatch_builder, NonDispatchUnitBuilder
+        self.assertEqual(
+            self.model_builder.timesteps, range(1, self.inputs.sim_horizon + 1)
         )
-        self.assertIsInstance(
-            self.model_builder.storage_builder, EnergyStorageUnitBuilder
-        )
-        self.assertIsInstance(self.model_builder.system_builder, SystemBuilder)
-
-    def test_build(self):
-        pass
 
 
 if __name__ == "__main__":
