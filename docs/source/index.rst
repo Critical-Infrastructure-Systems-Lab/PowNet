@@ -39,6 +39,7 @@ School of Civil and Environmental Engineering, Cornell University.
 * :doc:`examples/synthetic_load`
 * :doc:`examples/synthetic_solar`
 * :doc:`examples/reservoir_simulation`
+* :doc:`examples/reservoir_reoperation`
 
 .. toctree::
    :hidden:
@@ -49,6 +50,7 @@ School of Civil and Environmental Engineering, Cornell University.
    examples/synthetic_load
    examples/synthetic_solar
    examples/reservoir_simulation
+   examples/reservoir_reoperation
 
 
 **Technical explanations**
