@@ -190,7 +190,7 @@ class Reservoir:
         day: int,
         daily_dispatch: float,
         upstream_flow_t: float,
-        hydropeak_factor: float = 0.15,
+        hydropeak_factor: float = 1,  # 0.15,
     ) -> float:
         """Reoperate the reservoir based on the daily dispatch of the power system model.
         There are seven cases which are outlined in the code.
