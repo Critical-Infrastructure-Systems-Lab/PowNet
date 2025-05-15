@@ -1,8 +1,14 @@
-"""Unit tests for the ModelBuilder class."""
+"""Tests for the ModelBuilder class."""
 
 import os
 import unittest
+
 from pownet import ModelBuilder, SystemInput
+from pownet.builder.thermal import ThermalUnitBuilder
+from pownet.builder.hydro import HydroUnitBuilder
+from pownet.builder.nondispatch import NonDispatchUnitBuilder
+from pownet.builder.energy_storage import EnergyStorageUnitBuilder
+from pownet.builder.system import SystemBuilder
 
 
 class TestModelBuilder(unittest.TestCase):
@@ -26,9 +32,15 @@ class TestModelBuilder(unittest.TestCase):
         self.model_builder = ModelBuilder(self.inputs)
 
     def test_init(self):
-        self.assertEqual(
-            self.model_builder.timesteps, range(1, self.inputs.sim_horizon + 1)
+        self.assertIsInstance(self.model_builder.thermal_builder, ThermalUnitBuilder)
+        self.assertIsInstance(self.model_builder.hydro_builder, HydroUnitBuilder)
+        self.assertIsInstance(
+            self.model_builder.nondispatch_builder, NonDispatchUnitBuilder
         )
+        self.assertIsInstance(
+            self.model_builder.storage_builder, EnergyStorageUnitBuilder
+        )
+        self.assertIsInstance(self.model_builder.system_builder, SystemBuilder)
 
 
 if __name__ == "__main__":
