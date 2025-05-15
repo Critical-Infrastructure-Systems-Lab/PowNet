@@ -18,7 +18,10 @@ class TestModelBuilder(unittest.TestCase):
 
     def setUp(self) -> None:
         # Load the test data
-        test_model_library_path = get_test_model_dir()
+        test_model_library_path = os.path.join(
+            os.path.dirname(__file__), "..", "test_model_library"
+        )
+        print(f"Test model library path: {test_model_library_path}")
 
         self.inputs = SystemInput(
             input_folder=test_model_library_path,
