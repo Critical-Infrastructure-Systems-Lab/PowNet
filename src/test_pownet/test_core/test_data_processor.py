@@ -1,4 +1,4 @@
-"""This is test_data_processor.py"""
+"""test_data_processor.py"""
 
 import os
 import unittest
