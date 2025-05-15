@@ -1,10 +1,8 @@
-""" Unit tests for the ModelBuilder class.
-"""
+"""Unit tests for the ModelBuilder class."""
 
 import os
 import unittest
-from pownet.core import ModelBuilder, SystemInput
-from pownet.folder_utils import get_model_dir
+from pownet import ModelBuilder, SystemInput
 
 
 class TestModelBuilder(unittest.TestCase):
