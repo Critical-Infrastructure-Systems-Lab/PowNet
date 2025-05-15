@@ -130,7 +130,7 @@ def solve_release_from_target_storage(
                     - release_vars[day]
                     - max_storage
                 ),
-                name=f"c_define_spill_bar[day]",
+                name=f"c_define_spill_bar[{day}]",
             )
 
     # The storage at the start day is the initial storage

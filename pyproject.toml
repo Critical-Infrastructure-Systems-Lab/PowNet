@@ -10,7 +10,7 @@ pownet = ["database/*.csv"]
 
 [tool.coverage.run]
 disable_warnings = ["no-data-collected"]
-source = ["src/pownet"]
+source = ["pownet"]
 
 [project]
 name = "pownet"

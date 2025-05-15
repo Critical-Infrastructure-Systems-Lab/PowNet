@@ -41,6 +41,10 @@ jobs:
     - name: Unit testing
       run: |
         coverage run -m unittest discover src/test_pownet
+        echo "--------------------------------------------------"  # For clarity in logs
+        echo "DEBUG: Coverage text report from CI environment:"
+        coverage report -m  # <<< THIS IS THE CRITICAL OUTPUT NEEDED
+        echo "--------------------------------------------------"
         coverage json
         COVERAGE_PERCENT=$(python -c "import json; print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
         echo "Total Coverage: $COVERAGE_PERCENT%"
