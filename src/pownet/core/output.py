@@ -135,16 +135,6 @@ class OutputProcessor:
         monthly_demand.index.name = "Month"
         return monthly_demand
 
-    def get_thermal_unit_hourly_status(
-        self, node_variables: pd.DataFrame
-    ) -> pd.DataFrame:
-        """The hourly status of thermal units for each hour over the simulation period."""
-        thermal_unit_hourly_status = node_variables[
-            node_variables["vartype"] == "status"
-        ].reset_index(drop=True)
-        thermal_unit_hourly_status["timestep"] = thermal_unit_hourly_status["hour"] % 24
-        return thermal_unit_hourly_status
-
     def get_thermal_unit_mean_hourly_status(
         self, node_variables: pd.DataFrame
     ) -> pd.DataFrame:
