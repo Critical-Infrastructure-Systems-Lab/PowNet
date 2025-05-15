@@ -1,5 +1,6 @@
 ![license MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 [![CI Tests](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/actions/workflows/python-app.yml/badge.svg)](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/actions)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/phumthep/23c151ad08ede7f698ce7cfbc2c09a0a/raw/covbadge.json)](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/actions)
 [![GitHub Release](https://img.shields.io/github/v/release/Critical-Infrastructure-Systems-Lab/PowNet)](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/releases/tag/v2.0)
 [![Read the Docs](https://img.shields.io/readthedocs/pownet)](https://pownet.readthedocs.io/en/latest/)
 [![status](https://joss.theoj.org/papers/f7509a62fde550bec7ae3d1da0181b7d/status.svg)](https://joss.theoj.org/papers/f7509a62fde550bec7ae3d1da0181b7d)
