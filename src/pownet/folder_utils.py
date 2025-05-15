@@ -19,3 +19,8 @@ def get_database_dir() -> str:
 def get_test_dir() -> str:
     """Returns the test directory of the pownet package."""
     return os.path.join(get_pownet_dir(), "src", "test_pownet")
+
+
+def get_test_model_dir() -> str:
+    """Returns the test directory of the pownet package."""
+    return os.path.join(get_pownet_dir(), "src", "test_pownet", "test_model_library")
