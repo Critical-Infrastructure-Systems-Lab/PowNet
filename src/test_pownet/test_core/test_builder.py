@@ -10,8 +10,6 @@ from pownet.builder.nondispatch import NonDispatchUnitBuilder
 from pownet.builder.energy_storage import EnergyStorageUnitBuilder
 from pownet.builder.system import SystemBuilder
 
-from pownet.folder_utils import get_test_model_dir
-
 
 class TestModelBuilder(unittest.TestCase):
     """Unless otherwise stated, use "dummy_trade" over 24-hr as the test case."""

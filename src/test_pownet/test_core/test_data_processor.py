@@ -6,14 +6,12 @@ from pownet.core.data_processor import (
     DataProcessor,
 )
 
-from pownet.folder_utils import get_pownet_dir
-
 
 class TestDataProcessor(unittest.TestCase):
     def test_initialization(self):
         # Arrange
-        test_model_library_path = os.path.abspath(
-            os.path.join(get_pownet_dir(), "model_library")
+        test_model_library_path = os.path.join(
+            os.path.dirname(__file__), "..", "test_model_library"
         )
         model_name = "dummy"
         year = 2024
