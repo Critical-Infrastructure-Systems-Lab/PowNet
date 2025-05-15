@@ -1,4 +1,4 @@
-"""thermal_unit.py: Constraints for thermal units"""
+"""thermal_unit_constr.py: Constraints for thermal units"""
 
 import gurobipy as gp
 import pandas as pd

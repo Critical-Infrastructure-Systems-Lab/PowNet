@@ -3,11 +3,10 @@
 import unittest
 import gurobipy as gp
 
-# Import the module to be tested
 from pownet.optim_model.constraints import thermal_unit_constr
 
 
-class TestThermalUnitConstraints(unittest.TestCase):
+class TestThermalUnitConstrs(unittest.TestCase):
 
     def setUp(self):
         """Set up common resources for each test method."""
