@@ -234,6 +234,11 @@ def solve_release_from_dispatch(
     6. Definition of spill_bar
     spill_bar = INFLOW_t + storage_t-1 - STORAGE_MAX - release_t
 
+    7. Spill cannot be positive when storage is less than max_storage
+    spill <= 0 when storage_t < max_storage
+    spill >= 0 when storage_t > max_storage
+
+
     Note that the objective function is not linear because of the absolute value.
     To make it linear, we introduce a new variable mismatch_t and rewrite
     the objective function as:
@@ -265,9 +270,14 @@ def solve_release_from_dispatch(
 
     # Unbounded hydropower
     unb_hourly_hydropower = model.addVar(lb=0.0, name="unb_hourly_hydropower")
+
     # Bounded hydropower
     hourly_hydropower = model.addVar(lb=0.0, name="hourly_hydropower")
     daily_hydropower = model.addVar(lb=0.0, name="daily_hydropower")
+
+    # Binary variable for spill condition
+    delta = model.addVar(vtype=gp.GRB.BINARY, name="delta")
+    big_m = storage_max * 2
 
     # Set objective
     model.setObjective(mismatch, gp.GRB.MINIMIZE)
@@ -334,6 +344,17 @@ def solve_release_from_dispatch(
 
     # (6) Define spill
     model.addConstr(spill == gp.max_(0, spill_bar), name="c_spill")
+
+    # (7) Model the conditional spill constraint using binary variable and big-M
+    model.addConstr(spill <= big_m * delta, name="c_spill_conditional_upper")
+    model.addConstr(
+        storage <= storage_max - 1e-6 + big_m * (1 - delta),
+        name="c_storage_less_than_max",
+    )  # 1e-6 is a small tolerance (epsilon)
+    model.addConstr(
+        storage >= storage_max + 1e-6 - big_m * delta,
+        name="c_storage_greater_than_equal_to_max",
+    )  # 1e-6 is a small tolerance (epsilon)
 
     ############################
     # Solve the optimization problem
