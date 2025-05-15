@@ -162,7 +162,7 @@ def add_c_link_ppbar(
         and the maximum power output above the minimum capacity
     """
     return model.addConstrs(
-        (pbar[unit, t] >= p[unit, t] for t in timesteps for unit in thermal_units),
+        (pbar[unit, t] >= p[unit, t] for unit in thermal_units for t in timesteps),
         name="link_ppbar",
     )
 
