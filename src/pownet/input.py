@@ -112,6 +112,7 @@ class SystemInput:
 
         self.ess_hydro_units: dict[str, list[str]] = {}
         self.ess_daily_hydro_units: dict[str, list[str]] = {}
+        self.ess_weekly_hydro_units: dict[str, list[str]] = {}
         self.ess_solar_units: dict[str, list[str]] = {}
         self.ess_wind_units: dict[str, list[str]] = {}
         self.ess_thermal_units: dict[str, list[str]] = {}
@@ -137,10 +138,13 @@ class SystemInput:
         # Hydropower (hourly and daily timeseries)
         self.hydro_contracted_capacity: dict[str, float] = {}
         self.hydro_capacity: pd.DataFrame = pd.DataFrame()
+        self.hydro_min_capacity: pd.DataFrame = pd.DataFrame()
         self.hydro_max_capacity: dict[str, float] = {}
         self.hydro_unit_node: dict[str, str] = {}
         self.daily_hydro_capacity: pd.DataFrame = pd.DataFrame()
         self.daily_hydro_unit_node: dict[str, str] = {}
+        self.weekly_hydro_capacity: pd.DataFrame = pd.DataFrame()
+        self.weekly_hydro_unit_node: dict[str, str] = {}
 
         self.solar_contracted_capacity: dict[str, float] = {}
         self.solar_capacity: pd.DataFrame = pd.DataFrame()
@@ -190,6 +194,7 @@ class SystemInput:
 
         self.hydro_must_take_units: list[str] = []
         self.daily_hydro_must_take_units: list[str] = []
+        self.weekly_hydro_must_take_units: list[str] = []
         self.solar_must_take_units: list[str] = []
         self.wind_must_take_units: list[str] = []
         self.import_must_take_units: list[str] = []
@@ -341,6 +346,9 @@ class SystemInput:
             elif attached in self.daily_hydro_unit_node.keys():
                 self.ess_daily_hydro_units[attached] = self.ess_attach_unit[attached]
 
+            elif attached in self.weekly_hydro_unit_node.keys():
+                self.ess_weekly_hydro_units[attached] = self.ess_attach_unit[attached]
+
             elif attached in self.solar_unit_node.keys():
                 self.ess_solar_units[attached] = self.ess_attach_unit[attached]
 
@@ -383,6 +391,7 @@ class SystemInput:
             self._add_units_to_node(node, self.thermal_unit_node)
             self._add_units_to_node(node, self.hydro_unit_node)
             self._add_units_to_node(node, self.daily_hydro_unit_node)
+            self._add_units_to_node(node, self.weekly_hydro_unit_node)
             self._add_units_to_node(node, self.solar_unit_node)
             self._add_units_to_node(node, self.wind_unit_node)
             self._add_units_to_node(node, self.import_unit_node)
@@ -482,6 +491,17 @@ class SystemInput:
             daily_hydro_max_capacity = self.daily_hydro_capacity.max().to_dict()
             self.hydro_max_capacity.update(daily_hydro_max_capacity)
 
+        # Units with weekly timeseries
+        if os.path.exists(os.path.join(self.model_dir, "hydropower_weekly.csv")):
+            self.weekly_hydro_capacity, self.weekly_hydro_unit_node = (
+                self._load_capacity_and_update_fuelmap_and_get_unit_node(
+                    "hydropower_weekly.csv", fuel_type="hydropower"
+                )
+            )
+
+        if os.path.exists(os.path.join(self.model_dir, "hydro_capacity_min.csv")):
+            self.hydro_capacity_min = pd.read_csv(os.path.join(self.model_dir, "hydro_capacity_min.csv"))
+
         # Check that the names do not repeat across different types
         repeated_units = set(self.hydro_unit_node.keys()).intersection(
             self.daily_hydro_unit_node.keys()
@@ -489,6 +509,24 @@ class SystemInput:
         if repeated_units:
             raise ValueError(
                 f"PowNet: Found hydropower units to formulate with both hourly and daily formulations: {repeated_units}"
+            )
+
+        # Check that the names do not repeat across different types
+        repeated_units_weekly = set(self.hydro_unit_node.keys()).intersection(
+            self.weekly_hydro_unit_node.keys()
+        )
+        if repeated_units_weekly:
+            raise ValueError(
+                f"PowNet: Found hydropower units to formulate with both hourly and weekly formulations: {repeated_units_weekly}"
+            )
+
+        # Check that the names do not repeat across different types
+        repeated_units_daily_weekly = set(self.daily_hydro_unit_node.keys()).intersection(
+            self.weekly_hydro_unit_node.keys()
+        )
+        if repeated_units_daily_weekly:
+            raise ValueError(
+                f"PowNet: Found hydropower units to formulate with both daily and weekly formulations: {repeated_units_daily_weekly}"
             )
 
     def _load_nondispatchable_must_take_units(self):
@@ -503,6 +541,7 @@ class SystemInput:
         unit_types = {
             "hydro": self.hydro_unit_node,
             "daily_hydro": self.daily_hydro_unit_node,
+            "weekly_hydro": self.weekly_hydro_unit_node,
             "solar": self.solar_unit_node,
             "wind": self.wind_unit_node,
             "import": self.import_unit_node,
@@ -575,6 +614,13 @@ class SystemInput:
             .to_dict()
         )
 
+        # Add daily hydro units to the contracted capacity under "hydro"
+        self.hydro_contracted_capacity.update(
+            nondispatch_df.loc[nondispatch_df["name"].isin(self.weekly_hydro_unit_node)]
+            .set_index("name")["contracted_capacity"]
+            .to_dict()
+        )
+
     def load_data(self):
         """Load the input data for the power system model.
         Timeseries are loaded as dataframes with the index starting at 1.
@@ -638,6 +684,7 @@ class SystemInput:
             list(self.thermal_unit_node.keys())
             + list(self.hydro_unit_node.keys())
             + list(self.daily_hydro_unit_node.keys())
+            + list(self.weekly_hydro_unit_node.keys())
             + list(self.solar_unit_node.keys())
             + list(self.wind_unit_node.keys())
             + list(self.import_unit_node.keys())
@@ -736,9 +783,9 @@ class SystemInput:
         # List of units
         #################
         self.thermal_units = list(self.thermal_unit_node.keys())
-        self.hydro_units = list(self.hydro_unit_node.keys()) + list(
-            self.daily_hydro_unit_node.keys()
-        )
+        self.hydro_units = (list(self.hydro_unit_node.keys())
+                            + list(self.daily_hydro_unit_node.keys())
+                            + list(self.weekly_hydro_unit_node.keys()))
         self.solar_units = list(self.solar_unit_node.keys())
         self.wind_units = list(self.wind_unit_node.keys())
         self.import_units = list(self.import_unit_node.keys())
@@ -784,6 +831,7 @@ class SystemInput:
         nodes_to_check = [
             ("hydro_unit_node", "Hydropower units"),
             ("daily_hydro_unit_node", "Daily hydropower units"),
+            ("weekly_hydro_unit_node", "Weekly hydropower units"),
             ("solar_unit_node", "Solar units"),
             ("wind_unit_node", "Wind units"),
             ("import_unit_node", "Import units"),
@@ -837,6 +885,11 @@ class SystemInput:
                 f"PowNet: Daily hydropower timeseries must be of length {self.num_sim_days}."
             )
 
+        if len(self.weekly_hydro_capacity) not in [0, self.num_sim_days]:
+            raise ValueError(
+                f"PowNet: Weekly hydropower timeseries must be of length {self.num_sim_days}."
+            )
+
         ##################################
         # The derated capacities of thermal units must be above its minimum capacity
         ##################################
@@ -872,6 +925,7 @@ class SystemInput:
         number_of_non_fossil_generators = len(
             self.hydro_unit_node
             | self.daily_hydro_unit_node
+            | self.weekly_hydro_unit_node
             | self.solar_unit_node
             | self.wind_unit_node
             | self.import_unit_node
@@ -934,6 +988,7 @@ class SystemInput:
         assigned_ess = (
             list(self.ess_hydro_units.keys())
             + list(self.ess_daily_hydro_units.keys())
+            + list(self.ess_weekly_hydro_units.keys())
             + list(self.ess_solar_units.keys())
             + list(self.ess_wind_units.keys())
             + list(self.ess_thermal_units.keys())
@@ -961,6 +1016,7 @@ class SystemInput:
         ---- Renewable capacities ----
         {'Hydropower units':<25} = {len(self.hydro_unit_node)}
         {'Daily hydropower units':<25} = {len(self.daily_hydro_unit_node)}
+        {'Weekly hydropower units':<25} = {len(self.weekly_hydro_unit_node)}
         {'Solar units':<25} = {len(self.solar_unit_node)}
         {'Wind units':<25} = {len(self.wind_unit_node)}
         {'Import units':<25} = {len(self.import_unit_node)}
@@ -968,6 +1024,7 @@ class SystemInput:
         ---- Energy storage ----
         {'No. of hydropower with ESS':<25} = {len(self.ess_hydro_units)}
         {'No. of daily hydropower with ESS':<25} = {len(self.ess_daily_hydro_units)}
+        {'No. of weekly hydropower with ESS':<25} = {len(self.ess_weekly_hydro_units)}
         {'No. of Solar with ESS':<25} = {len(self.ess_solar_units)}
         {'No. of Wind with ESS':<25} = {len(self.ess_wind_units)}
         {'No. of Thermal units with ESS':<25} = {len(self.ess_thermal_units)}
