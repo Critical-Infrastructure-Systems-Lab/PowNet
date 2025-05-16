@@ -15,6 +15,7 @@ class HydroUnitBuilder(ComponentBuilder):
     Variables
     ===========================
     - `phydro`: Hydropower output. Unit: MW.
+    - `uhydro`: Hydropower unit status. Unit: binary (0 or 1).
 
     Fixed objective terms
     ===========================
@@ -46,6 +47,10 @@ class HydroUnitBuilder(ComponentBuilder):
 
         # Constraints
         self.c_link_hydro_pu = gp.tupledict()
+        self.c_link_weekly_hydro_pu = gp.tupledict()
+
+        self.c_hydro_limit_daily = gp.tupledict()
+        self.c_hydro_limit_weekly = gp.tupledict()
 
     def add_variables(self, step_k: int) -> None:
         """Add variables to the model for hydro units.
@@ -112,6 +117,17 @@ class HydroUnitBuilder(ComponentBuilder):
             units=self.inputs.hydro_unit_node.keys(),
             capacity_df=self.inputs.hydro_capacity,
         )
+
+        # Weekly upper bound
+        self.c_link_weekly_hydro_pu = nondispatch_constr.add_c_link_unit_pu(
+            model=self.model,
+            pdispatch=self.phydro,
+            u=self.uhydro,
+            timesteps=self.timesteps,
+            units=self.inputs.weekly_hydro_unit_node.keys(),
+            contracted_capacity=self.inputs.hydro_contracted_capacity,
+        )
+
         # Daily upper bound
         self.c_hydro_limit_daily = nondispatch_constr.add_c_hydro_limit_daily(
             model=self.model,
@@ -120,6 +136,17 @@ class HydroUnitBuilder(ComponentBuilder):
             sim_horizon=self.inputs.sim_horizon,
             hydro_units=self.inputs.daily_hydro_unit_node.keys(),
             hydro_capacity=self.inputs.daily_hydro_capacity,
+        )
+
+        # Weekly lower and upper bounds
+        self.c_hydro_limit_weekly = nondispatch_constr.add_c_hydro_limit_weekly(
+            model=self.model,
+            phydro=self.phydro,
+            step_k=step_k,
+            sim_horizon=self.inputs.sim_horizon,
+            hydro_units=self.inputs.weekly_hydro_unit_node.keys(),
+            hydro_capacity=self.inputs.weekly_hydro_capacity,
+            hydro_capacity_min=self.inputs.hydro_min_capacity,
         )
 
     def update_variables(self, step_k: int) -> None:
@@ -155,6 +182,17 @@ class HydroUnitBuilder(ComponentBuilder):
             sim_horizon=self.inputs.sim_horizon,
             hydro_units=self.inputs.daily_hydro_unit_node.keys(),
             hydro_capacity=self.inputs.daily_hydro_capacity,
+        )
+
+        self.model.remove(self.c_hydro_limit_weekly)
+        self.c_hydro_limit_weekly = nondispatch_constr.add_c_hydro_limit_weekly(
+            model=self.model,
+            phydro=self.phydro,
+            step_k=step_k,
+            sim_horizon=self.inputs.sim_horizon,
+            hydro_units=self.inputs.weekly_hydro_unit_node.keys(),
+            hydro_capacity=self.inputs.weekly_hydro_capacity,
+            hydro_capacity_min=self.inputs.hydro_min_capacity,
         )
 
     def update_daily_hydropower_capacity(

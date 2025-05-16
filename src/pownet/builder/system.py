@@ -108,6 +108,7 @@ class SystemBuilder(ComponentBuilder):
         self.c_import_curtail_ess = gp.tupledict()
 
         self.c_daily_hydro_curtail_ess = gp.tupledict()
+        self.c_weekly_hydro_curtail_ess = gp.tupledict()
 
     def add_variables(self, step_k: int) -> None:
 
@@ -347,6 +348,19 @@ class SystemBuilder(ComponentBuilder):
         self.must_take_curtail_penalty_expr += (
             curtail_cost_factor
             * self.c_daily_hydro_curtail_ess.prod(daily_hydro_coeffs)
+        )
+
+        # Weekly hydro curtailment penalty
+        weekly_hydro_coeffs = get_marginal_cost_coeff(
+            step_k=step_k,
+            timesteps=self.timesteps,
+            units=self.inputs.weekly_hydro_must_take_units,
+            nondispatch_contracts=self.inputs.nondispatch_contracts,
+            contract_costs=self.inputs.contract_costs,
+        )
+        self.must_take_curtail_penalty_expr += (
+            curtail_cost_factor
+            * self.c_weekly_hydro_curtail_ess.prod(weekly_hydro_coeffs)
         )
 
         # Solar, wind, and import curtailment penalties

@@ -499,8 +499,10 @@ class SystemInput:
                 )
             )
 
-        if os.path.exists(os.path.join(self.model_dir, "hydro_capacity_min.csv")):
-            self.hydro_capacity_min = pd.read_csv(os.path.join(self.model_dir, "hydro_capacity_min.csv"))
+        if os.path.exists(os.path.join(self.model_dir, "hydro_min_capacity.csv")):
+            self.hydro_min_capacity = pd.read_csv(
+                os.path.join(self.model_dir, "hydro_min_capacity.csv")
+            )
 
         # Check that the names do not repeat across different types
         repeated_units = set(self.hydro_unit_node.keys()).intersection(
@@ -521,9 +523,9 @@ class SystemInput:
             )
 
         # Check that the names do not repeat across different types
-        repeated_units_daily_weekly = set(self.daily_hydro_unit_node.keys()).intersection(
-            self.weekly_hydro_unit_node.keys()
-        )
+        repeated_units_daily_weekly = set(
+            self.daily_hydro_unit_node.keys()
+        ).intersection(self.weekly_hydro_unit_node.keys())
         if repeated_units_daily_weekly:
             raise ValueError(
                 f"PowNet: Found hydropower units to formulate with both daily and weekly formulations: {repeated_units_daily_weekly}"
@@ -783,9 +785,11 @@ class SystemInput:
         # List of units
         #################
         self.thermal_units = list(self.thermal_unit_node.keys())
-        self.hydro_units = (list(self.hydro_unit_node.keys())
-                            + list(self.daily_hydro_unit_node.keys())
-                            + list(self.weekly_hydro_unit_node.keys()))
+        self.hydro_units = (
+            list(self.hydro_unit_node.keys())
+            + list(self.daily_hydro_unit_node.keys())
+            + list(self.weekly_hydro_unit_node.keys())
+        )
         self.solar_units = list(self.solar_unit_node.keys())
         self.wind_units = list(self.wind_unit_node.keys())
         self.import_units = list(self.import_unit_node.keys())
