@@ -6,8 +6,9 @@ import gurobipy as gp
 import pandas as pd
 
 from ..input import SystemInput
-from ..optim_model import add_var_with_variable_ub, update_var_with_variable_ub
 from ..optim_model import (
+    add_var_with_variable_ub,
+    update_var_with_variable_ub,
     get_thermal_fixed_coeff,
     get_thermal_startup_coeff,
     get_thermal_opex_coeff,

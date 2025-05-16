@@ -308,10 +308,6 @@ class PowerSystemModel:
 
     def print_added_constraints(self):
         added_constrs = set()
-
-        # TODO: instead of defining a list,
-        # extract the constraint names from the model itself
-
         for attr_name in self.model.getConstrs():
             constr_type = attr_name.ConstrName.split("[")[0]
             added_constrs.add(constr_type)

@@ -1,7 +1,7 @@
 """The optim_model module provides the core optimization model for power system operations."""
 
 from .model import PowerSystemModel
-from .variable import (
+from .variable_func import (
     add_var_with_variable_ub,
     update_var_with_variable_ub,
     update_flow_vars,

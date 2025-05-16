@@ -5,7 +5,10 @@ from .basebuilder import ComponentBuilder
 import gurobipy as gp
 
 from ..input import SystemInput
-from ..optim_model.variable import add_var_with_variable_ub, update_var_with_variable_ub
+from ..optim_model import (
+    add_var_with_variable_ub,
+    update_var_with_variable_ub,
+)
 from ..optim_model.objfunc import get_marginal_cost_coeff
 from ..optim_model.constraints import energy_storage_constr
 

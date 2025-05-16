@@ -36,10 +36,10 @@ pownet.optim\_model.rounding\_algo module
    :undoc-members:
    :show-inheritance:
 
-pownet.optim\_model.variable module
+pownet.optim\_model.variable_func module
 -----------------------------------
 
-.. automodule:: pownet.optim_model.variable
+.. automodule:: pownet.optim_model.variable_func
    :members:
    :undoc-members:
    :show-inheritance:
