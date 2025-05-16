@@ -124,3 +124,4 @@ scripts/*
 # Pownet generated files
 /model_library/*/pownet_*.csv
 /model_library/*/pownet_*.json
+coverage.json
