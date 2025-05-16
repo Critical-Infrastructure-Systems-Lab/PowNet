@@ -56,7 +56,7 @@ working_directory/
 └── outputs/
 ```
 
-A Python script called "[run_quickstart.py](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/blob/master/scripts/run_quickstart.py)" provides an example on running a simulation, saving the simulation outputs, and visualizing the outputs.
+A tutorial "[quickstart.py](./examples/quickstart.ipynb)" provides an example on running a simulation, saving the simulation outputs, and visualizing the outputs.
 
 ### Option 2: Power user (no pun intended)
 In case we wish to modify the source code, PowNet should be installed as an editable package. First, download or clone the PowNet repository to your local machine. For example: if we want to clone to "C://user/pownet",
@@ -79,10 +79,9 @@ pip install -e .
 
 This command installs the package in "editable" mode (-e) using pyproject.toml that is located in the root directory of PowNet. The editable mode allows us to edit PowNet codebase when we need to modify or implement new features. The pyproject.toml file specifies the dependencies required to run PowNet.
 
-A quick start tutorial to run a simple case study is provided here: https://pownet.readthedocs.io/en/latest/pages/quickstarter.html
 
 ## Overview of PowNet
 
-![overview_pownet](./docs/overview_pownet.png)
+![overview_pownet](./joss_submission/overview_pownet.png)
 
 
