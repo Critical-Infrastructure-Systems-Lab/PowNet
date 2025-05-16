@@ -38,6 +38,10 @@ This page lists research papers and reports that use PowNet 2.0 (or its predeces
 
 **Conference presentations**
 
+- **Galelli, S., Eldardiry, H., & Bunnak, P. (2025).** Towards real-time operation of interconnected water-energy systems (No. EGU25-7249). Copernicus Meetings.
+
+- **Galelli, S., Bunnak, P., Eldardiry, H., & Koh, R. (2025).** Evaluating Streamflow Forecasts in Hydro-Dominated Power Systems (No. EGU25-7232). Copernicus Meetings.
+
 - **Eldardiry, H., Bunnak, P., Thomsen, G., & Galelli, S. (2024)**. Orchestrating Hydropower Dispatch Decisions over Wide-Area Synchronous Grids. AGU24.
 
 - **Giuliani, M., Castelletti, A., Carlino, A., & Arnold, W. (2024, April)**. Reconsidering hydropower in the African energy transition. In EGU General Assembly Conference Abstracts (p. 7354).
