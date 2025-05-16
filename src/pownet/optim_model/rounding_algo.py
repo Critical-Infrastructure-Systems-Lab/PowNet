@@ -1,9 +1,11 @@
-""" rounding_algo.py: Functions to perform iterative rounding.
-"""
+"""rounding_algo.py: Functions to perform iterative rounding."""
 
 import gurobipy as gp
 import numpy as np
-import pandas as pd
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def get_variables(model: gp.Model, target_varnames: list[str] = None) -> dict:
@@ -25,8 +27,8 @@ def get_variables(model: gp.Model, target_varnames: list[str] = None) -> dict:
     filtered_vars = {}
     for v in model.getVars():
         # Extract the prefix of the variable name (e.g., 'status' from 'status[1,2]')
-        if v.varname.split("[")[0] in target_varnames:
-            filtered_vars[v.varname] = v
+        if v.varName.split("[")[0] in target_varnames:
+            filtered_vars[v.varName] = v
     return filtered_vars
 
 
@@ -91,7 +93,7 @@ def check_binary_values(var_dict: dict) -> bool:
     for var_name, var in var_dict.items():
         var_value = var.X
         if not (var_value == 0 or var_value == 1):
-            print(f"Variable {var_name} has non-binary value: {var_value}")
+            logger.info(f"Variable {var_name} has non-binary value: {var_value}")
             return False
     return True
 
@@ -145,8 +147,9 @@ def optimize_with_rounding(
 
         # Fixing variables can cause infeasibility
         if rounding_model.status == 3:
-            print("\nPowNet: Rounding is infeasible. Use the MIP method.")
-            break
+            logger.warning("\nPowNet: Rounding is infeasible. Use the MIP method.")
+            model.optimize()
+            return model, None, None
         # The model should be feasible, but raise an error if not.
         elif rounding_model.status != 2:
             raise ValueError(f"Unrecognized model status: {rounding_model.status}")
@@ -167,7 +170,7 @@ def optimize_with_rounding(
         rounding_model.update()
 
     # If no integer solution is found after max_rounding_iter
-    print(
+    logger.warning(
         "\nPowNet: The rounding heuristic has terminated before finding an integer solution."
     )
     model.optimize()
