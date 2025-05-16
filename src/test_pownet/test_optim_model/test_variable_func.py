@@ -1,3 +1,5 @@
+"""test_variable_func.py"""
+
 import unittest
 from unittest.mock import MagicMock, patch, call
 import pandas as pd
@@ -7,8 +9,16 @@ from pownet.optim_model import variable_func
 
 class TestVariableFunctions(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        """Set up class-level resources or patches before any tests in the class run."""
+        variable_func.VAR_PREFIX_THERMAL_GENERATION = "thermal_generation"
+
     def setUp(self):
         """Set up common test data and mocks."""
+
+        self.VAR_PREFIX_THERMAL_GENERATION = "thermal_generation"
+
         self.timesteps = range(
             3
         )  # Global timestep as per user request (implicitly via usage)
@@ -251,9 +261,4 @@ class TestVariableFunctions(unittest.TestCase):
 
 # This allows running the tests directly from the script
 if __name__ == "__main__":
-
-    # Ensure the variable prefix is set for the test
-    if not hasattr(variable_func, "VAR_PREFIX_THERMAL_GENERATION"):
-        variable_func.VAR_PREFIX_THERMAL_GENERATION = "thermal_generation"
-
     unittest.main()

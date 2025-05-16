@@ -1,4 +1,4 @@
-"""variable.py: Contains functions for adding variables to the optimization model."""
+"""variable_func.py: Contains functions for adding variables to the optimization model."""
 
 import gurobipy as gp
 from gurobipy import GRB
