@@ -160,7 +160,7 @@ class TimeSeriesModel(ABC):
         pass
 
     @abstractmethod
-    def _get_synthetic(self, exog_vars: list[str], seed: int) -> pd.Series:
+    def _get_synthetic(self, exog_data: pd.DataFrame, seed: int) -> pd.Series:
         pass
 
     @abstractmethod
