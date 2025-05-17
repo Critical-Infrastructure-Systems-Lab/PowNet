@@ -772,6 +772,441 @@ class TestThermalUnitConstrs(unittest.TestCase):
         # Clean up
         self.model.remove(constrs)
 
+    def test_add_c_peak_down_bound(self):
+        """Test the add_c_peak_down_bound constraint function."""
+
+        # Test data for SD, SU, TU
+        sd_data = {"G1": 70, "G2": 130}  # Shutdown capability (P_sd)
+        su_data = {"G1": 50, "G2": 100}  # Startup capability (P_su)
+        tu_data = {
+            "G1": 1,
+            "G2": 2,
+        }  # Minimum Uptime: G1 will get constraints, G2 will not.
+
+        # Assuming from setUp:
+        step_k_data = 1
+
+        constrs = thermal_unit_constr.add_c_peak_down_bound(
+            model=self.model,
+            p=self.p_vars,
+            u=self.u_vars,
+            v=self.v_vars,
+            w=self.w_vars,
+            sim_horizon=self.sim_horizon_3,
+            step_k=step_k_data,
+            thermal_units=self.thermal_units,
+            thermal_min_capacity=self.thermal_min_capacity_data,
+            thermal_derated_capacity=self.thermal_derated_capacity,
+            SD=sd_data,
+            SU=su_data,
+            TU=tu_data,
+        )
+        self.model.update()
+
+        # Calculate expected number of constraints
+        # G1: TU=1. sim_horizon=3.
+        #   - t=1 constraint (GentilePeakDown_t1) because sim_horizon >= 2. (1 constraint)
+        #   - Intermediate loop for t in range(2, sim_horizon=3) => t=2. (1 constraint)
+        # Total for G1 = 2.
+        # G2: TU=2. No constraints.
+        # Total expected = 2.
+        expected_num_constrs = 0
+        if tu_data.get("G1") == 1:
+            if self.sim_horizon_3 >= 2:  # For t=1 constraint
+                expected_num_constrs += 1
+            if self.sim_horizon_3 > 2:  # For intermediate loop range(2, sim_horizon)
+                expected_num_constrs += (
+                    self.sim_horizon_3 - 2
+                )  # t from 2 to sim_horizon-1
+
+        self.assertEqual(len(constrs), expected_num_constrs)
+        if (
+            self.sim_horizon_3 == 3 and tu_data.get("G1") == 1
+        ):  # Specific to current setup
+            self.assertEqual(expected_num_constrs, 2)
+
+        # --- Test constraints for G1 (where TU=1) ---
+        unit_g1 = "G1"
+        if tu_data.get(unit_g1) == 1:
+            p_underline_g1 = self.thermal_min_capacity_data[unit_g1]
+
+            # Case 1: t = 1 constraint (GentileEq_t1)
+            if self.sim_horizon_3 >= 2:
+                t1 = 1
+                constr_g1_t1_key = (unit_g1, t1, "GentilePeakDown_t1")
+                constr_g1_t1 = constrs.get(constr_g1_t1_key)
+                self.assertIsNotNone(
+                    constr_g1_t1, f"Constraint {constr_g1_t1_key} not found."
+                )
+
+                # Eq: p1 <= (Pbar1 - Punderline)u1 - (Pbar1 - SD)w2
+                # -> p1 - (Pbar1 - Punderline)u1 + (Pbar1 - SD)w2 <= 0
+                p_bar_t1_g1 = self.thermal_derated_capacity.loc[
+                    t1 + (step_k_data - 1) * 24, unit_g1
+                ]
+
+                expected_rhs_t1 = 0.0
+                expected_p1_coeff_le = 1.0
+                expected_u1_coeff_le = p_underline_g1 - p_bar_t1_g1
+                expected_w2_coeff_le = p_bar_t1_g1 - sd_data[unit_g1]
+
+                self.assertIn(
+                    constr_g1_t1.Sense, [gp.GRB.LESS_EQUAL, gp.GRB.GREATER_EQUAL]
+                )
+                self.assertAlmostEqual(constr_g1_t1.RHS, expected_rhs_t1)
+
+                row_g1_t1 = self.model.getRow(constr_g1_t1)
+
+                expected_coeffs_g1_t1_map = {}
+                num_expected_terms = 0
+                if abs(expected_p1_coeff_le) > 1e-9:
+                    expected_coeffs_g1_t1_map[self.p_vars[unit_g1, t1].VarName] = (
+                        expected_p1_coeff_le
+                    )
+                    num_expected_terms += 1
+                if abs(expected_u1_coeff_le) > 1e-9:
+                    expected_coeffs_g1_t1_map[self.u_vars[unit_g1, t1].VarName] = (
+                        expected_u1_coeff_le
+                    )
+                    num_expected_terms += 1
+                if abs(expected_w2_coeff_le) > 1e-9:
+                    expected_coeffs_g1_t1_map[self.w_vars[unit_g1, t1 + 1].VarName] = (
+                        expected_w2_coeff_le
+                    )
+                    num_expected_terms += 1
+
+                self.assertEqual(row_g1_t1.size(), num_expected_terms)
+
+                actual_coeffs_g1_t1 = {
+                    row_g1_t1.getVar(i).VarName: row_g1_t1.getCoeff(i)
+                    for i in range(row_g1_t1.size())
+                }
+
+                if constr_g1_t1.Sense == gp.GRB.LESS_EQUAL:
+                    self.assertDictEqual(actual_coeffs_g1_t1, expected_coeffs_g1_t1_map)
+                elif constr_g1_t1.Sense == gp.GRB.GREATER_EQUAL:
+                    self.assertDictEqual(
+                        actual_coeffs_g1_t1,
+                        {k: -v for k, v in expected_coeffs_g1_t1_map.items()},
+                    )
+                else:
+                    self.fail(f"Unexpected sense for {constr_g1_t1_key}")
+
+            # Case 2: Intermediate t constraints (e.g., t=2 if sim_horizon=3)
+            # Loop for t in range(2, sim_horizon)
+            for t_intermediate in range(2, self.sim_horizon_3):
+                constr_g1_intermediate_key = (
+                    unit_g1,
+                    t_intermediate,
+                    "GentilePeakDown_intermediate",
+                )
+                constr_g1_intermediate = constrs.get(constr_g1_intermediate_key)
+                self.assertIsNotNone(
+                    constr_g1_intermediate,
+                    f"Constraint {constr_g1_intermediate_key} not found.",
+                )
+
+                # Eq: pt <= (Pbart - Pu)ut - (Pbart - SD)w(t+1) - max(0, SD-SU)vt
+                # -> pt - (Pbart - Pu)ut + (Pbart - SD)w(t+1) + max(0,SD-SU)vt <= 0
+                p_bar_ti_g1 = self.thermal_derated_capacity.loc[
+                    t_intermediate + (step_k_data - 1) * 24, unit_g1
+                ]
+                max_sd_su_term = max(
+                    0, sd_data[unit_g1] - su_data[unit_g1]
+                )  # For G1: max(0, 70-50)=20
+
+                expected_rhs_ti = 0.0
+                expected_pt_coeff_le = 1.0
+                expected_ut_coeff_le = p_underline_g1 - p_bar_ti_g1
+                expected_wtplus1_coeff_le = p_bar_ti_g1 - sd_data[unit_g1]
+                expected_vt_coeff_le = max_sd_su_term
+
+                self.assertIn(
+                    constr_g1_intermediate.Sense,
+                    [gp.GRB.LESS_EQUAL, gp.GRB.GREATER_EQUAL],
+                )
+                self.assertAlmostEqual(constr_g1_intermediate.RHS, expected_rhs_ti)
+
+                row_g1_ti = self.model.getRow(constr_g1_intermediate)
+
+                expected_coeffs_g1_ti_map = {}
+                num_expected_terms_ti = 0
+                if abs(expected_pt_coeff_le) > 1e-9:
+                    expected_coeffs_g1_ti_map[
+                        self.p_vars[unit_g1, t_intermediate].VarName
+                    ] = expected_pt_coeff_le
+                    num_expected_terms_ti += 1
+                if abs(expected_ut_coeff_le) > 1e-9:
+                    expected_coeffs_g1_ti_map[
+                        self.u_vars[unit_g1, t_intermediate].VarName
+                    ] = expected_ut_coeff_le
+                    num_expected_terms_ti += 1
+                if abs(expected_wtplus1_coeff_le) > 1e-9:
+                    expected_coeffs_g1_ti_map[
+                        self.w_vars[unit_g1, t_intermediate + 1].VarName
+                    ] = expected_wtplus1_coeff_le
+                    num_expected_terms_ti += 1
+                if abs(expected_vt_coeff_le) > 1e-9:  # This term can be zero
+                    expected_coeffs_g1_ti_map[
+                        self.v_vars[unit_g1, t_intermediate].VarName
+                    ] = expected_vt_coeff_le
+                    num_expected_terms_ti += 1
+
+                self.assertEqual(row_g1_ti.size(), num_expected_terms_ti)
+
+                actual_coeffs_g1_ti = {
+                    row_g1_ti.getVar(i).VarName: row_g1_ti.getCoeff(i)
+                    for i in range(row_g1_ti.size())
+                }
+
+                if constr_g1_intermediate.Sense == gp.GRB.LESS_EQUAL:
+                    self.assertDictEqual(actual_coeffs_g1_ti, expected_coeffs_g1_ti_map)
+                elif constr_g1_intermediate.Sense == gp.GRB.GREATER_EQUAL:
+                    self.assertDictEqual(
+                        actual_coeffs_g1_ti,
+                        {k: -v for k, v in expected_coeffs_g1_ti_map.items()},
+                    )
+                else:
+                    self.fail(f"Unexpected sense for {constr_g1_intermediate_key}")
+
+        # --- Verify no constraints for G2 (where TU=2) ---
+        unit_g2 = "G2"
+        if tu_data.get(unit_g2) != 1:
+            # Check that no constraints for G2 were added to the returned tupledict
+            g2_constr_keys = [key for key in constrs if key[0] == unit_g2]
+            self.assertEqual(
+                len(g2_constr_keys), 0, f"Constraints found for {unit_g2} when TU != 1"
+            )
+
+        # Clean up
+        self.model.remove(constrs)
+
+    def test_add_c_peak_up_bound(self):
+        """Test the add_c_peak_up_bound constraint function."""
+
+        # Test data for SD, SU, TU
+        sd_data = {"G1": 50, "G2": 100}  # Shutdown capability (P_sd)
+        su_data = {"G1": 70, "G2": 130}  # Startup capability (P_su)
+        tu_data = {
+            "G1": 1,
+            "G2": 2,
+        }  # Minimum Uptime: G1 will get constraints, G2 will not.
+
+        step_k_data = 1
+
+        constrs = thermal_unit_constr.add_c_peak_up_bound(
+            model=self.model,
+            p=self.p_vars,
+            u=self.u_vars,
+            v=self.v_vars,
+            w=self.w_vars,
+            sim_horizon=self.sim_horizon_3,
+            step_k=step_k_data,
+            thermal_units=self.thermal_units,
+            thermal_min_capacity=self.thermal_min_capacity_data,
+            thermal_derated_capacity=self.thermal_derated_capacity,
+            SD=sd_data,
+            SU=su_data,
+            TU=tu_data,
+        )
+        self.model.update()
+
+        # Calculate expected number of constraints
+        # G1: TU=1. sim_horizon=3.
+        #   - Intermediate loop for t in range(2, sim_horizon=3) => t=2. (1 constraint - GentileEq5)
+        #   - Final t=T constraint (sim_horizon=3). (1 constraint - GentileEq3)
+        # Total for G1 = 2.
+        # G2: TU=2. No constraints.
+        # Total expected = 2.
+        expected_num_constrs = 0
+        if tu_data.get("G1") == 1:
+            if self.sim_horizon_3 > 1:  # Intermediate loop range(2, sim_horizon)
+                expected_num_constrs += (
+                    self.sim_horizon_3 - 2 + 1
+                )  # t from 2 to sim_horizon-1
+            if self.sim_horizon_3 >= 1:  # for final t=T constraint
+                expected_num_constrs += 1
+
+        # Correction for expected_num_constrs logic:
+        expected_num_constrs_calc = 0
+        for unit_g_calc in self.thermal_units:
+            if tu_data.get(unit_g_calc) == 1:
+                # Intermediate constraints
+                if (
+                    self.sim_horizon_3 > 2
+                ):  # range(2, sim_horizon) means at least sim_horizon=3
+                    expected_num_constrs_calc += (
+                        self.sim_horizon_3 - 1 - 2 + 1
+                    )  # t from 2 to sim_horizon-1
+                # Final T constraint
+                if self.sim_horizon_3 >= 1:
+                    expected_num_constrs_calc += 1
+
+        self.assertEqual(len(constrs), expected_num_constrs_calc)
+        if (
+            self.sim_horizon_3 == 3
+            and tu_data.get("G1") == 1
+            and tu_data.get("G2") != 1
+        ):  # Specific to current setup
+            self.assertEqual(
+                expected_num_constrs_calc, 2
+            )  # (t=2 intermediate) + (t=3 final)
+
+        # --- Test constraints for G1 (where TU=1) ---
+        unit_g1 = "G1"
+        if tu_data.get(unit_g1) == 1:
+            p_underline_g1 = self.thermal_min_capacity_data[unit_g1]
+
+            # Case 1: Intermediate t constraints (GentileEq5)
+            # Loop for t in range(2, sim_horizon)
+            for t_intermediate in range(2, self.sim_horizon_3):
+                constr_g1_intermediate_key = (
+                    unit_g1,
+                    t_intermediate,
+                    "GentilePeakUp_intermediate",
+                )
+                constr_g1_intermediate = constrs.get(constr_g1_intermediate_key)
+                self.assertIsNotNone(
+                    constr_g1_intermediate,
+                    f"Constraint {constr_g1_intermediate_key} not found.",
+                )
+
+                # Eq5: pt <= (Pbart - Pu)ut - (Pbart - SU)vt - max(0, SU-SD)w(t+1)
+                # -> pt - (Pbart - Pu)ut + (Pbart - SU)vt + max(0,SU-SD)w(t+1) <= 0
+                p_bar_ti_g1 = self.thermal_derated_capacity.loc[
+                    t_intermediate + (step_k_data - 1) * 24, unit_g1
+                ]
+                max_su_sd_term = max(
+                    0, su_data[unit_g1] - sd_data[unit_g1]
+                )  # For G1: max(0, 70-50)=20
+
+                expected_rhs_ti = 0.0
+                expected_pt_coeff_le = 1.0
+                expected_ut_coeff_le = p_underline_g1 - p_bar_ti_g1
+                expected_vt_coeff_le = p_bar_ti_g1 - su_data[unit_g1]
+                expected_wtplus1_coeff_le = max_su_sd_term
+
+                self.assertIn(
+                    constr_g1_intermediate.Sense,
+                    [gp.GRB.LESS_EQUAL, gp.GRB.GREATER_EQUAL],
+                )
+                self.assertAlmostEqual(constr_g1_intermediate.RHS, expected_rhs_ti)
+
+                row_g1_ti = self.model.getRow(constr_g1_intermediate)
+                expected_coeffs_g1_ti_map = {}
+                num_expected_terms_ti = 0
+
+                if abs(expected_pt_coeff_le) > 1e-9:
+                    expected_coeffs_g1_ti_map[
+                        self.p_vars[unit_g1, t_intermediate].VarName
+                    ] = expected_pt_coeff_le
+                    num_expected_terms_ti += 1
+                if abs(expected_ut_coeff_le) > 1e-9:
+                    expected_coeffs_g1_ti_map[
+                        self.u_vars[unit_g1, t_intermediate].VarName
+                    ] = expected_ut_coeff_le
+                    num_expected_terms_ti += 1
+                if abs(expected_vt_coeff_le) > 1e-9:
+                    expected_coeffs_g1_ti_map[
+                        self.v_vars[unit_g1, t_intermediate].VarName
+                    ] = expected_vt_coeff_le
+                    num_expected_terms_ti += 1
+                if abs(expected_wtplus1_coeff_le) > 1e-9:  # This term can be zero
+                    expected_coeffs_g1_ti_map[
+                        self.w_vars[unit_g1, t_intermediate + 1].VarName
+                    ] = expected_wtplus1_coeff_le
+                    num_expected_terms_ti += 1
+
+                self.assertEqual(row_g1_ti.size(), num_expected_terms_ti)
+                actual_coeffs_g1_ti = {
+                    row_g1_ti.getVar(i).VarName: row_g1_ti.getCoeff(i)
+                    for i in range(row_g1_ti.size())
+                }
+
+                if constr_g1_intermediate.Sense == gp.GRB.LESS_EQUAL:
+                    self.assertDictEqual(actual_coeffs_g1_ti, expected_coeffs_g1_ti_map)
+                elif constr_g1_intermediate.Sense == gp.GRB.GREATER_EQUAL:
+                    self.assertDictEqual(
+                        actual_coeffs_g1_ti,
+                        {k: -v for k, v in expected_coeffs_g1_ti_map.items()},
+                    )
+                else:
+                    self.fail(f"Unexpected sense for {constr_g1_intermediate_key}")
+
+            # Case 2: Final t = T (sim_horizon) constraint (GentileEq3)
+            if self.sim_horizon_3 >= 1:
+                t_final = self.sim_horizon_3
+                constr_g1_finalt_key = (unit_g1, t_final, "GentilePeakUp_finalT")
+                constr_g1_finalt = constrs.get(constr_g1_finalt_key)
+                self.assertIsNotNone(
+                    constr_g1_finalt, f"Constraint {constr_g1_finalt_key} not found."
+                )
+
+                # Eq3: pT <= (PbarT - Pu)uT - (PbarT - SU)vT
+                # -> pT - (PbarT - Pu)uT + (PbarT - SU)vT <= 0
+                p_bar_tf_g1 = self.thermal_derated_capacity.loc[
+                    t_final + (step_k_data - 1) * 24, unit_g1
+                ]
+
+                expected_rhs_tf = 0.0
+                expected_ptf_coeff_le = 1.0
+                expected_utf_coeff_le = p_underline_g1 - p_bar_tf_g1
+                expected_vtf_coeff_le = p_bar_tf_g1 - su_data[unit_g1]
+
+                self.assertIn(
+                    constr_g1_finalt.Sense, [gp.GRB.LESS_EQUAL, gp.GRB.GREATER_EQUAL]
+                )
+                self.assertAlmostEqual(constr_g1_finalt.RHS, expected_rhs_tf)
+
+                row_g1_tf = self.model.getRow(constr_g1_finalt)
+                expected_coeffs_g1_tf_map = {}
+                num_expected_terms_tf = 0
+
+                if abs(expected_ptf_coeff_le) > 1e-9:
+                    expected_coeffs_g1_tf_map[self.p_vars[unit_g1, t_final].VarName] = (
+                        expected_ptf_coeff_le
+                    )
+                    num_expected_terms_tf += 1
+                if abs(expected_utf_coeff_le) > 1e-9:
+                    expected_coeffs_g1_tf_map[self.u_vars[unit_g1, t_final].VarName] = (
+                        expected_utf_coeff_le
+                    )
+                    num_expected_terms_tf += 1
+                if abs(expected_vtf_coeff_le) > 1e-9:
+                    expected_coeffs_g1_tf_map[self.v_vars[unit_g1, t_final].VarName] = (
+                        expected_vtf_coeff_le
+                    )
+                    num_expected_terms_tf += 1
+
+                self.assertEqual(row_g1_tf.size(), num_expected_terms_tf)
+                actual_coeffs_g1_tf = {
+                    row_g1_tf.getVar(i).VarName: row_g1_tf.getCoeff(i)
+                    for i in range(row_g1_tf.size())
+                }
+
+                if constr_g1_finalt.Sense == gp.GRB.LESS_EQUAL:
+                    self.assertDictEqual(actual_coeffs_g1_tf, expected_coeffs_g1_tf_map)
+                elif constr_g1_finalt.Sense == gp.GRB.GREATER_EQUAL:
+                    self.assertDictEqual(
+                        actual_coeffs_g1_tf,
+                        {k: -v for k, v in expected_coeffs_g1_tf_map.items()},
+                    )
+                else:
+                    self.fail(f"Unexpected sense for {constr_g1_finalt_key}")
+
+        # --- Verify no constraints for G2 (where TU=2) ---
+        unit_g2 = "G2"
+        if tu_data.get(unit_g2) != 1:
+            g2_constr_keys = [key for key in constrs if key[0] == unit_g2]
+            self.assertEqual(
+                len(g2_constr_keys), 0, f"Constraints found for {unit_g2} when TU != 1"
+            )
+
+        # Clean up
+        if constrs:
+            self.model.remove(constrs)
+            self.model.update()
+
     def test_add_c_ramp_down_init(self):
         """Test the add_c_ramp_down_init constraint function."""
         # Define local test data
@@ -1028,6 +1463,9 @@ class TestThermalUnitConstrs(unittest.TestCase):
             self.fail(
                 f"Unexpected constraint sense for {constr_g1_t2}: {constr_g1_t2.Sense}"
             )
+
+        # Clean up: remove constraints
+        self.model.remove(constrs)
 
     def test_add_c_ramp_up_init(self):
         """Test the add_c_ramp_up_init constraint function."""

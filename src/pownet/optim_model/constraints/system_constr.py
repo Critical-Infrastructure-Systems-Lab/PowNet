@@ -2,7 +2,6 @@
 
 import gurobipy as gp
 import pandas as pd
-import networkx as nx
 
 from pownet.data_utils import get_capacity_value
 
