@@ -1,6 +1,14 @@
 """test_timeseries_model.py"""
 
 import unittest
+
+# Skip this test if the user has not installed pmdarima package
+try:
+    import pmdarima
+except ImportError:
+    pmdarima = None
+    raise unittest.SkipTest("pmdarima is not installed, skipping tests.")
+
 import pandas as pd
 from pownet.stochastic import timeseries_model
 
