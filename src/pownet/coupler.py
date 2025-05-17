@@ -54,6 +54,7 @@ class PowerWaterCoupler:
     def reoperate(
         self,
         step_k: int,
+        max_reop_iter: int = 100,
     ) -> None:
         """Reoperate the reservoirs based on the daily dispatch of the power system model.
         Note that we don't reoperate on the first day of the simulation period.
@@ -106,9 +107,8 @@ class PowerWaterCoupler:
 
             # Set the tolerance for convergence to 5%
             reop_tol = {
-                (idx): 0.05 * hydropower_dispatch[unit, day]
-                for idx in max_deviation
-                for day in days_in_step
+                (unit, day): 0.05 * hydropower_dispatch[unit, day]
+                for unit, day in max_deviation.keys()
             }
 
             if all(
@@ -121,11 +121,11 @@ class PowerWaterCoupler:
                     f"PowNet: Day {step_k + 1} - Reservoirs converged at iteration {reop_k}"
                 )
 
-            logger.info("Max deviation:", max_deviation)
+            logger.info("Max deviations:", max_deviation)
 
-            if reop_k > 50:
+            if reop_k > max_reop_iter:
                 raise ValueError(
-                    "Reservoirs reoperation did not converge after 100 iterations"
+                    f"Reservoirs reoperation did not converge after {max_reop_iter} iterations"
                 )
 
             # To reoptimize PowNet with the new hydropower capacity,
