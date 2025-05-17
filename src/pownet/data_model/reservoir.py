@@ -1,4 +1,6 @@
 import dataclasses
+import math
+
 import pandas as pd
 
 
@@ -19,8 +21,8 @@ class ReservoirParams:
         max_generation (float): The maximum power generation capacity (MW).
         turbine_factor (float): The efficiency factor of the turbine(s).
         inflow_ts (pd.Series): Timeseries of daily natural inflow into the reservoir (m³/day),
-                            indexed from 1 to sim_horizon.
-        minflow_ts (pd.Series): Minimum environmental flow (m³/day), indexed from 1 to sim_horizon.
+                            indexed from 1.
+        minflow_ts (pd.Series): Minimum environmental flow (m³/day), indexed from 1.
         upstream_units (list[str]): List of upstream reservoir names that feed into this reservoir.
         downstream_flow_fracs (dict[str, float]): Dictionary mapping downstream reservoir names to their
                                                 respective flow fractions (0-1).
@@ -45,7 +47,9 @@ class ReservoirParams:
         """Perform basic validation after initialization."""
         # Flow fractions of downstream units should sum to 1
         if self.downstream_flow_fracs:
-            if not 0.999 <= sum(self.downstream_flow_fracs.values()) <= 1.001:
+            if not math.isclose(
+                sum(self.downstream_flow_fracs.values()), 1.0, abs_tol=1e-4
+            ):
                 raise ValueError(
                     f"Downstream units for {self.name} do not sum to 1: "
                     f"{self.downstream_flow_fracs}"
