@@ -1,21 +1,28 @@
-"""hydro.py: Hydro unit builder."""
+"""hydro.py: Hydro unit builder. This includes hourly, daily, and weekly constraints for hydro units."""
 
 from .basebuilder import ComponentBuilder
 
 import gurobipy as gp
 
 from ..input import SystemInput
+from ..optim_model.variable_func import (
+    add_var_with_variable_ub,
+    update_var_with_variable_ub,
+)
 from ..optim_model.objfunc import get_marginal_cost_coeff
 from ..optim_model.constraints import nondispatch_constr
 
 
 class HydroUnitBuilder(ComponentBuilder):
-    """Builder class for hydro units.
+    """Builder class for hydro units. If a hydro unit's hourly availability is provided,
+    then the hydro unit's dispatch variables are limited by them. If a hydro unit's
+    hourly availability is not provided, as in the case with daily/weekly hydro units,
+    then the hydro unit's dispatch variables are limited by the contracted capacity.
 
     Variables
     ===========================
     - `phydro`: Hydropower output. Unit: MW.
-    - `uhydro`: Hydropower unit status. Unit: binary (0 or 1).
+    - `uhydro`: Hydropower unit status. Unit: binary (0 or 1). (optional)
 
     Fixed objective terms
     ===========================
@@ -27,8 +34,8 @@ class HydroUnitBuilder(ComponentBuilder):
 
     Constraints
     ===========================
+    - Hourly/Daily/Weekly hydropower limits
     - Linking upper bounds of dispatch variables to unit status variables
-    - Daily hydropower limits
 
     """
 
@@ -37,6 +44,10 @@ class HydroUnitBuilder(ComponentBuilder):
 
         # Variables
         self.phydro = gp.tupledict()
+        self.hourly_phydro = gp.tupledict()
+        self.daily_phydro = gp.tupledict()
+        self.weekly_phydro = gp.tupledict()
+
         self.uhydro = gp.tupledict()
 
         # Fixed objective terms
@@ -46,11 +57,11 @@ class HydroUnitBuilder(ComponentBuilder):
         self.total_energy_cost_expr = gp.LinExpr()
 
         # Constraints
-        self.c_link_hydro_pu = gp.tupledict()
-        self.c_link_weekly_hydro_pu = gp.tupledict()
-
+        self.c_hourly_hydro_ub = gp.tupledict()
         self.c_hydro_limit_daily = gp.tupledict()
         self.c_hydro_limit_weekly = gp.tupledict()
+
+        self.c_link_hydro_pu = gp.tupledict()
 
     def add_variables(self, step_k: int) -> None:
         """Add variables to the model for hydro units.
@@ -58,26 +69,56 @@ class HydroUnitBuilder(ComponentBuilder):
         Args:
             step_k (int): Current time step.
         """
-        self.phydro = self.model.addVars(
-            self.inputs.hydro_units,
+        # --- Hourly hydropower
+        self.hourly_phydro = add_var_with_variable_ub(
+            model=self.model,
+            varname="phydro",
+            timesteps=self.timesteps,
+            step_k=step_k,
+            units=self.inputs.hydro_unit_node.keys(),
+            capacity_df=self.inputs.hydro_capacity,
+        )
+
+        # --- Daily/weekly hydropower are limited by contracted capacity
+        self.daily_phydro = self.model.addVars(
+            self.inputs.daily_hydro_unit_node.keys(),
             self.timesteps,
             lb=0,
             ub={
                 (unit, t): self.inputs.hydro_contracted_capacity[unit]
+                for unit in self.inputs.daily_hydro_unit_node.keys()
                 for t in self.timesteps
-                for unit in self.inputs.hydro_units
             },
             vtype=gp.GRB.CONTINUOUS,
             name="phydro",
         )
 
-        self.uhydro = self.model.addVars(
-            self.inputs.hydro_units,
+        self.weekly_phydro = self.model.addVars(
+            self.inputs.weekly_hydro_unit_node.keys(),
             self.timesteps,
             lb=0,
-            vtype=gp.GRB.BINARY,
-            name="uhydro",
+            ub={
+                (unit, t): self.inputs.hydro_contracted_capacity[unit]
+                for unit in self.inputs.weekly_hydro_unit_node.keys()
+                for t in self.timesteps
+            },
+            vtype=gp.GRB.CONTINUOUS,
+            name="phydro",
         )
+
+        # Collect the dispatch variables (shallow copy)
+        self.phydro.update(self.hourly_phydro)
+        self.phydro.update(self.daily_phydro)
+        self.phydro.update(self.weekly_phydro)
+
+        if self.inputs.use_nondispatch_status_var:
+            self.uhydro = self.model.addVars(
+                self.inputs.hydro_units,
+                self.timesteps,
+                lb=0,
+                vtype=gp.GRB.BINARY,
+                name="uhydro",
+            )
 
     def get_fixed_objective_terms(self) -> gp.LinExpr:
         """Hydropower units have no fixed objective terms."""
@@ -107,25 +148,14 @@ class HydroUnitBuilder(ComponentBuilder):
 
     def add_constraints(self, step_k: int, init_conds: dict, **kwargs) -> None:
         # Hourly upper bound
-        self.c_link_hydro_pu = nondispatch_constr.add_c_link_unit_pu(
+        # Limited by contracted capacity
+        self.c_hourly_hydro_ub = nondispatch_constr.add_c_hourly_unit_ub(
             model=self.model,
-            pdispatch=self.phydro,
-            u=self.uhydro,
+            pdispatch=self.hourly_phydro,
             unit_type="hydro",
             timesteps=self.timesteps,
-            step_k=step_k,
             units=self.inputs.hydro_unit_node.keys(),
-            capacity_df=self.inputs.hydro_capacity,
-        )
-
-        # Weekly upper bound
-        self.c_link_weekly_hydro_pu = nondispatch_constr.add_c_link_unit_pu(
-            model=self.model,
-            pdispatch=self.phydro,
-            u=self.uhydro,
-            timesteps=self.timesteps,
-            units=self.inputs.weekly_hydro_unit_node.keys(),
-            contracted_capacity=self.inputs.hydro_contracted_capacity,
+            contracted_capacity_dict=self.inputs.hydro_contracted_capacity,
         )
 
         # Daily upper bound
@@ -149,9 +179,25 @@ class HydroUnitBuilder(ComponentBuilder):
             hydro_capacity_min=self.inputs.hydro_min_capacity,
         )
 
+        if self.inputs.use_nondispatch_status_var:
+            self.c_link_hydro_pu = nondispatch_constr.add_c_link_unit_pu(
+                model=self.model,
+                pdispatch=self.phydro,
+                u=self.uhydro,
+                unit_type="hydro",
+                timesteps=self.timesteps,
+                units=self.inputs.hydro_units,
+                contracted_capacity_dict=self.inputs.hydro_contracted_capacity,
+            )
+
     def update_variables(self, step_k: int) -> None:
-        "Hydropower variables do not have time-dependent lower/upper bounds."
-        return
+        "Some hydropower units have hourly upper bounds."
+        # Update the time-dependent upper bound of the variable
+        update_var_with_variable_ub(
+            variables=self.hourly_phydro,
+            step_k=step_k,
+            capacity_df=self.inputs.hydro_capacity,
+        )
 
     def update_constraints(self, step_k: int, init_conds: dict, **kwargs) -> None:
         """Update constraints for hydro units.
@@ -162,17 +208,6 @@ class HydroUnitBuilder(ComponentBuilder):
         Returns:
             None
         """
-        self.model.remove(self.c_link_hydro_pu)
-        self.c_link_hydro_pu = nondispatch_constr.add_c_link_unit_pu(
-            model=self.model,
-            pdispatch=self.phydro,
-            u=self.uhydro,
-            unit_type="hydro",
-            timesteps=self.timesteps,
-            step_k=step_k,
-            units=self.inputs.hydro_unit_node.keys(),
-            capacity_df=self.inputs.hydro_capacity,
-        )
 
         self.model.remove(self.c_hydro_limit_daily)
         self.c_hydro_limit_daily = nondispatch_constr.add_c_hydro_limit_daily(
@@ -196,7 +231,7 @@ class HydroUnitBuilder(ComponentBuilder):
         )
 
     def update_daily_hydropower_capacity(
-        self, step_k: int, new_capacity: dict[(str, int), float]
+        self, step_k: int, new_capacity: dict[tuple[str, int], float]
     ) -> None:
         self.model.remove(self.c_hydro_limit_daily)
         self.c_hydro_limit_daily = nondispatch_constr.add_c_hydro_limit_daily_dict(

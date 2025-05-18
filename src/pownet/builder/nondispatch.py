@@ -5,13 +5,21 @@ from .basebuilder import ComponentBuilder
 import gurobipy as gp
 
 from ..input import SystemInput
+from ..optim_model.variable_func import (
+    add_var_with_variable_ub,
+    update_var_with_variable_ub,
+)
 from ..optim_model.objfunc import get_marginal_cost_coeff
 from ..optim_model.constraints import nondispatch_constr
 
 
 class NonDispatchUnitBuilder(ComponentBuilder):
-    """Builder class for solar, wind, and import units. The variables have fixed upper bounds.
-    Hourly capacity constraints are enforced as constraints linked to the unit status variables.
+    """Builder class for solar, wind, and import units. The variables have
+    time-dependent upper bounds, which is a time series of hourly availability
+    (with respect to installed capacity). The hourly capacity constraints are
+    enforced as contracted capacities, which are time-invariant. Of course, the contracted capacity
+    must be less than or equal to the installed capacity. A user may choose to use
+    status variables to indicate whether the unit is generating or not.
 
     Variables
     ===========================
@@ -34,6 +42,7 @@ class NonDispatchUnitBuilder(ComponentBuilder):
 
     Constraints
     ===========================
+    - Upper bounds of dispatch variables to contracted capacities
     - Linking upper bounds of dispatch variables to unit status variables
 
     """
@@ -58,6 +67,10 @@ class NonDispatchUnitBuilder(ComponentBuilder):
         self.total_energy_cost = gp.LinExpr()
 
         # Constraints
+        self.c_hourly_solar_ub = gp.tupledict()
+        self.c_hourly_wind_ub = gp.tupledict()
+        self.c_hourly_import_ub = gp.tupledict()
+
         self.c_link_solar_pu = gp.tupledict()
         self.c_link_wind_pu = gp.tupledict()
         self.c_link_import_pu = gp.tupledict()
@@ -72,58 +85,56 @@ class NonDispatchUnitBuilder(ComponentBuilder):
         Returns:
             None
         """
-        var_with_fixed_ub = [
+        var_with_variable_ub = [
             (
                 "psolar",
                 self.inputs.solar_units,
-                self.inputs.solar_contracted_capacity,
+                self.inputs.solar_capacity,
             ),
             (
                 "pwind",
                 self.inputs.wind_units,
-                self.inputs.wind_contracted_capacity,
+                self.inputs.wind_capacity,
             ),
             (
                 "pimp",
                 self.inputs.import_units,
-                self.inputs.import_contracted_capacity,
+                self.inputs.import_capacity,
             ),
         ]
 
-        for varname, units, capacity_dict in var_with_fixed_ub:
+        for varname, units, capacity_df in var_with_variable_ub:
             setattr(
                 self,
                 varname,
-                self.model.addVars(
-                    units,
-                    self.timesteps,
-                    lb=0,
-                    ub={
-                        (unit, t): capacity_dict[unit]
-                        for t in self.timesteps
-                        for unit in units
-                    },
-                    name=varname,
+                add_var_with_variable_ub(
+                    model=self.model,
+                    varname=varname,
+                    timesteps=self.timesteps,
+                    step_k=step_k,
+                    units=units,
+                    capacity_df=capacity_df,
                 ),
             )
 
-        # Binary variables
-        var_binary_tuples = [
-            ("usolar", "solar_units"),
-            ("uwind", "wind_units"),
-            ("uimp", "import_units"),
-        ]
-        for varname, unit_type in var_binary_tuples:
-            setattr(
-                self,
-                varname,
-                self.model.addVars(
-                    getattr(self.inputs, unit_type),
-                    self.timesteps,
-                    vtype=gp.GRB.BINARY,
-                    name=varname,
-                ),
-            )
+        if self.inputs.use_nondispatch_status_var:
+            # Binary variables
+            var_binary_tuples = [
+                ("usolar", "solar_units"),
+                ("uwind", "wind_units"),
+                ("uimp", "import_units"),
+            ]
+            for varname, unit_type in var_binary_tuples:
+                setattr(
+                    self,
+                    varname,
+                    self.model.addVars(
+                        getattr(self.inputs, unit_type),
+                        self.timesteps,
+                        vtype=gp.GRB.BINARY,
+                        name=varname,
+                    ),
+                )
 
     def get_fixed_objective_terms(self) -> gp.LinExpr:
         """Non-dispatchable units have no fixed objective terms."""
@@ -166,12 +177,11 @@ class NonDispatchUnitBuilder(ComponentBuilder):
 
         return self.total_energy_cost
 
-    def _add_unit_link_pu(self, step_k: int) -> None:
-        """Add constraints to link the dispatch variable and the unit status variable. This constraint
-        also limits the dispatch variable by the hourly capacity of the unit.
+    def _add_unit_link_pu(self) -> None:
+        """Add constraints to link the dispatch variable and the unit status variable.
 
         Args:
-            step_k (int): The current simulation step.
+            None
 
         Returns:
             None
@@ -181,19 +191,19 @@ class NonDispatchUnitBuilder(ComponentBuilder):
                 "p": self.psolar,
                 "u": self.usolar,
                 "units": self.inputs.solar_units,
-                "capacity_df": self.inputs.solar_capacity,
+                "contracted_capacity_dict": self.inputs.solar_contracted_capacity,
             },
             "wind": {
                 "p": self.pwind,
                 "u": self.uwind,
                 "units": self.inputs.wind_units,
-                "capacity_df": self.inputs.wind_capacity,
+                "contracted_capacity_dict": self.inputs.wind_contracted_capacity,
             },
             "import": {
                 "p": self.pimp,
                 "u": self.uimp,
                 "units": self.inputs.import_units,
-                "capacity_df": self.inputs.import_capacity,
+                "contracted_capacity_dict": self.inputs.import_contracted_capacity,
             },
         }
         for unit_type, params in unit_params.items():
@@ -206,9 +216,8 @@ class NonDispatchUnitBuilder(ComponentBuilder):
                     u=params["u"],
                     unit_type=unit_type,
                     timesteps=self.timesteps,
-                    step_k=step_k,
                     units=params["units"],
-                    capacity_df=params["capacity_df"],
+                    contracted_capacity_dict=params["contracted_capacity_dict"],
                 ),
             )
 
@@ -222,14 +231,67 @@ class NonDispatchUnitBuilder(ComponentBuilder):
         Returns:
             None
         """
-        self._add_unit_link_pu(step_k=step_k)
+        # Hourly upper bounds are contracted capacities
+        hourly_ub_tuples = [
+            (
+                self.psolar,
+                "solar",
+                self.inputs.solar_units,
+                self.inputs.solar_contracted_capacity,
+            ),
+            (
+                self.pwind,
+                "wind",
+                self.inputs.wind_units,
+                self.inputs.wind_contracted_capacity,
+            ),
+            (
+                self.pimp,
+                "import",
+                self.inputs.import_units,
+                self.inputs.import_contracted_capacity,
+            ),
+        ]
+        for (
+            pdispatch,
+            unit_type,
+            units,
+            contracted_capacity_dict,
+        ) in hourly_ub_tuples:
+            setattr(
+                self,
+                f"c_hourly_{unit_type}_ub",
+                nondispatch_constr.add_c_hourly_unit_ub(
+                    model=self.model,
+                    pdispatch=pdispatch,
+                    unit_type=unit_type,
+                    timesteps=self.timesteps,
+                    units=units,
+                    contracted_capacity_dict=contracted_capacity_dict,
+                ),
+            )
+
+        # In case we want to use the status variables
+        if self.inputs.use_nondispatch_status_var:
+            self._add_unit_link_pu()
 
     def update_variables(self, step_k: int) -> None:
-        """Non-dispatchable units' variables do not have time-dependent upper/lower bounds."""
-        return
+        """The variables have time-dependent upper bounds."""
+        # Update the time-dependent upper bound of the variable
+        var_tuples = [("psolar", "solar"), ("pwind", "wind"), ("pimp", "import")]
+
+        for varname, unit_type in var_tuples:
+            var = getattr(self, varname)
+            update_var_with_variable_ub(
+                variables=var,
+                step_k=step_k,
+                capacity_df=getattr(self.inputs, f"{unit_type}_capacity"),
+            )
 
     def update_constraints(self, step_k: int, init_conds: dict, **kwargs) -> None:
-        """Update the constraints for non-dispatchable units.
+        """Update the constraints for non-dispatchable units. Currently,
+        this function does not update any constraints, but it is included for
+        consistency with the base class.
 
         Args:
             step_k (int): The current simulation step.
@@ -238,10 +300,7 @@ class NonDispatchUnitBuilder(ComponentBuilder):
         Returns:
             None
         """
-        self.model.remove(self.c_link_solar_pu)
-        self.model.remove(self.c_link_wind_pu)
-        self.model.remove(self.c_link_import_pu)
-        self._add_unit_link_pu(step_k)
+        return
 
     def get_variables(self) -> dict[str, gp.tupledict]:
         """Return all variables in the builder.
@@ -249,11 +308,18 @@ class NonDispatchUnitBuilder(ComponentBuilder):
         Returns:
             dict[str, gp.tupledict]: A dictionary containing all variables in the builder.
         """
-        return {
-            "psolar": self.psolar,
-            "usolar": self.usolar,
-            "pwind": self.pwind,
-            "uwind": self.uwind,
-            "pimp": self.pimp,
-            "uimp": self.uimp,
-        }
+        if self.inputs.use_nondispatch_status_var:
+            return {
+                "psolar": self.psolar,
+                "usolar": self.usolar,
+                "pwind": self.pwind,
+                "uwind": self.uwind,
+                "pimp": self.pimp,
+                "uimp": self.uimp,
+            }
+        else:
+            return {
+                "psolar": self.psolar,
+                "pwind": self.pwind,
+                "pimp": self.pimp,
+            }

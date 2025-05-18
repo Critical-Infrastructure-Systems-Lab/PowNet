@@ -23,6 +23,7 @@ class SystemInput:
         num_sim_days: int = 365,
         use_spin_var: bool = True,
         dc_opf: str = "kirchhoff",
+        use_nondispatch_status_var: bool = False,
         spin_reserve_factor: float = 0.15,
         spin_reserve_mw: float = None,
         gen_loss_factor: float = 0.01,
@@ -33,7 +34,27 @@ class SystemInput:
         spin_shortfall_penalty_factor: float = 900,
         ess_discharge_shortfall_penalty_factor: float = 900,
     ) -> None:
-        """This class reads the input data for the power system model."""
+        """This class reads the input data for the power system model.
+
+        Args:
+            input_folder (str): Path to the folder containing the input data.
+            model_name (str): Name of the model.
+            year (int): Year of the simulation.
+            sim_horizon (int): Simulation horizon in hours.
+            num_sim_days (int): Number of days in the simulation. Default is 365.
+            use_spin_var (bool): Whether to use spin reserve variable. Default is True.
+            use_nondispatch_status_var (bool): Whether to use nondispatch status variable. Default is False.
+            dc_opf (str): DC OPF formulation. Can be "kirchhoff" or "voltage_angle". Default is "kirchhoff".
+            spin_reserve_factor (float): Spin reserve factor. Default is 0.15.
+            spin_reserve_mw (float): Spin reserve in MW. Default is None.
+            gen_loss_factor (float): Generator loss factor. Default is 0.01.
+            line_loss_factor (float): Line loss factor. Default is 0.0001.
+            line_capacity_factor (float): Line capacity factor. Default is 0.9.
+            load_shortfall_penalty_factor (float): Load shortfall penalty factor. Default is 1000.
+            load_curtail_penalty_factor (float): Load curtail penalty factor. Default is 1000.
+            spin_shortfall_penalty_factor (float): Spin shortfall penalty factor. Default is 900.
+            ess_discharge_shortfall_penalty_factor (float): ESS discharge shortfall penalty factor. Default is 900.
+        """
 
         self.model_name: str = model_name
         self.model_dir: str = os.path.join(input_folder, model_name)
@@ -43,7 +64,9 @@ class SystemInput:
         self.num_sim_days: int = num_sim_days
         self.num_sim_hours: int = num_sim_days * 24
 
+        # Choose to use these variables or not
         self.use_spin_var: bool = use_spin_var
+        self.use_nondispatch_status_var: bool = use_nondispatch_status_var
 
         # The timestamp is used to create a unique folder for the model
         self.timestamp: str = datetime.now().strftime("%Y%m%d_%H%M")

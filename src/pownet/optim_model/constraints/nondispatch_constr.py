@@ -3,7 +3,38 @@
 import gurobipy as gp
 import pandas as pd
 
-from pownet.data_utils import get_capacity_value
+
+def add_c_hourly_unit_ub(
+    model: gp.Model,
+    pdispatch: gp.tupledict,
+    unit_type: str,
+    timesteps: range,
+    units: list,
+    contracted_capacity_dict: dict[str, float],
+) -> gp.tupledict:
+    """
+    Add constraints to define the hourly availability of non-dispatchable units. This is limited by the
+    contracted_capacity
+
+    Args:
+        model (gp.Model): The optimization model.
+        pdispatch (gp.tupledict): The dispatch variable.
+        unit_type (str): The type of unit ("wind", "solar", "hydro", "import").
+        timesteps (range): The range of timesteps.
+        units (list): The list of units.
+        contracted_capacity_dict (dict[str, float]): The contracted capacity of the unit.
+
+    Returns:
+        gp.tupledict: The constraints linking the dispatch variable and the unit status variable.
+    """
+    return model.addConstrs(
+        (
+            pdispatch[unit, t] <= contracted_capacity_dict[unit]
+            for unit in units
+            for t in timesteps
+        ),
+        name=f"hourly_{unit_type}_ub",
+    )
 
 
 def add_c_link_unit_pu(
@@ -12,13 +43,13 @@ def add_c_link_unit_pu(
     u: gp.tupledict,
     unit_type: str,
     timesteps: range,
-    step_k: int,
     units: list,
-    capacity_df: pd.DataFrame,
+    contracted_capacity_dict: dict[str, float],
 ) -> gp.tupledict:
     """
     Add constraints to link the dispatch variable and the unit status variable.
-    The dispatch variable is limited by the unit status variable and the capacity of the unit.
+    The dispatch variable is limited by the unit status variable and the maximum
+    dispatch of the unit (contracted capacity).
 
     Args:
         model (gp.Model): The optimization model.
@@ -26,17 +57,15 @@ def add_c_link_unit_pu(
         u (gp.tupledict): The unit status variable.
         unit_type (str): The type of unit ("wind", "solar", "hydro", "import").
         timesteps (range): The range of timesteps.
-        step_k (int): The step index.
         units (list): The list of units.
-        capacity_df (pd.DataFrame): The dataframe of capacities.
+        contracted_capacity_dict (dict[str, float]): The contracted capacity of the unit.
 
     Returns:
         gp.tupledict: The constraints linking the dispatch variable and the unit status variable.
     """
     return model.addConstrs(
         (
-            pdispatch[unit, t]
-            <= u[unit, t] * get_capacity_value(t, unit, step_k, capacity_df)
+            pdispatch[unit, t] <= u[unit, t] * contracted_capacity_dict[unit]
             for unit in units
             for t in timesteps
         ),
@@ -100,7 +129,7 @@ def add_c_hydro_limit_daily_dict(
     step_k: int,
     sim_horizon: int,
     hydro_units: list,
-    hydro_capacity_dict: pd.DataFrame,
+    hydro_capacity_dict: dict[tuple[str, int], float],
 ) -> gp.tupledict:
     """
     Add constraints to limit hydropower by the daily amount. The sum of dispatch variables
@@ -121,6 +150,9 @@ def add_c_hydro_limit_daily_dict(
         ValueError: If the simulation horizon is not divisible by 24
 
     """
+    if len(hydro_units) == 0:
+        return gp.tupledict()
+
     # When formulating with daily hydropower, sim_horizon must be divisible
     # by 24 because the hydro_capacity is daily.
     if sim_horizon % 24 != 0:
@@ -154,9 +186,8 @@ def add_c_hydro_limit_weekly(
     hydro_capacity_min: pd.DataFrame,
 ) -> gp.tupledict:
     """
-    Defines the weekly limit of hydro generation. Assumes that a certain amount of water is
-    available for hydropower generation each day. In this case, the dataframe hydro_capacity has a length of 365 days
-    instead of 8760 hours.
+    Defines the weekly limit (lower and upper bounds) of hydro generation.
+    Assumes that a certain amount of water is available for hydropower generation each day.
 
     Args:
         model (gp.Model): The optimization model
@@ -173,9 +204,11 @@ def add_c_hydro_limit_weekly(
         ValueError: If the simulation horizon is not divisible by 24
 
     """
+    if len(hydro_units) == 0:
+        return gp.tupledict()
+
     # When formulating with weekly hydropower, sim_horizon must be divisible
     # by 168 because the hydro_capacity is weekly.
-
     if sim_horizon % 168 != 0:
         raise ValueError(
             "The simulation horizon must be divisible by 168 when using weekly hydropower capacity."
