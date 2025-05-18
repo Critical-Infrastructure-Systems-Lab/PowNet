@@ -4,7 +4,7 @@ import pandas as pd
 from pownet.data_utils import (
     create_init_condition,
 )
-from .builder import ModelBuilder
+from .model_builder import ModelBuilder
 from .data_processor import DataProcessor
 from ..input import SystemInput
 from .output import OutputProcessor

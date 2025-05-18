@@ -4,10 +4,10 @@ pownet.core package
 Submodules
 ----------
 
-pownet.core.builder module
+pownet.core.model_builder module
 --------------------------
 
-.. automodule:: pownet.core.builder
+.. automodule:: pownet.core.model_builder
    :members:
    :undoc-members:
    :show-inheritance:

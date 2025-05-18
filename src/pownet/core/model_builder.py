@@ -1,3 +1,7 @@
+"""builder.py: This module contains the ModelBuilder class, which is responsible
+for constructing and updating the optimization model for the power system.
+"""
+
 from ..input import SystemInput
 
 from gurobipy import GRB
