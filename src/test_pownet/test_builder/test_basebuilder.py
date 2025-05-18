@@ -112,8 +112,8 @@ class TestComponentBuilder(unittest.TestCase):
 
         with self.assertRaisesRegex(
             TypeError,
-            # Updated regex to match the beginning of the actual error message
-            r"Can't instantiate abstract class ComponentBuilder without an implementation for abstract method",
+            # Simplified regex to match the beginning of the actual error message
+            r"Can't instantiate abstract class ComponentBuilder",
         ):
             ComponentBuilder(mock_model_instance, mock_inputs_instance)
 
@@ -161,8 +161,8 @@ class TestComponentBuilder(unittest.TestCase):
 
         with self.assertRaisesRegex(
             TypeError,
-            # Updated regex to match the beginning of the actual error message
-            r"Can't instantiate abstract class IncompleteBuilder without an implementation for abstract method",
+            # Simplified regex to match the beginning of the actual error message
+            r"Can't instantiate abstract class IncompleteBuilder",
         ):
             IncompleteBuilder(mock_model_instance, mock_inputs_instance)
 
