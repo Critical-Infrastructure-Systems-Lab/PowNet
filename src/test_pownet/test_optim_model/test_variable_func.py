@@ -1,30 +1,31 @@
-"""test_variable_func.py"""
+"""test_variable_func.py: Unit tests for variable_func.py."""
 
 import unittest
 from unittest.mock import MagicMock, patch, call
 import pandas as pd
 
+# Assuming variable_func is in pownet.optim_model directory
+# Adjust the import path if your directory structure is different.
+# For example, if pownet is in your PYTHONPATH:
 from pownet.optim_model import variable_func
+
+# If variable_func.py is in the same directory as the test for local testing,
+# you might use:
+# import variable_func
 
 
 class TestVariableFunctions(unittest.TestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        """Set up class-level resources or patches before any tests in the class run."""
-        variable_func.VAR_PREFIX_THERMAL_GENERATION = "thermal_generation"
+    # Removed setUpClass as VAR_PREFIX_THERMAL_GENERATION is no longer used
+    # in variable_func.py
 
     def setUp(self):
         """Set up common test data and mocks."""
 
-        self.VAR_PREFIX_THERMAL_GENERATION = "thermal_generation"
-
-        self.timesteps = range(
-            3
-        )  # Global timestep as per user request (implicitly via usage)
+        self.timesteps = range(3)
         self.units = ["gen_A", "gen_B"]
         self.edges = [("node1", "node2"), ("node2", "node3")]
-        self.step_k = 1  # Default step_k, can be overridden in specific tests
+        self.step_k = 1  # Default step_k, can be overridden
 
         # Mock Gurobi model
         self.mock_model = MagicMock()
@@ -37,9 +38,6 @@ class TestVariableFunctions(unittest.TestCase):
         self.dummy_capacity_df = pd.DataFrame({"dummy_col": [1, 2, 3]})
 
         # More structured capacity DataFrame for update_flow_vars
-        # Index needs to cover t + (step_k - 1) * 24
-        # For step_k=1, t=0,1,2 -> index 0,1,2
-        # For step_k=2, t=0,1,2 -> index 24,25,26
         idx = pd.RangeIndex(start=0, stop=50, step=1)  # Sufficient for a few steps
         data_for_flow_df = {
             self.edges[0]: [100 + i for i in range(50)],
@@ -54,12 +52,12 @@ class TestVariableFunctions(unittest.TestCase):
         var_name = "test_var"
         step_k_test = 2
 
+        # Mock the GRB constant
         mock_grb_module.CONTINUOUS = "MOCK_GRB_CONTINUOUS_TYPE"
 
-        # Define a side effect for mock_get_capacity_value to simulate different capacities
+        # Define a side effect for mock_get_capacity_value
         def capacity_side_effect(t, unit, sk, df):
-            # sk is step_k, df is capacity_df
-            # Simple unique value based on inputs for verification
+            self.assertIs(df, self.dummy_capacity_df)  # Ensure correct df is passed
             if unit == self.units[0]:
                 return 100 + t + sk
             elif unit == self.units[1]:
@@ -68,7 +66,7 @@ class TestVariableFunctions(unittest.TestCase):
 
         mock_get_capacity_value.side_effect = capacity_side_effect
 
-        # Expected upper bounds dictionary
+        # Expected upper bounds dictionary based on the side effect
         expected_ub_dict = {}
         for t_val in self.timesteps:
             for unit_val in self.units:
@@ -92,7 +90,7 @@ class TestVariableFunctions(unittest.TestCase):
             self.timesteps,
             lb=0,
             ub=expected_ub_dict,
-            vtype="MOCK_GRB_CONTINUOUS_TYPE",  # Check if the mocked GRB type is used
+            vtype="MOCK_GRB_CONTINUOUS_TYPE",
             name=var_name,
         )
 
@@ -114,62 +112,47 @@ class TestVariableFunctions(unittest.TestCase):
         )
 
     @patch("pownet.optim_model.variable_func.get_capacity_value")
-    @patch("pownet.optim_model.variable_func.get_unit_hour_from_varname")
-    def test_update_var_with_variable_ub(
-        self, mock_get_unit_hour_from_varname, mock_get_capacity_value
-    ):
+    def test_update_var_with_variable_ub(self, mock_get_capacity_value):
         """Test the update_var_with_variable_ub function."""
         step_k_test = 1
 
-        # Create mock Gurobi variables
+        # Create mock Gurobi variables (VarName is not used by the new function logic)
         mock_gvar1 = MagicMock()
-        mock_gvar1.VarName = (
-            f"{variable_func.VAR_PREFIX_THERMAL_GENERATION}_{self.units[0]}[0]"
-        )
         mock_gvar1.ub = 0  # Initial ub
 
         mock_gvar2 = MagicMock()
-        mock_gvar2.VarName = (
-            f"{variable_func.VAR_PREFIX_THERMAL_GENERATION}_{self.units[1]}[1]"
-        )
         mock_gvar2.ub = 0  # Initial ub
 
-        # Simulate a gp.tupledict by using a dictionary of these mocks
-        # The function iterates over .values()
+        mock_gvar3 = MagicMock()  # For a different timestep
+        mock_gvar3.ub = 0
+
+        # Simulate a gp.tupledict by using a Python dictionary of these mocks
+        # Keys are (unit, t) as expected by the function's iteration
         mock_variables_dict = {
-            (self.units[0], 0): mock_gvar1,
+            (self.units[0], 0): mock_gvar1,  # (unit, t)
             (self.units[1], 1): mock_gvar2,
+            (self.units[0], 2): mock_gvar3,
         }
 
-        # Configure side effect for get_unit_hour_from_varname
-        def unit_hour_side_effect(var_name):
-            if var_name == mock_gvar1.VarName:
-                return self.units[0], 0
-            elif var_name == mock_gvar2.VarName:
-                return self.units[1], 1
-            return None, None  # Should not happen with controlled inputs
-
-        mock_get_unit_hour_from_varname.side_effect = unit_hour_side_effect
-
         # Configure side effect for get_capacity_value
-        # Capacity depends on unit, t, and step_k
         expected_capacity_gvar1 = 150
         expected_capacity_gvar2 = 250
+        expected_capacity_gvar3 = 175
 
-        def capacity_side_effect(t, unit, sk, df):
-            self.assertEqual(sk, step_k_test)  # Check step_k is passed correctly
-            self.assertIs(df, self.dummy_capacity_df)  # Check df is passed correctly
-            if unit == self.units[0] and t == 0:
+        def capacity_side_effect(t_arg, unit_arg, sk_arg, df_arg):
+            self.assertEqual(sk_arg, step_k_test)
+            self.assertIs(df_arg, self.dummy_capacity_df)
+            if unit_arg == self.units[0] and t_arg == 0:
                 return expected_capacity_gvar1
-            elif unit == self.units[1] and t == 1:
+            elif unit_arg == self.units[1] and t_arg == 1:
                 return expected_capacity_gvar2
-            return 0  # Default, should not be hit with specific var names
+            elif unit_arg == self.units[0] and t_arg == 2:
+                return expected_capacity_gvar3
+            return 0  # Default, should not be hit
 
         mock_get_capacity_value.side_effect = capacity_side_effect
 
         # Call the function
-        # Pass the .values() if the function expects an iterable of Gurobi variables
-        # The type hint is gp.tupledict, so we pass the dict itself.
         variable_func.update_var_with_variable_ub(
             variables=mock_variables_dict,
             step_k=step_k_test,
@@ -177,81 +160,71 @@ class TestVariableFunctions(unittest.TestCase):
         )
 
         # Assertions
-        # Check get_unit_hour_from_varname calls
-        mock_get_unit_hour_from_varname.assert_any_call(mock_gvar1.VarName)
-        mock_get_unit_hour_from_varname.assert_any_call(mock_gvar2.VarName)
-        self.assertEqual(mock_get_unit_hour_from_varname.call_count, 2)
-
         # Check get_capacity_value calls
-        mock_get_capacity_value.assert_any_call(
-            0, self.units[0], step_k_test, self.dummy_capacity_df
-        )
-        mock_get_capacity_value.assert_any_call(
-            1, self.units[1], step_k_test, self.dummy_capacity_df
-        )
-        self.assertEqual(mock_get_capacity_value.call_count, 2)
+        # The calls are made based on the keys of mock_variables_dict
+        expected_calls = [
+            call(0, self.units[0], step_k_test, self.dummy_capacity_df),
+            call(1, self.units[1], step_k_test, self.dummy_capacity_df),
+            call(2, self.units[0], step_k_test, self.dummy_capacity_df),
+        ]
+        mock_get_capacity_value.assert_has_calls(expected_calls, any_order=True)
+        self.assertEqual(mock_get_capacity_value.call_count, len(mock_variables_dict))
 
         # Check if variable upper bounds were updated
         self.assertEqual(mock_gvar1.ub, expected_capacity_gvar1)
         self.assertEqual(mock_gvar2.ub, expected_capacity_gvar2)
+        self.assertEqual(mock_gvar3.ub, expected_capacity_gvar3)
 
-    @patch("pownet.optim_model.variable_func.get_edge_hour_from_varname")
-    def test_update_flow_vars(self, mock_get_edge_hour_from_varname):
+    def test_update_flow_vars(
+        self,
+    ):  # No external calls to mock within update_flow_vars directly
         """Test the update_flow_vars function."""
-        step_k_test = 2  # Using a different step_k to test the time indexing
+        step_k_test = 2
         line_capacity_factor = 0.9
         hours_per_step = 24  # As defined in the source function
 
         # Create mock Gurobi flow variables
         mock_flow_var1 = MagicMock()
-        # Example VarName format, assuming some prefix like "flow_"
-        mock_flow_var1.VarName = f"flow_{self.edges[0][0]}_{self.edges[0][1]}[0]"
         mock_flow_var1.ub = 0  # Initial ub
 
         mock_flow_var2 = MagicMock()
-        mock_flow_var2.VarName = (
-            f"flow_{self.edges[1][0]}_{self.edges[1][1]}[2]"  # t=2 for this var
-        )
         mock_flow_var2.ub = 0
 
+        # Keys are (node1, node2, t) as expected by the function's iteration
         mock_flow_variables_dict = {
-            (self.edges[0], 0): mock_flow_var1,
-            (self.edges[1], 2): mock_flow_var2,
+            (
+                self.edges[0][0],
+                self.edges[0][1],
+                0,
+            ): mock_flow_var1,  # ("node1", "node2", 0)
+            (
+                self.edges[1][0],
+                self.edges[1][1],
+                2,
+            ): mock_flow_var2,  # ("node2", "node3", 2)
         }
-
-        # Configure side effect for get_edge_hour_from_varname
-        def edge_hour_side_effect(var_name):
-            if var_name == mock_flow_var1.VarName:
-                return self.edges[0], 0  # (edge_tuple, time_in_step)
-            elif var_name == mock_flow_var2.VarName:
-                return self.edges[1], 2
-            return None, None
-
-        mock_get_edge_hour_from_varname.side_effect = edge_hour_side_effect
 
         # Call the function
         variable_func.update_flow_vars(
-            flow_variables=mock_flow_variables_dict,  # Pass dict, function iterates .values()
+            flow_variables=mock_flow_variables_dict,
             step_k=step_k_test,
             capacity_df=self.flow_capacity_df,
             line_capacity_factor=line_capacity_factor,
         )
 
-        # Assertions
-        # Check get_edge_hour_from_varname calls
-        mock_get_edge_hour_from_varname.assert_any_call(mock_flow_var1.VarName)
-        mock_get_edge_hour_from_varname.assert_any_call(mock_flow_var2.VarName)
-        self.assertEqual(mock_get_edge_hour_from_varname.call_count, 2)
-
         # Calculate expected capacities and UBs
-        # For flow_var1: edge=self.edges[0], t=0
-        time_idx1 = 0 + (step_k_test - 1) * hours_per_step  # 0 + (2-1)*24 = 24
-        expected_capacity1 = self.flow_capacity_df.loc[time_idx1, self.edges[0]]
+        # For flow_var1: edge=self.edges[0] ("node1", "node2"), t=0
+        key1_node1, key1_node2, key1_t = self.edges[0][0], self.edges[0][1], 0
+        edge1 = (key1_node1, key1_node2)
+        time_idx1 = key1_t + (step_k_test - 1) * hours_per_step  # 0 + (2-1)*24 = 24
+        expected_capacity1 = self.flow_capacity_df.loc[time_idx1, edge1]
         expected_ub1 = expected_capacity1 * line_capacity_factor
 
-        # For flow_var2: edge=self.edges[1], t=2
-        time_idx2 = 2 + (step_k_test - 1) * hours_per_step  # 2 + (2-1)*24 = 26
-        expected_capacity2 = self.flow_capacity_df.loc[time_idx2, self.edges[1]]
+        # For flow_var2: edge=self.edges[1] ("node2", "node3"), t=2
+        key2_node1, key2_node2, key2_t = self.edges[1][0], self.edges[1][1], 2
+        edge2 = (key2_node1, key2_node2)
+        time_idx2 = key2_t + (step_k_test - 1) * hours_per_step  # 2 + (2-1)*24 = 26
+        expected_capacity2 = self.flow_capacity_df.loc[time_idx2, edge2]
         expected_ub2 = expected_capacity2 * line_capacity_factor
 
         # Check if flow variable upper bounds were updated
@@ -259,6 +232,5 @@ class TestVariableFunctions(unittest.TestCase):
         self.assertEqual(mock_flow_var2.ub, expected_ub2)
 
 
-# This allows running the tests directly from the script
 if __name__ == "__main__":
     unittest.main()

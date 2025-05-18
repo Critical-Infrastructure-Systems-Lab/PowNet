@@ -6,8 +6,6 @@ import pandas as pd
 
 from pownet.data_utils import (
     get_capacity_value,
-    get_unit_hour_from_varname,
-    get_edge_hour_from_varname,
 )
 
 
@@ -63,8 +61,7 @@ def update_var_with_variable_ub(
     Returns:
         None
     """
-    for v in variables.values():
-        unit, t = get_unit_hour_from_varname(v.VarName)
+    for (unit, t), v in variables.items():
         capacity_value = get_capacity_value(t, unit, step_k, capacity_df)
         v.ub = capacity_value
     return
@@ -78,7 +75,7 @@ def update_flow_vars(
 ) -> None:
     """Update the lower and upper bounds of the flow variables based on the capacity dataframes"""
     hours_per_step = 24
-    for flow_variable in flow_variables.values():
-        edge, t = get_edge_hour_from_varname(flow_variable.VarName)
+    for (node1, node2, t), flow_variable in flow_variables.items():
+        edge = (node1, node2)
         line_capacity = capacity_df.loc[t + (step_k - 1) * hours_per_step, edge]
         flow_variable.ub = line_capacity * line_capacity_factor
