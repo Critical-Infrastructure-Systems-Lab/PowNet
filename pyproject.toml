@@ -14,7 +14,7 @@ source = ["pownet"]
 
 [project]
 name = "pownet"
-version = "2.2.0"
+version = "2.3.0"
 description = "A simple production cost model of framework for power systems"
 readme = "README.md"
 authors = [{ name = "Phumthep Bunnak", email = "pb585@cornell.edu" }]

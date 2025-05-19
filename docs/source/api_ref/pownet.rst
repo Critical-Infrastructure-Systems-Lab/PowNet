@@ -1,11 +1,11 @@
-pownet package
+API Reference
 ==============
 
-Subpackages
------------
+pownet.core module
+---------------------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 0
 
    pownet.core
    pownet.data_model
@@ -13,8 +13,10 @@ Subpackages
    pownet.reservoir
    pownet.stochastic
 
-Submodules
-----------
+.. automodule:: pownet.core
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 pownet.coupler module
 ---------------------
@@ -44,14 +46,6 @@ pownet.input module
 -------------------
 
 .. automodule:: pownet.input
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: pownet
    :members:
    :undoc-members:
    :show-inheritance:

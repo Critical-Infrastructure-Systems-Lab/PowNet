@@ -74,19 +74,21 @@ School of Civil and Environmental Engineering, Cornell University.
 
 **References**
 
+* :doc:`reference/contributing`
 * :doc:`reference/cite_pownet`
 * :doc:`reference/publications`
 * :doc:`reference/developers`
 * :doc:`reference/glossary`
-* :doc:`api_ref/api`
+* :doc:`api_ref/pownet`
 
 .. toctree::
    :hidden:
    :caption: References
    :maxdepth: 0
 
+   reference/contributing
    reference/cite_pownet
    reference/publications
    reference/developers
    reference/glossary
-   api_ref/api
+   api_ref/pownet

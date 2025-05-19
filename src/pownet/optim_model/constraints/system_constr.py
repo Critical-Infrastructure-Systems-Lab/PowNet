@@ -177,8 +177,7 @@ def add_c_flow_balance(
 
     The balance considers:
     - Power generated at the node (adjusted for generation efficiency).
-    - Power flow into and out of the node via transmission lines (adjusted
-      for line losses).
+    - Power flow into and out of the node via transmission lines (adjusted for line losses).
     - Power consumed by energy storage charging at the node.
     - Power injected by energy storage discharging at the node.
     - Power demand at the node.

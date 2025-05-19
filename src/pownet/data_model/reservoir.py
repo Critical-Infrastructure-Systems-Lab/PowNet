@@ -1,3 +1,5 @@
+"""reservoir.py"""
+
 import dataclasses
 import math
 
@@ -20,12 +22,10 @@ class ReservoirParams:
         max_release (float): The maximum allowable daily release rate (m³/day).
         max_generation (float): The maximum power generation capacity (MW).
         turbine_factor (float): The efficiency factor of the turbine(s).
-        inflow_ts (pd.Series): Timeseries of daily natural inflow into the reservoir (m³/day),
-                            indexed from 1.
+        inflow_ts (pd.Series): Timeseries of daily natural inflow into the reservoir (m³/day), indexed from 1.
         minflow_ts (pd.Series): Minimum environmental flow (m³/day), indexed from 1.
         upstream_units (list[str]): List of upstream reservoir names that feed into this reservoir.
-        downstream_flow_fracs (dict[str, float]): Dictionary mapping downstream reservoir names to their
-                                                respective flow fractions (0-1).
+        downstream_flow_fracs (dict[str, float]): Dictionary mapping downstream reservoir names to their respective flow fractions (0-1).
     """
 
     name: str

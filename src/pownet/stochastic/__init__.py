@@ -1,5 +1,4 @@
-""" stochastic_data module.
-"""
+"""stochastic module."""
 
 from .timeseries_model import TimeSeriesModel
 from .demand import DemandTSModel

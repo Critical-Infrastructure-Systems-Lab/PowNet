@@ -4,18 +4,18 @@ pownet.core package
 Submodules
 ----------
 
-pownet.core.model_builder module
---------------------------
-
-.. automodule:: pownet.core.model_builder
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 pownet.core.data\_processor module
 ----------------------------------
 
 .. automodule:: pownet.core.data_processor
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pownet.core.model\_builder module
+---------------------------------
+
+.. automodule:: pownet.core.model_builder
    :members:
    :undoc-members:
    :show-inheritance:
@@ -56,14 +56,6 @@ pownet.core.visualizer module
 -----------------------------
 
 .. automodule:: pownet.core.visualizer
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: pownet.core
    :members:
    :undoc-members:
    :show-inheritance:

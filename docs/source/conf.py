@@ -8,18 +8,25 @@ sys.path.insert(0, os.path.abspath("../../src/"))
 # Import mock modules for readthedocs
 autodoc_mock_imports = [
     "__future__",
+    "abc",
+    "dataclasses",
     "datetime",
     "re",
     "contextily",
     "geopandas",
     "gurobipy",
     "highspy",
-    "networkx",
+    "logging",
     "matplotlib",
     "math",
+    "networkx",
     "numpy",
     "pandas",
+    "pmdarima",
+    "scipy",
     "shapely",
+    "sklearn",
+    "statsmodels",
 ]
 
 # -- Project information
@@ -45,6 +52,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx_rtd_theme",
+    "sphinx_mdinclude",
     "nbsphinx",
     "nbsphinx_link",
     "sphinx_autodoc_typehints",
