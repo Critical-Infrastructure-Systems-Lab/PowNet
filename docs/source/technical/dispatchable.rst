@@ -15,31 +15,29 @@ Electric power systems rely on a mix of generation technologies. Broadly, these 
 
 We model the operation of dispatchable generators using three variables:
     
-    * Dispatch variable :math:`p_{g,t}`: Power output of generator :math:`g` at time :math:`t`. More specifically, it is split into "above-min" generation :math:`Pbar_{g,t}` and "at-min" generation :math:`{thermal\_min\_capacity}_{g,t}`
+    * Dispatch variable :math:`p_{g,t}`: Power output of generator :math:`g` at time :math:`t`. More specifically, it is split into "above-min" generation :math:`p'_{g,t}` and "at-min" generation :math:`\underline{P}_g`
     * Commitment variable :math:`u_{g,t} \in \{0,1\}`: Binary indicator if :math:`g` is online.
-    * Starting/Shutdown variable :math:`{startup}_{g,t}, {shutdown}_{g,t} \in \{0,1\}`: Binary indicator if :math:`g` is starting up or shutting down at time :math:`t`.
+    * Starting/Shutdown variable :math:`v_{g,t}, w_{g,t} \in \{0,1\}`: Binary indicator if :math:`g` is starting up or shutting down at time :math:`t`.
 
 Each dispatchable generator is subject to constraints:
     
     * Capacity: The capacity is constrainted by the minimum and maximum capacity.
-        :math:`{thermal\_min\_capacity}_{g,t} \times u_{g,t} \le Pbar_{g,t} + {thermal\_min\_capacity}_{g,t} \times u_{g,t} \le {thermal\_derated\_capacity}_g \times u_{g,t}`
+        :math:`\underline{P}_g \times u_{g,t} \le P'_{g,t} + \underline{P}_g \le \bar{P}_g \times u_{g,t}`
     
     * Ramping limit: The change in power output from :math:`t` to :math:`t+1` cannot be over the ramping limit. 
-        :math:`-R_g \le p_{g,t} - p_{g,t-1} \le +R_g`
-    
     * Minimum up/down time: Once started or stopped, the unit remains in that state for the specified duration.
     * Must take: If the unit has to be included in the generation profile.
 
 We then minimize the cost of generation, for which the cost of individual dispatchable generator is given by:
     
     * Fixed cost: Fixed cost is a function of rated capacity and fixed cost per unit.
-        :math:`c_{g,t}^{fixed} = P_g^{max} \times {fixed\_cost\_per\_unit}_g \times u_{g,t}`
+        :math:`c_{g,t}^{fixed} = \bar{P}_g \times {fixed\_cost\_per\_unit}_g \times u_{g,t}`
     
     * Variable cost: Variable cost is a function of fuel cost, heat rate, and operating cost.
         :math:`c_{g,t}^{var} = (({fuel\_price}_g \times {heat\_rate}_g) + {opex}_g) \times p_{g,t}`
     
     * Startup cost: Startup cost is a function of rated capacity and startup cost per unit.
-        :math:`c_{g,t}^{start} = P_g^{max} \times {startup\_cost}_g \times {startup}_{g,t}`
+        :math:`c_{g,t}^{start} = P_g^{max} \times {startup\_cost}_g \times v_{g,t}`
 
     * Curtailment cost: Curtailing "must-take" thermal output is priced as the same variable rate.
         :math:`c_{g,t}^{curt} = (({fuel\_price}_g \times {heat\_rate}_g) + {opex}_g) \times p^curt_{g,t}`
