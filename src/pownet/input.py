@@ -794,6 +794,15 @@ class SystemInput:
                     ) as f:
                         self.cycle_map = json.load(f)
 
+        # When there is no transmission.csv, we expect only one demand node
+        else:
+            if len(self.demand_nodes) != 1:
+                raise ValueError(
+                    "PowNet: When there is no transmission.csv, there must be only one demand node."
+                )
+            self.nodes = set(self.demand.columns)
+
+
         #################
         # System requirements
         #################
