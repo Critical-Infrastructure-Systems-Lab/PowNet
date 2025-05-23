@@ -30,7 +30,7 @@ We employ a per-month SARIMAX model for:
 
 **Demand Model**
 
-We In short‑term load forecasting, SARIMAX is well suited because demand exhibits strong intra‑day/weekly cycles plus dependencies on weather and calendar effects. We equip the model with the ability to forecase the hourly electricity demand:
+In short‑term load forecasting, SARIMAX is well suited because demand exhibits strong intra‑day/weekly cycles plus dependencies on weather and calendar effects. We equip the model with the ability to forecase the hourly electricity demand:
 
     * **Step 1:** We first run an ordinary least squares (OLS) regression on user-supplied exogenous variables (such as temperature) and get the residual series. The OLS isolates the “explained” portion of demand and the residual is treated as a stationary series for further time‐series modeling.
     * **Step 2:** We run a Seasonal-Trend decomposition using LOESS (STL) to decompose a time series into three components: trend, season(al) and residual. 
