@@ -128,11 +128,12 @@ class OutputProcessor:
         monthly_generation.index.name = "Month"
         return monthly_generation
 
-    def get_hourly_demand(self, input_demand: pd.DataFrame) -> pd.DataFrame:
+    def get_hourly_demand(self, input_demand: pd.DataFrame) -> pd.Series:
         # Demand is an input to the simulation
         hourly_demand = input_demand.sum(axis=1).to_frame()
         hourly_demand.columns = ["demand"]
         hourly_demand.index.name = "Hour"
+        hourly_demand = hourly_demand.squeeze(axis=1)
         return hourly_demand
 
     def get_daily_demand(self, input_demand: pd.DataFrame) -> pd.Series:
