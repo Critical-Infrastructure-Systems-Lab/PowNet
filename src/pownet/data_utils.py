@@ -400,7 +400,7 @@ def parse_syswide_variables(
     return cur_syswide_vars
 
 
-def parse_lmp(lmp: dict[str, float], sim_horizon: int, step_k: int) -> pd.DataFrame:
+def parse_lmp(lmp: dict[str, float], sim_horizon: int, step_k: int=None) -> pd.DataFrame:
     """Parse the LMP dictionary and return a DataFrame.
 
     Args:
@@ -415,11 +415,26 @@ def parse_lmp(lmp: dict[str, float], sim_horizon: int, step_k: int) -> pd.DataFr
     lmp_df = lmp_df.reset_index().rename(columns={"index": "name"})
     lmp_df[["node", "timestep"]] = lmp_df["name"].str.extract(r"flowBal\[(.*),(\d+)\]")
     lmp_df["timestep"] = lmp_df["timestep"].astype(int)
-    lmp_df["hour"] = lmp_df["timestep"] + sim_horizon * (step_k - 1)
+
+    if step_k is not None:
+        lmp_df["hour"] = lmp_df["timestep"] + sim_horizon * (step_k - 1)
+
+    # TODO: Block vs. Rolling horizon
     # Keep only the first 24-hours of the simulation
     lmp_df = lmp_df[lmp_df["timestep"] <= 24]
     lmp_df = lmp_df.drop(["name"], axis=1)
     return lmp_df
+
+def parse_lmp_dict(lmp: dict[str, float]) -> dict[tuple[str, int], float]:
+    lmp_df = pd.DataFrame.from_dict(lmp, orient="index", columns=["value"])
+    lmp_df = lmp_df.reset_index().rename(columns={"index": "name"})
+    lmp_df[["node", "timestep"]] = lmp_df["name"].str.extract(r"flowBal\[(.*),(\d+)\]")
+    # Create a dict of tuples (node, timestep) as keys and LMP values as values
+    lmp_dict = {
+        (row["node"], int(row["timestep"])): row["value"]
+        for _, row in lmp_df.iterrows()
+    }
+    return lmp_dict
 
 
 def get_fuel_mix_order() -> list[str]:
