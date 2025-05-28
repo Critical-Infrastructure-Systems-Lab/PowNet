@@ -1,10 +1,9 @@
-"""coupler.py: PowerWaterCoupler class to couple the power and water systems."""
+"""power_water.py: PowerWaterCoupler class to couple the power and water systems."""
 
-from .core import ModelBuilder
-from .reservoir.manager import ReservoirManager
+from ..core.model_builder import ModelBuilder
+from ..reservoir.manager import ReservoirManager
 
 import logging
-
 logger = logging.getLogger(__name__)
 
 

@@ -1,8 +1,7 @@
-"test_coupler.py"
+"test_power_water.py"
 
 import unittest
 from unittest.mock import MagicMock, PropertyMock, call
-import logging
 
 # Assuming coupler.py is in the same directory or accessible via PYTHONPATH
 from pownet.coupler import PowerWaterCoupler
@@ -11,8 +10,6 @@ from pownet.coupler import PowerWaterCoupler
 from pownet import ModelBuilder as ActualModelBuilder
 from pownet.reservoir import ReservoirManager as ActualReservoirManager
 
-# Disable logging for cleaner test output
-logging.disable(logging.CRITICAL)
 
 
 class TestPowerWaterCoupler(unittest.TestCase):
