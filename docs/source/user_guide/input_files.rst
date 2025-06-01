@@ -18,6 +18,7 @@ These files *must* be provided by the user:
 * ``demand_export.csv``:
     * **Description**: An hourly timeseries of electricity demand (in MW) for each load node in the system.
     * **Format**: Each column represents a node, and each row represents an hour of the year (8760 rows expected for a standard year). Date/time columns (like year, month, day, hour) can be included for reference but are ignored by `PowNet`.
+    * **Note**: When your system has only a single node, or all power stations are aggrgated to a node, then this file should contain only a single column being the demand of that node. Otherwise, nodes are defined in ``transmission.csv`` as described later in this section.
 
 * ``contract_cost.csv``:
     * **Description**: Specifies the hourly costs (e.g., USD/MWh or USD/MW) associated with different supply or fuel contracts. These contracts are linked to specific generator units via ``thermal_unit.csv`` and ``nondispatch_unit.csv``.
@@ -73,7 +74,7 @@ These files describe different components of the power system. While optional, y
         * ``cost_contract``: Name of the contract (from ``contract_cost.csv``) associated with charging/discharging costs.
 
 * ``transmission.csv``:
-    * **Description**: Defines the transmission network links and their properties. `PowNet` can calculate line parameters if needed, but user-provided values take precedence.
+    * **Description**: Defines a system's nodes and their properties. `PowNet` can calculate line parameters if needed, but user-provided values take precedence.
     * **Required Columns**:
         * ``source``: Starting node of the line.
         * ``sink``: Ending node of the line.
