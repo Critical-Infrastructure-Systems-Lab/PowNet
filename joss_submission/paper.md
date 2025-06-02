@@ -14,7 +14,7 @@ authors:
     orcid: 0000-0002-2932-7459
     affiliation: 1
   - name: Matija	Pavičević
-    Orcid: 0000-0002-6524-5581
+    orcid: 0000-0002-6524-5581
     affiliation: 2
   - name: Jerry Zhuoer Feng
     orcid: 0009-0004-5129-1167
