@@ -151,6 +151,8 @@ def add_c_flow_balance(
     neg_pmismatch: gp.tupledict,
     flow_fwd: gp.tupledict,
     flow_bwd: gp.tupledict,
+    trade_fwd: gp.tupledict,
+    trade_bwd: gp.tupledict,
     timesteps: range,
     step_k: int,
     thermal_units: list,
@@ -160,6 +162,7 @@ def add_c_flow_balance(
     import_units: list,
     nodes: list,
     node_edge: dict,
+    intertie_points: list,
     node_generator: dict,
     ess_charge_units: dict,
     ess_discharge_units: dict,
@@ -196,6 +199,8 @@ def add_c_flow_balance(
         neg_pmismatch (gp.tupledict): The negative power mismatch
         flow_fwd (gp.tupledict): The power flow from forward k -> s
         flow_bwd (gp.tupledict): The power flow from backward s <- k
+        trade_fwd (gp.tupledict): The power flow from forward k -> s for trade
+        trade_bwd (gp.tupledict): The power flow from backward s <- k for trade
         timesteps (range): The range of timesteps
         step_k (int): The current iteration
         thermal_units (list): The list of thermal units
@@ -205,6 +210,7 @@ def add_c_flow_balance(
         import_units (list): The list of import units
         nodes (list): The list of nodes
         node_edge (dict): The edges connected to a node
+        intertie_points (list): The intertie points in the network
         node_generator (dict): The generators connected to a node
         ess_charge_units (dict): Storage units to charge from this node
         ess_discharge_units (dict): Storage units to discharge to this node
@@ -288,6 +294,14 @@ def add_c_flow_balance(
             # Mismatch variables
             mismatch = pos_pmismatch[node, t] - neg_pmismatch[node, t]
 
+            # Net trade flow into the node
+            net_trade_flow_into_node = 0
+            for source, sink in intertie_points:
+                # intertie points have no directionality, just pairs of nodes
+                if node in (source, sink):
+                    # net_trade_flow_into_node is import - export
+                    net_trade_flow_into_node = trade_bwd[source, sink, t] - trade_fwd[source, sink, t]
+
             # Given the above terms, we can specify the energy balance
             cname = f"flowBal[{node},{t}]"
             constraints[cname] = model.addConstr(
@@ -296,6 +310,7 @@ def add_c_flow_balance(
                     + net_line_flow_into_node
                     + mismatch
                     + storage_discharge  # Already factored in discharge efficiency is the ESS balance
+                    + net_trade_flow_into_node
                     == demand_n_t + storage_charge
                 ),
                 name=cname,
@@ -676,3 +691,97 @@ def add_c_unit_curtail_ess_daily(
                 name=cname,
             )
     return constraints
+
+
+def add_c_trade_fwd_ub(
+    model: gp.Model,
+    trade_fwd: gp.tupledict,
+    intertie_points: list[tuple[str, str]],
+    timesteps: range,
+) -> gp.tupledict:
+    """Adds upper bound constraints for forward trade variables.
+    This constraint ensures that the forward trade from source to sink
+    does not exceed a specified trade limit for each edge and timestep.
+
+    Note: This constraint needs to be modified by the PowerPowerCoupler.
+
+    Args:
+        model (gp.Model): The optimization model
+        trade_fwd (gp.tupledict): The forward trade variable
+        intertie_points (list[tuple[str, str]]): The list of intertie points in the network
+        timesteps (range): The range of timesteps
+
+    Returns:
+        gp.tupledict: The constraints for the forward trade upper bound
+    """
+    return model.addConstrs(
+        (
+            trade_fwd[source, sink, t] <= 0
+            for source, sink in intertie_points
+            for t in timesteps
+        ),
+        name="tradeFwdUB",
+    )
+
+
+def add_c_trade_bwd_ub(
+    model: gp.Model,
+    trade_bwd: gp.tupledict,
+    intertie_points: list[tuple[str, str]],
+    timesteps: range,
+) -> gp.tupledict:
+    """Adds upper bound constraints for backward trade variables.
+    This constraint ensures that the backward trade from source to sink
+    does not exceed a specified trade limit for each edge and timestep.
+
+    Args:
+        model (gp.Model): The optimization model
+        trade_bwd (gp.tupledict): The backward trade variable
+        trade_limits (float): The maximum allowed trade limit
+        intertie_points (list[tuple[str, str]]): The list of intertie points in the network
+        timesteps (range): The range of timesteps
+
+    Returns:
+        gp.tupledict: The constraints for the forward trade upper bound
+    """
+    return model.addConstrs(
+        (
+            trade_bwd[source, sink, t] <= 0
+            for source, sink in intertie_points
+            for t in timesteps
+        ),
+        name="tradeBwdUB",
+    )
+
+
+def add_c_trade_fwd_direction(
+    model: gp.Model,
+    trade_fwd: gp.tupledict,
+    trade_direction: gp.tupledict,
+    intertie_capacities: dict[tuple[str, str], float],
+    timesteps: range,
+) -> gp.tupledict:
+    return model.addConstrs(
+        (
+            trade_fwd[source, sink, t] <= intertie_capacities[source, sink] * trade_direction[source, sink, t]
+            for source, sink in intertie_capacities.keys()
+            for t in timesteps
+            ),
+        name="c_trade_fwd_direction",
+    )
+
+def add_c_trade_bwd_direction(
+    model: gp.Model,
+    trade_bwd: gp.tupledict,
+    trade_direction: gp.tupledict,
+    intertie_capacities: dict[tuple[str, str], float],
+    timesteps: range,
+) -> gp.tupledict:
+    return model.addConstrs(
+        (
+            trade_bwd[source, sink, t] <= intertie_capacities[source, sink] * (1 - trade_direction[source, sink, t])
+            for source, sink in intertie_capacities.keys()
+            for t in timesteps
+            ),
+        name="c_trade_bwd_direction",
+    )

@@ -10,6 +10,8 @@ import gurobipy as gp
 from gurobipy import GRB
 import pandas as pd
 
+from .data_model.power_trade import PowerTradeParams
+
 logger = logging.getLogger(__name__)
 
 
@@ -228,6 +230,10 @@ class SystemInput:
         # Edges by node
         self.nodes: set[str] = set(["b1"])  # Will get overwritten by the actual nodes
         self.node_edge: dict[str, list[str]] = {}
+
+        # --- Trade parameters
+        self.intertie_points: list[tuple[str, str]] = [] # No directionality, just pairs of nodes
+        self.intertie_capacities: dict[tuple[str, str], float] = {}
 
     def _load_timeseries_from_csv(
         self, filename: str, header_levels: int
@@ -1125,3 +1131,20 @@ class SystemInput:
         all_contracts.update(self.nondispatch_contracts)
         all_contracts.update(self.ess_contracts)
         return all_contracts
+
+
+    def load_trade_params(self, trade_params: PowerTradeParams) -> None:
+        """Load trade parameters into the system builder.
+
+        Args:
+            trade_params (dict): A dictionary containing trade parameters.
+
+        Returns:
+            None
+        """
+
+        # Find intertie points that contain nodes of this system
+        for (source, sink), intertie_capacity in trade_params.intertie_capacities.items():
+            if (source in self.nodes) or (sink in self.nodes):
+                self.intertie_points.append((source, sink))
+                self.intertie_capacities[(source, sink)] = intertie_capacity

@@ -38,6 +38,19 @@ class SystemBuilder(ComponentBuilder):
     ---------------------------
     - `spin_shortfall`: Spinning reserve shortfall (system-wide). Unit: MW.
 
+    Curtailment variables:
+    ---------------------------
+    - `pthermal_curtail`: Thermal unit curtailment. Unit: MW.
+    - `phydro_curtail`: Hydro unit curtailment. Unit: MW.
+    - `psolar_curtail`: Solar unit curtailment. Unit: MW.
+    - `pwind_curtail`: Wind unit curtailment. Unit: MW.
+    - `pimp_curtail`: Import unit curtailment. Unit: MW.
+
+    Trade variables:
+    ---------------------------
+    - `trade_fwd`: Forward trade on interties. Unit: MW.
+    - `trade_bwd`: Backward trade on interties. Unit: MW.
+
     Fixed objective terms
     ===========================
     - load shortfall penalty
@@ -77,6 +90,10 @@ class SystemBuilder(ComponentBuilder):
         self.pwind_curtail = gp.tupledict()
         self.pimp_curtail = gp.tupledict()
 
+        # Trade variables
+        self.trade_fwd = gp.tupledict()
+        self.trade_bwd = gp.tupledict()
+
         # --- Objective terms ---
         # Fixed objective terms
         self.load_shortfall_penalty_expr = gp.LinExpr()
@@ -109,6 +126,15 @@ class SystemBuilder(ComponentBuilder):
 
         self.c_daily_hydro_curtail_ess = gp.tupledict()
         self.c_weekly_hydro_curtail_ess = gp.tupledict()
+
+        # Trade constraints
+        # Note: Set the RHS of the opposite flow path to zero for mutual exclusivity
+        self.c_trade_fwd_ub = gp.tupledict() 
+        self.c_trade_bwd_ub = gp.tupledict()
+
+        # Trade LMPs
+        self.trade_lmps: dict[tuple[str, str], float] = {}
+        
 
     def add_variables(self, step_k: int) -> None:
 
@@ -201,6 +227,23 @@ class SystemBuilder(ComponentBuilder):
                 name="theta",
             )
 
+        # --- Trade variables ---
+        # UB set by constraints.
+        self.trade_fwd = self.model.addVars(
+            self.inputs.intertie_points,
+            self.timesteps,
+            lb=0,
+            vtype=gp.GRB.CONTINUOUS,
+            name="trade_fwd",
+        )
+        self.trade_bwd = self.model.addVars(
+            self.inputs.intertie_points,
+            self.timesteps,
+            lb=0,
+            vtype=gp.GRB.CONTINUOUS,
+            name="trade_bwd",
+        )
+
         #############################################
         # Variables with time-dependent upper bounds
         #############################################
@@ -221,7 +264,7 @@ class SystemBuilder(ComponentBuilder):
                 ]
                 for t in self.timesteps
                 for source, sink in self.inputs.edges
-            },
+            }, 
             vtype=gp.GRB.CONTINUOUS,
             name="flow_fwd",
         )
@@ -471,11 +514,13 @@ class SystemBuilder(ComponentBuilder):
             )
 
     def add_constraints(self, step_k: int, init_conds: dict, **kwargs) -> None:
-
         # Thermal-unit specific variables
         spin_vars = kwargs.get("spin_vars", None)
         vpowerbar_vars = kwargs.get("vpowerbar_vars", None)
         thermal_status_vars = kwargs.get("thermal_status_vars", None)
+
+        # Power trading
+        trade_limits = kwargs.get("trade_limits", {})
 
         # Power variables
         pthermal = kwargs.get("pthermal", None)
@@ -531,6 +576,8 @@ class SystemBuilder(ComponentBuilder):
             neg_pmismatch=self.neg_pmismatch,
             flow_fwd=self.flow_fwd,
             flow_bwd=self.flow_bwd,
+            trade_fwd=self.trade_fwd,
+            trade_bwd=self.trade_bwd,
             timesteps=self.timesteps,
             step_k=step_k,
             thermal_units=self.inputs.thermal_units,
@@ -540,6 +587,7 @@ class SystemBuilder(ComponentBuilder):
             import_units=self.inputs.import_units,
             nodes=self.inputs.nodes,
             node_edge=self.inputs.node_edge,
+            intertie_points=self.inputs.intertie_points,
             node_generator=self.inputs.node_generator,
             ess_charge_units=self.inputs.ess_substation_units,
             ess_discharge_units=self.inputs.ess_attach_unit,
@@ -619,6 +667,20 @@ class SystemBuilder(ComponentBuilder):
             ess_attached=self.inputs.ess_daily_hydro_units,
         )
 
+        # --- Trade flow constraints ---
+        self.c_trade_fwd_ub = system_constr.add_c_trade_fwd_ub(
+            model=self.model,
+            trade_fwd=self.trade_fwd,
+            intertie_points=self.inputs.intertie_points,
+            timesteps=self.timesteps,
+        )
+        self.c_trade_bwd_ub = system_constr.add_c_trade_bwd_ub(
+            model=self.model,
+            trade_bwd=self.trade_bwd,
+            intertie_points=self.inputs.intertie_points,
+            timesteps=self.timesteps,
+        )
+
     def update_variables(self, step_k: int) -> None:
         """Update the time-dependent upper bounds of the flow variables.
 
@@ -666,6 +728,9 @@ class SystemBuilder(ComponentBuilder):
         pdischarge = kwargs.get("pdischarge", None)
         charge_state = kwargs.get("charge_state", None)
 
+        # Power trade limits
+        trade_limits = kwargs.get("trade_limits", {})
+
         # --- Spinning reserve constraints ---
         self.model.remove(self.c_reserve_req)
         if self.inputs.use_spin_var:
@@ -711,6 +776,8 @@ class SystemBuilder(ComponentBuilder):
             neg_pmismatch=self.neg_pmismatch,
             flow_fwd=self.flow_fwd,
             flow_bwd=self.flow_bwd,
+            trade_fwd=self.trade_fwd,
+            trade_bwd=self.trade_bwd,
             timesteps=self.timesteps,
             step_k=step_k,
             thermal_units=self.inputs.thermal_units,
@@ -720,6 +787,7 @@ class SystemBuilder(ComponentBuilder):
             import_units=self.inputs.import_units,
             nodes=self.inputs.nodes,
             node_edge=self.inputs.node_edge,
+            intertie_points=self.inputs.intertie_points,
             node_generator=self.inputs.node_generator,
             ess_charge_units=self.inputs.ess_substation_units,
             ess_discharge_units=self.inputs.ess_attach_unit,
@@ -804,6 +872,39 @@ class SystemBuilder(ComponentBuilder):
             ess_attached=self.inputs.ess_daily_hydro_units,
         )
 
+        # --- Trade flow constraints ---
+        # Reset the trade upper bounds to zero for the next step_k.
+        self.model.remove(self.c_trade_fwd_ub)
+        self.c_trade_fwd_ub = system_constr.add_c_trade_fwd_ub(
+            model=self.model,
+            trade_fwd=self.trade_fwd,
+            intertie_points=self.inputs.intertie_points,
+            timesteps=self.timesteps,
+        )
+        self.model.remove(self.c_trade_bwd_ub)
+        self.c_trade_bwd_ub = system_constr.add_c_trade_bwd_ub(
+            model=self.model,
+            trade_bwd=self.trade_bwd,
+            intertie_points=self.inputs.intertie_points,
+            timesteps=self.timesteps,
+        )
+
+    def update_c_trade_ub_rhs(self, trade_limits: dict[tuple[str, str], float]) -> None:
+        # Forward trade upper bounds
+        for constr_name, constr in self.c_trade_fwd_ub.items():
+            intertie_point = constr_name[0]
+            if intertie_point in trade_limits:
+                constr.RHS = trade_limits[intertie_point]
+            else:
+                constr.RHS = 0.0
+
+        for constr_name, constr in self.c_trade_bwd_ub.items():
+            intertie_point = constr_name[0]
+            if intertie_point in trade_limits:
+                constr.RHS = trade_limits[intertie_point]
+            else:
+                constr.RHS = 0.0
+
     def get_variables(self) -> dict[str, gp.tupledict]:
         """Get the variables of the system builder.
 
@@ -816,5 +917,7 @@ class SystemBuilder(ComponentBuilder):
             "spin_shortfall": self.spin_shortfall,
             "flow_fwd": self.flow_fwd,
             "flow_bwd": self.flow_bwd,
+            "trade_fwd": self.trade_fwd,
+            "trade_bwd": self.trade_bwd,
             "theta": self.theta,
         }
