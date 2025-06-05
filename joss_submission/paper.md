@@ -68,6 +68,6 @@ The modeling workflow of `PowNet 2.0` is illustrated in \autoref{fig:workflow}. 
 
 # Acknowledgement
 
-This study was supported by the US Department of Energy (DOE) Water Power Technologies Office as a part of the HydroWIRES “HydroCHiPPs” project (53165).
+Development of the reservoir module was supported by the US Department of Energy (DOE) Water Power Technologies Office as a part of the HydroWIRES “HydroCHiPPs” project (53165).
 
 # References
