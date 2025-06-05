@@ -66,5 +66,8 @@ The modeling workflow of `PowNet 2.0` is illustrated in \autoref{fig:workflow}. 
 
 ![A simplified diagram of PowNet 2.0 modeling workflow. Each process is responsible by a dedicated Python module.\label{fig:workflow}](overview_pownet.png)
 
+# Acknowledgement
+
+This study was supported by the US Department of Energy (DOE) Water Power Technologies Office as a part of the HydroWIRES “HydroCHiPPs” project (53165).
 
 # References
