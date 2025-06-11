@@ -183,7 +183,7 @@ def add_c_hydro_limit_weekly(
     sim_horizon: int,
     hydro_units: list,
     hydro_capacity: pd.DataFrame,
-    hydro_capacity_min: pd.DataFrame,
+    # hydro_capacity_min: pd.DataFrame,
 ) -> gp.tupledict:
     """
     Defines the weekly limit (lower and upper bounds) of hydro generation.
@@ -231,23 +231,61 @@ def add_c_hydro_limit_weekly(
                 name=cname,
             )
 
-            if hydro_capacity_min.empty:
-                constraints[cname_min] = model.addConstr(
-                    gp.quicksum(
-                        phydro[hydro_unit, t]
-                        for t in range(1 + (current_week - 1) * 168, current_week * 168 + 1)
-                    )
-                    >= 0,
-                    name=cname_min,
+    return constraints
+
+
+def add_c_hydro_limit_weekly_lb(
+    model: gp.Model,
+    phydro: gp.tupledict,
+    step_k: int,
+    sim_horizon: int,
+    hydro_units: list,
+    # hydro_capacity: pd.DataFrame,
+    hydro_capacity_min: pd.DataFrame,
+) -> gp.tupledict:
+    """
+    Defines the weekly limit (lower and upper bounds) of hydro generation.
+    Assumes that a certain amount of water is available for hydropower generation each day.
+
+    Args:
+        model (gp.Model): The optimization model
+        phydro (gp.tupledict): The power output of hydro units
+        step_k (int): The current iteration
+        sim_horizon (int): The simulation horizon
+        hydro_units (list): The list of hydro units
+        hydro_capacity (pd.DataFrame): The capacity of the hydro unit
+
+    Returns:
+        gp.tupledict: The constraints for the weekly hydro limit
+
+    Raises:
+        ValueError: If the simulation horizon is not divisible by 24
+
+    """
+    if len(hydro_units) == 0:
+        return gp.tupledict()
+
+    # When formulating with weekly hydropower, sim_horizon must be divisible
+    # by 168 because the hydro_capacity is weekly.
+    if sim_horizon % 168 != 0:
+        raise ValueError(
+            "The simulation horizon must be divisible by 168 when using weekly hydropower capacity."
+        )
+    constraints = gp.tupledict()
+    max_week = sim_horizon // 168
+    for week in range(step_k, step_k + max_week):
+        for hydro_unit in hydro_units:
+            # cname = f"hydro_limit_weekly_ub[{hydro_unit},{week}]"
+            cname_min = f"hydro_limit_weekly_lb[{hydro_unit},{week}]"
+            current_week = week - step_k + 1
+
+
+            constraints[cname_min] = model.addConstr(
+                gp.quicksum(
+                    phydro[hydro_unit, t]
+                    for t in range(1 + (current_week - 1) * 168, current_week * 168 + 1)
                 )
-            else:
-                # Lower bound constraint
-                constraints[cname_min] = model.addConstr(
-                    gp.quicksum(
-                        phydro[hydro_unit, t]
-                        for t in range(1 + (current_week - 1) * 168, current_week * 168 + 1)
-                    )
-                    >= hydro_capacity_min.loc[week, hydro_unit],
-                    name=cname_min,
-                )
+                >= hydro_capacity_min.loc[week, hydro_unit],
+                name=cname_min,
+            )
     return constraints

@@ -168,7 +168,7 @@ class HydroUnitBuilder(ComponentBuilder):
             hydro_capacity=self.inputs.daily_hydro_capacity,
         )
 
-        # Weekly lower and upper bounds
+        # Weekly upper bounds
         self.c_hydro_limit_weekly = nondispatch_constr.add_c_hydro_limit_weekly(
             model=self.model,
             phydro=self.phydro,
@@ -176,8 +176,17 @@ class HydroUnitBuilder(ComponentBuilder):
             sim_horizon=self.inputs.sim_horizon,
             hydro_units=self.inputs.weekly_hydro_unit_node.keys(),
             hydro_capacity=self.inputs.weekly_hydro_capacity,
-            hydro_capacity_min=self.inputs.hydro_min_capacity,
         )
+
+        if not self.inputs.hydro_min_capacity.empty:
+            self.c_hydro_limit_weekly_lb = nondispatch_constr.add_c_hydro_limit_weekly_lb(
+                model=self.model,
+                phydro=self.phydro,
+                step_k=step_k,
+                sim_horizon=self.inputs.sim_horizon,
+                hydro_units=self.inputs.weekly_hydro_unit_node.keys(),
+                hydro_capacity_min=self.inputs.hydro_min_capacity,
+            )
 
         if self.inputs.use_nondispatch_status_var:
             self.c_link_hydro_pu = nondispatch_constr.add_c_link_unit_pu(
@@ -227,8 +236,19 @@ class HydroUnitBuilder(ComponentBuilder):
             sim_horizon=self.inputs.sim_horizon,
             hydro_units=self.inputs.weekly_hydro_unit_node.keys(),
             hydro_capacity=self.inputs.weekly_hydro_capacity,
-            hydro_capacity_min=self.inputs.hydro_min_capacity,
+            # hydro_capacity_min=self.inputs.hydro_min_capacity,
         )
+
+        if not self.inputs.hydro_min_capacity.empty:
+            self.model.remove(self.c_hydro_limit_weekly_lb)
+            self.c_hydro_limit_weekly_lb = nondispatch_constr.add_c_hydro_limit_weekly_lb(
+                model=self.model,
+                phydro=self.phydro,
+                step_k=step_k,
+                sim_horizon=self.inputs.sim_horizon,
+                hydro_units=self.inputs.weekly_hydro_unit_node.keys(),
+                hydro_capacity_min=self.inputs.hydro_min_capacity,
+            )
 
     def update_daily_hydropower_capacity(
         self, step_k: int, new_capacity: dict[tuple[str, int], float]
