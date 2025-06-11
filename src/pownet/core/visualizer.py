@@ -7,6 +7,7 @@ import geopandas as gpd
 import matplotlib as mpl
 from matplotlib.colors import ListedColormap
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -55,12 +56,21 @@ class Visualizer:
         )
         ax.set_xlabel(dispatch.index.name)
 
+        # Use MaxNLocator to dynamically adjust the number of x-axis labels
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True, prune='both'))
+        ticks = ax.get_xticks()
+        ticks = ticks.astype(int)
+        if total_timesteps - 1 not in ticks:
+            ticks = list(ticks) + [total_timesteps - 1]
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([dispatch.index[i] for i in ticks], rotation=0)
+
         # Plot formatting
         legend = fig.legend(
             loc="outside lower center",
             ncols=5,
             fontsize="small",
-            bbox_to_anchor=(0.5, -0.12),
+            bbox_to_anchor=(0.5, -0.08),
         )
         ax.set_ylabel("Power (MW)")
         ax.set_ylim(top=(demand[:total_timesteps].max() * 1.30))
@@ -73,6 +83,7 @@ class Visualizer:
                 bbox_inches="tight",
                 dpi=350,
             )
+        plt.tight_layout()
         plt.show()
 
     def plot_fuelmix_area(
@@ -109,14 +120,24 @@ class Visualizer:
         )
         ax.set_xlabel(dispatch.index.name)
 
+        # Use MaxNLocator to dynamically adjust the number of x-axis labels
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True, prune='both'))
+        ticks = ax.get_xticks()
+        ticks = ticks.astype(int)
+        ticks = [tick for tick in ticks if tick < len(dispatch.index)]
+        if total_timesteps - 1 not in ticks:
+            ticks.append(total_timesteps - 1)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([dispatch.index[i] for i in ticks], rotation=0)
+
         legend = fig.legend(
             loc="outside lower center",
             ncols=5,
             fontsize="small",
-            bbox_to_anchor=(0.5, -0.12),
+            bbox_to_anchor=(0.5, -0.08),
         )
         ax.set_ylabel("Power (MW)")
-        ax.set_ylim(top=(demand[:total_timesteps].max() * 1.30).values[0])
+        ax.set_ylim(top=(demand[:total_timesteps].max() * 1.30))
 
         if output_folder is not None:
             figure_name = f"{self.model_id}_fuelmix.png"
@@ -126,6 +147,7 @@ class Visualizer:
                 bbox_inches="tight",
                 dpi=350,
             )
+        plt.tight_layout()
         plt.show()
 
     def plot_thermal_units(

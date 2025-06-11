@@ -231,13 +231,23 @@ def add_c_hydro_limit_weekly(
                 name=cname,
             )
 
-            # Lower bound constraint
-            constraints[cname_min] = model.addConstr(
-                gp.quicksum(
-                    phydro[hydro_unit, t]
-                    for t in range(1 + (current_week - 1) * 168, current_week * 168 + 1)
+            if hydro_capacity_min.empty:
+                constraints[cname_min] = model.addConstr(
+                    gp.quicksum(
+                        phydro[hydro_unit, t]
+                        for t in range(1 + (current_week - 1) * 168, current_week * 168 + 1)
+                    )
+                    >= 0,
+                    name=cname_min,
                 )
-                >= hydro_capacity_min.loc[week, hydro_unit],
-                name=cname_min,
-            )
+            else:
+                # Lower bound constraint
+                constraints[cname_min] = model.addConstr(
+                    gp.quicksum(
+                        phydro[hydro_unit, t]
+                        for t in range(1 + (current_week - 1) * 168, current_week * 168 + 1)
+                    )
+                    >= hydro_capacity_min.loc[week, hydro_unit],
+                    name=cname_min,
+                )
     return constraints

@@ -119,7 +119,6 @@ user_inputs/*
 # Ignore subfolders in the analysis folder
 src/analysis/decom_files/*
 src/analysis/results/*
-scripts/*
 
 # Pownet generated files
 /model_library/*/pownet_*.csv
