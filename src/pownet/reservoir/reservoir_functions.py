@@ -1,7 +1,67 @@
-""" reservoir_functions.py: Functions for operating reservoirs."""
+"""reservoir_functions.py: Functions for operating reservoirs."""
 
+import networkx as nx
 import numpy as np
 import pandas as pd
+
+
+def find_upstream_units(flow_paths: pd.DataFrame, unit_name: str) -> list[str]:
+    """Find upstream units for a given unit.
+
+    Args:
+        flow_paths (pd.DataFrame): DataFrame containing flow paths between units.
+        unit_name (str): The name of the unit to find upstream units for.
+
+    Returns:
+        list[str]: List of upstream unit names.
+    """
+    return flow_paths[flow_paths["sink"] == unit_name]["source"].unique().tolist()
+
+
+def find_downstream_flow_fractions(
+    flow_paths: pd.DataFrame, unit_name: str
+) -> dict[str, float]:
+    """Find downstream units for a given unit.
+
+    Args:
+        flow_paths (pd.DataFrame): DataFrame containing flow paths between units.
+        unit_name (str): The name of the unit to find downstream units for.
+
+    Returns:
+        dict[str, float]: Dict of downstream unit names and their flow fractions.
+    """
+    return (
+        flow_paths.loc[flow_paths["source"] == unit_name, ["sink", "flow_fraction"]]
+        .set_index("sink")
+        .to_dict()["flow_fraction"]
+    )
+
+
+def find_simulation_order(
+    reservoir_names: list[str], flow_paths: pd.DataFrame
+) -> list[str]:
+    """Determine the order in which reservoirs are simulated based on their upstream/downstream relationships.
+
+    Args:
+        reservoir_names (list[str]): List of reservoir names.
+        flow_paths (pd.DataFrame): DataFrame containing flow paths represented by the source and sink columns.
+
+    Returns:
+        list[str]: A list of reservoir names in the order they should be simulated.
+
+    """
+    edgelist = [(a, b) for a, b in zip(flow_paths["source"], flow_paths["sink"])]
+    G = nx.DiGraph(edgelist)
+    try:
+        simulation_order = list(nx.topological_sort(G))
+        # Some reservoirs are not in the flow paths, so we need to add them to the end of the list
+        reservoirs_not_in_paths = []
+        for reservoir in reservoir_names:
+            if reservoir not in simulation_order:
+                reservoirs_not_in_paths.append(reservoir)
+        return reservoirs_not_in_paths + simulation_order
+    except nx.NetworkXUnfeasible:
+        raise ValueError("The reservoir network has cycles.")
 
 
 def adjust_hydropeaking(
@@ -17,8 +77,8 @@ def adjust_hydropeaking(
     Also, the release cannot be lower than the minimum release or higher than the maximum release.
 
     Args:
-        release (float): The release for the current day. Can be both negative and positive
-        release_t0 (float): The release for the previous day. Can be both negative and positive
+        release (float): The release for the current day.
+        release_t0 (float): The release for the previous day.
         max_release (float): The maximum release as a positive value
         min_release (float): The minimum release as a positive value
         hydropeak_factor (float): The factor to limit the change in release. Default is 0.15.
@@ -51,68 +111,78 @@ def adjust_hydropeaking(
     return adj_release
 
 
-def calc_min_environ_flow(
-    inflow: float,
-    mean_annual_flow: float,
-    max_release: float,
-) -> float:
-    """Tdetermine the minimum amount of water that should be released
-    from a reservoir to maintain the health of the downstream ecosystem.
+# def calc_min_environ_flow(
+#     inflow: float,
+#     mean_annual_flow: float,
+#     max_release: float,
+# ) -> float:
+#     """Tdetermine the minimum amount of water that should be released
+#     from a reservoir to maintain the health of the downstream ecosystem.
 
-    Example of three cases:
+#     Example of three cases:
 
-    1) If the inflow is less than 40% of the mean annual flow,
-    the minimum flow is set to 60% of the inflow.
-    This ensures that a reasonable portion of the limited water
-    is still released to support the ecosystem.
+#     1) If the inflow is less than 40% of the mean annual flow,
+#     the minimum flow is set to 60% of the inflow.
+#     This ensures that a reasonable portion of the limited water
+#     is still released to support the ecosystem.
 
-    2) If the inflow is greater than 80% of the mean annual flow,
-    the minimum flow is 30% of the inflow. a smaller percentage is
-    released since the ecosystem is likely receiving ample water already.
+#     2) If the inflow is greater than 80% of the mean annual flow,
+#     the minimum flow is 30% of the inflow. a smaller percentage is
+#     released since the ecosystem is likely receiving ample water already.
 
-    3) Otherwise, the minimum flow is 45% of the inflow.
+#     3) Otherwise, the minimum flow is 45% of the inflow.
 
-    Args:
-        inflow (float): The inflow to the reservoir
-        mean_annual_flow (float): The mean annual flow
-        max_release (float): The maximum release
+#     Args:
+#         inflow (float): The inflow to the reservoir
+#         mean_annual_flow (float): The mean annual flow
+#         max_release (float): The maximum release
 
-    Returns:
-        float: The minimum environmental flow
-    """
-    lower_maf_fraction = 0.4
-    upper_maf_fraction = 0.8
+#     Returns:
+#         float: The minimum environmental flow
+#     """
+#     lower_maf_fraction = 0.4
+#     upper_maf_fraction = 0.8
 
-    low_flow_scenario = lower_maf_fraction * mean_annual_flow
-    upper_maf_fraction = upper_maf_fraction * mean_annual_flow
+#     low_flow_scenario = lower_maf_fraction * mean_annual_flow
+#     upper_maf_threshold = upper_maf_fraction * mean_annual_flow
 
-    small_fraction = 0.3
-    medium_fraction = 0.45
-    large_fraction = 0.6
+#     small_fraction = 0.3
+#     medium_fraction = 0.45
+#     large_fraction = 0.6
 
-    # Also need to ensure that the minimum environmental flow is less than the maximum release
-    if inflow <= low_flow_scenario:
-        return min(large_fraction * inflow, max_release)
-    elif inflow > upper_maf_fraction:
-        return min(small_fraction * inflow, max_release)
-    else:
-        return min(medium_fraction * inflow, max_release)
+#     # Also need to ensure that the minimum environmental flow is less than the maximum release
+#     if inflow <= low_flow_scenario:
+#         return min(large_fraction * inflow, max_release)
+#     elif inflow > upper_maf_threshold:
+#         return min(small_fraction * inflow, max_release)
+#     else:
+#         return min(medium_fraction * inflow, max_release)
 
 
-def calc_min_flow(
-    inflow: pd.Series, mean_annual_flow: pd.Series, max_release: float
-) -> None:
-    """Find the minimum environmental flow for each day."""
-    df = pd.DataFrame({"inflow": inflow, "mean_annual_flow": mean_annual_flow})
-    min_flow = df.apply(
-        lambda x: calc_min_environ_flow(
-            inflow=x.inflow,
-            mean_annual_flow=x.mean_annual_flow,
-            max_release=max_release,
-        ),
-        axis=1,
-    )
-    return min_flow
+# def calc_minflow(
+#     inflow: pd.Series, mean_annual_flow: pd.Series, max_release: float
+# ) -> pd.Series:
+#     """Find the minimum environmental flow.
+
+#     Args:
+#         inflow (pd.Series): The inflow to the reservoir
+#         mean_annual_flow (pd.Series): The mean annual flow
+#         max_release (float): The maximum release
+
+#     Returns:
+#         pd.Series: The minimum environmental flow
+
+#     """
+#     df = pd.DataFrame({"inflow": inflow, "mean_annual_flow": mean_annual_flow})
+#     minflow = df.apply(
+#         lambda x: calc_min_environ_flow(
+#             inflow=x.inflow,
+#             mean_annual_flow=x.mean_annual_flow,
+#             max_release=max_release,
+#         ),
+#         axis=1,
+#     )
+#     return minflow
 
 
 def calc_target_level(
@@ -338,17 +408,17 @@ def calc_max_release(
     total_inflow_t: float,
     release_t0: float,
     storage_t0: float,
-    min_flow_t: float,
+    minflow_t: float,
     max_release: float,
     hydropeak_factor: float,
 ) -> float:
     """Calculate the maximum allowable release of the current timestep."""
-    # Release is limited by the hydropeaking factor
+    # Limited by the hydropeaking factor
     max_release_hydropeak_t = release_t0 + max_release * hydropeak_factor
-    # Release cannot be larger than the turbine capacity
+    # Cannot be larger than the turbine capacity
     max_release_t = min(max_release, max_release_hydropeak_t)
-    # Release cannot be less than the min environmental flow
-    max_release_t = max(min_flow_t, max_release_t)
+    # Cannot be less than the min environmental flow
+    max_release_t = max(minflow_t, max_release_t)
     # Cannot release more than the amount of water in the reservoir
     if storage_t0 + total_inflow_t - max_release_t < 0:
         max_release_t = storage_t0 + total_inflow_t
@@ -359,15 +429,15 @@ def calc_min_release(
     total_inflow_t: float,
     release_t0: float,
     storage_t0: float,
-    min_flow_t: float,
+    minflow_t: float,
     max_release: float,
     hydropeak_factor: float,
 ) -> float:
     """Calculate the minimum allowable release of the current timestep."""
-    # Release is limited by the hydropeaking factor
+    # Limited by the hydropeaking factor
     min_release_hydropeak_t = release_t0 - max_release * hydropeak_factor
     # Limited by the minimum environmental flow
-    min_release_t = max(min_flow_t, min_release_hydropeak_t)
+    min_release_t = max(minflow_t, min_release_hydropeak_t)
     # Release cannot make the storage become negative
     if storage_t0 + total_inflow_t - min_release_t < 0:
         min_release_t = storage_t0 + total_inflow_t

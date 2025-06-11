@@ -1,5 +1,4 @@
-""" data_processor.py: This file contains the DataProcessor class that processes the data provided by the user.
-"""
+"""data_processor.py: This file contains the DataProcessor class that processes the data provided by the user."""
 
 import json
 import os
@@ -18,10 +17,12 @@ class DataProcessor:
     ) -> None:
         """The DataProcessor class is used to process the data provided by the user. The data
         is stored in the model_library/model_name folder. The required files are:
+
         1. transmission.csv: A file that contains the transmission data.
         2. thermal_unit.csv: A file that contains the thermal unit data.
         3. solar.csv, wind.csv, hydropower.csv, import.csv: Files that contain the renewable unit data.
         4. energy_storage.csv: A file that contains the energy storage system data.
+
         """
         self.input_folder = input_folder
         self.model_name = model_name
@@ -92,13 +93,15 @@ class DataProcessor:
         From Chapter 5 of Power System Analysis and Design 5th (EQ 5.4.30)
 
         The stability limit per circuit is given by:
-                P = V1 * V2 / X * sin(2 * pi * d / lambda)
-            where:
-                P is the stability limit in MW
-                V1 and V2 are the voltages at the two ends of the line
-                X is the reactance of the line in ohms per km
-                d is the distance between the two ends of the line in km
-                lambda is the wavelength of the system in km
+
+            P = V1 * V2 / X * sin(2 * pi * d / lambda)
+
+        where:
+            P is the stability limit in MW
+            V1 and V2 are the voltages at the two ends of the line
+            X is the reactance of the line in ohms per km
+            d is the distance between the two ends of the line in km
+            lambda is the wavelength of the system in km
 
         Args:
             source_kv (int): Voltage level of the source bus
@@ -124,7 +127,9 @@ class DataProcessor:
     ) -> float:
         """From Chapter 5 of Power System Analysis and Design 5th. See Example 5.6b.
         The full-load current at 1 per-unit factor is
-              I = P/(sqrt(3) * V)
+
+            I = P/(sqrt(3) * V)
+
         Here, P is the surge impedance factor (SIL) and V is the voltage of the
         receiving bus. This voltage is the minimum voltage between the two ends.
 
@@ -247,7 +252,7 @@ class DataProcessor:
         )
         cycles = nx.cycle_basis(graph)
         # Save this map to be uses by ModelBuilder
-        self.cycle_map = {f"cycle_{idx+1}": cycle for idx, cycle in enumerate(cycles)}
+        self.cycle_map = {f"cycle_{idx + 1}": cycle for idx, cycle in enumerate(cycles)}
 
     def write_cycle_map(self) -> None:
         """
@@ -402,7 +407,7 @@ class DataProcessor:
         self.create_ess_derated_capacity()
 
     def write_data(self) -> None:
-        """Write the processed data as csv files sharing a prefix "pownet_" to the model folder"""
+        """Write the processed data as csv files sharing a prefix `pownet_` to the model folder"""
 
         if not self.transmission_data.empty:
             self.write_transmission_data()

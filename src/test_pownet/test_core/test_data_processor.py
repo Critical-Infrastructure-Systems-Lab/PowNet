@@ -1,13 +1,10 @@
-""" This is test_data_processor.py
-"""
+"""test_data_processor.py"""
 
 import os
 import unittest
 from pownet.core.data_processor import (
     DataProcessor,
 )
-
-from pownet.folder_utils import get_model_dir
 
 
 class TestDataProcessor(unittest.TestCase):
@@ -37,7 +34,7 @@ class TestDataProcessor(unittest.TestCase):
         self.assertEqual(processor.wavelength, 6000)
         self.assertEqual(
             processor.model_folder,
-            os.path.join(get_model_dir(), test_model_library_path, model_name),
+            os.path.join(test_model_library_path, model_name),
         )
         # Timeseries should have 8760 rows
         self.assertEqual(processor.cycle_map, {})

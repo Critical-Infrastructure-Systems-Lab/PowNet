@@ -1,5 +1,5 @@
 """
-This script uses the Gurobi solver to solve for release.
+solve_release.py: Functions to solve the release given other values from a reservoir.
 """
 
 import gurobipy as gp
@@ -14,14 +14,14 @@ def solve_release_from_target_storage(
     max_storage: float,
     initial_storage: float,
     target_storage: pd.Series,
-    min_flow: pd.Series,
+    minflow: pd.Series,
     total_inflow: pd.Series,
 ) -> tuple[pd.Series, pd.Series, pd.Series, float]:
     """Build an optimization problem to find the optimal release from the reservoir.
     The objective is to minimize the storage deviation from the target storage with L1 norm.
 
     OBJECTIVE FUNCTION:
-    min | target_storage - storage |
+    min | target_storage - storage | + spill
 
     Rewrite this as:
 
@@ -66,11 +66,11 @@ def solve_release_from_target_storage(
     When using max/min as a function, we need to use gp.max_ and gp.min_
     see https://support.gurobi.com/hc/en-us/community/posts/360078185112-gurobipy-Model-addGenConstrMin-Invalid-data-in-vars-array
 
-    spills[day] = max(0, total_inflow[day] + storage[day] - max_storage - release[day])
+    spills[day] = max(0, total_inflow[day] + storage[day-1] - max_storage - release[day])
     spills[day] = gp.max_(0, spill_bar[day])
 
     with
-    spill_bar[day] = total_inflow[day] + storage[day] - max_storage - release[day]
+    spill_bar[day] = total_inflow[day] + storage[day-1] - max_storage - release[day]
     """
     spill_bar = model.addVars(
         timesteps,
@@ -80,7 +80,7 @@ def solve_release_from_target_storage(
 
     # Create the objective function
     model.setObjective(
-        gp.quicksum(sbar[day] for day in timesteps),
+        gp.quicksum(sbar[day] + spill_vars[day] for day in timesteps),
         sense=gp.GRB.MINIMIZE,
     )
 
@@ -99,7 +99,7 @@ def solve_release_from_target_storage(
     # Minimum release has not been enforced when defining
     # the variable.
     model.addConstrs(
-        (release_vars[day] >= min_flow[day] for day in timesteps),
+        (release_vars[day] >= minflow[day] for day in timesteps),
         name="c_min_release",
     )
     # Define spill
@@ -107,15 +107,31 @@ def solve_release_from_target_storage(
         (spill_vars[day] == gp.max_(0, spill_bar[day]) for day in timesteps),
         name="c_spill",
     )
+
     # Define spill_bar
-    model.addConstrs(
-        (
-            spill_bar[day]
-            == total_inflow[day] + storage_vars[day] - max_storage - release_vars[day]
-            for day in timesteps
-        ),
-        name="c_define_spill_bar",
-    )
+    for day in timesteps:
+        if day == start_day:
+            model.addConstr(
+                (
+                    spill_bar[day]
+                    == initial_storage
+                    + total_inflow[day]
+                    - release_vars[day]
+                    - max_storage
+                ),
+                name=f"c_define_spill_bar[{day}]",
+            )
+        else:
+            model.addConstr(
+                (
+                    spill_bar[day]
+                    == storage_vars[day - 1]
+                    + total_inflow[day]
+                    - release_vars[day]
+                    - max_storage
+                ),
+                name=f"c_define_spill_bar[{day}]",
+            )
 
     # The storage at the start day is the initial storage
     model.addConstr(
@@ -185,7 +201,7 @@ def solve_release_from_dispatch(
     min_release: float,
     max_release: float,
     max_generation: float,
-) -> tuple[float, float, float, float]:
+) -> tuple[float, float, float, float, float, float, float]:
     """
     For each day, solve for release_t from daily dispatch_t as an optimization problem.
 
@@ -216,7 +232,7 @@ def solve_release_from_dispatch(
     spill_t = max(0, spill_bar)
 
     6. Definition of spill_bar
-    spill_bar = INFLOW_t + storage_t - STORAGE_MAX - release_t
+    spill_bar = INFLOW_t + storage_t-1 - STORAGE_MAX - release_t
 
     Note that the objective function is not linear because of the absolute value.
     To make it linear, we introduce a new variable mismatch_t and rewrite
@@ -312,7 +328,7 @@ def solve_release_from_dispatch(
 
     # (5) Define spill_bar
     model.addConstr(
-        spill_bar == inflow + storage - storage_max - release,
+        spill_bar == storage_t0 + inflow - storage_max - release,
         name="c_spill_bar",
     )
 

@@ -1,0 +1,3 @@
+name,node,unit_type,fuel_type,fuel_contract,max_capacity,min_capacity,heat_rate,operation_cost,fixed_cost,startup_cost,ramp_rate,min_uptime,min_downtime,latitude,longitude,must_take
+pGas,Node1,gas_cc,gas,pGas,1200,10,7.65,2,1.2,70,287.67,4,4,,,0
+pBiomass,Node2,biomass_st,biomass,pBiomass,9.9,2,14.1,26,1,1,9.9,2,2,,,0

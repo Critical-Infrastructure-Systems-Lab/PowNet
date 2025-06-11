@@ -1,13 +1,10 @@
-""" This is test_model.py
-"""
+"""This is test_model.py"""
 
-import os
 import unittest
-from unittest.mock import patch, MagicMock, call
 
 import gurobipy as gp
 import pandas as pd
-from pownet.modeling import PowerSystemModel
+from pownet.optim_model import PowerSystemModel
 
 
 class TestPowerSystemModel(unittest.TestCase):

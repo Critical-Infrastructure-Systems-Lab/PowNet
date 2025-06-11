@@ -119,8 +119,9 @@ user_inputs/*
 # Ignore subfolders in the analysis folder
 src/analysis/decom_files/*
 src/analysis/results/*
-scripts/scratch.py
+scripts/*
 
 # Pownet generated files
 /model_library/*/pownet_*.csv
 /model_library/*/pownet_*.json
+coverage.json

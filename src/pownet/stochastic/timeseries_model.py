@@ -1,8 +1,10 @@
-""" timeseries_model.py: Abstract class for time series models."""
+"""timeseries_model.py: Abstract class for time series models."""
 
 from abc import ABC, abstractmethod
 
+import matplotlib.pyplot as plt
 import pandas as pd
+import statsmodels.api as sm
 
 
 class TimeSeriesModel(ABC):
@@ -87,7 +89,6 @@ class TimeSeriesModel(ABC):
         Create synthetic time series.
 
         Args:
-            n_samples (int, optional): Number of samples to generate. Defaults to 1.
             exog_data (pd.DataFrame, optional): Exogenous variables. Defaults to None.
             seed (int, optional): Random seed. Defaults to None.
 
@@ -159,7 +160,7 @@ class TimeSeriesModel(ABC):
         pass
 
     @abstractmethod
-    def _get_synthetic(self, exog_vars: list[str], seed: int) -> pd.Series:
+    def _get_synthetic(self, exog_data: pd.DataFrame, seed: int) -> pd.Series:
         pass
 
     @abstractmethod
@@ -172,3 +173,53 @@ class TimeSeriesModel(ABC):
         suppress_warnings: bool,
     ) -> tuple[tuple[int, int, int], tuple[int, int, int, int]]:
         pass
+
+    def plot_residuals(self, bins: int, figure_file: str = None) -> None:
+        _, ax = plt.subplots(3, 2, figsize=(12, 12))
+        # --- Plot 1: Residuals over time ---
+        self.pred_residuals.plot(ax=ax[0, 0])
+        ax[0, 0].set_title("Residuals Over Time")
+        ax[0, 0].set_xlabel("")
+        ax[0, 0].set_ylabel("Residual Value")
+        ax[0, 0].grid(True)  # Add grid for readability
+
+        # --- Plot 2: Histogram of Residuals ---
+        self.pred_residuals.hist(bins=bins, density=False, alpha=0.7, ax=ax[0, 1])
+        ax[0, 1].set_title("Histogram of Residuals")
+        ax[0, 1].set_xlabel("Residual Value")
+        ax[0, 1].set_ylabel("Frequency")
+        ax[0, 1].grid(True, axis="y", alpha=0.5)  # Add horizontal grid
+
+        # --- Plot 3: ACF of Residuals ---
+        # sm.graphics.tsa.plot_acf returns a matplotlib Figure object,
+        # but we pass our specific Axes object (ax[1, 0]) to plot on it.
+        sm.graphics.tsa.plot_acf(
+            self.pred_residuals, lags=40, ax=ax[1, 0], title="ACF of Residuals"
+        )
+        ax[1, 0].grid(True, alpha=0.5)
+
+        # --- Plot 4: PACF of Residuals ---
+        sm.graphics.tsa.plot_pacf(
+            self.pred_residuals,
+            lags=40,
+            ax=ax[1, 1],
+            title="PACF of Residuals",
+            method="ywm",
+        )
+        ax[1, 1].grid(True, alpha=0.5)
+
+        # --- Plot 5: Q-Q Plot of Residuals ---
+        sm.qqplot(self.pred_residuals, line="s", ax=ax[2, 0])
+        ax[2, 0].set_title("Q-Q Plot of Residuals")
+        ax[2, 0].grid(True, alpha=0.5)
+
+        # --- Turn off the empty subplot ---
+        ax[2, 1].axis("off")
+
+        # --- Adjust layout and display the figure ---
+        plt.tight_layout()  # Adjusts subplot params for a tight layout
+        plt.suptitle("Residual Analysis Plots", fontsize=16, y=1.02)
+
+        if figure_file:
+            plt.savefig(figure_file, bbox_inches="tight", dpi=350)
+        plt.show()

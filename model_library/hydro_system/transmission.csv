@@ -1,0 +1,2 @@
+source,sink,user_line_cap,type,n_circuits,source_kv,sink_kv,distance,user_susceptance
+Node1,Node2,-1,acsr,4,275,275,350,-1

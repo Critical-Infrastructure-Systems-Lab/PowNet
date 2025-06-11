@@ -1,14 +1,25 @@
 ![license MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 [![CI Tests](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/actions/workflows/python-app.yml/badge.svg)](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/actions)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/phumthep/23c151ad08ede7f698ce7cfbc2c09a0a/raw/covbadge.json)](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/actions)
 [![GitHub Release](https://img.shields.io/github/v/release/Critical-Infrastructure-Systems-Lab/PowNet)](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/releases/tag/v2.0)
 [![Read the Docs](https://img.shields.io/readthedocs/pownet)](https://pownet.readthedocs.io/en/latest/)
+[![status](https://joss.theoj.org/papers/f7509a62fde550bec7ae3d1da0181b7d/status.svg)](https://joss.theoj.org/papers/f7509a62fde550bec7ae3d1da0181b7d)
 
-# PowNet: Unit Commitment / Economic Dispatch model in Python
-PowNet is a least-cost optimization model for simulating the Unit Commitment and Economic Dispatch (UC/ED) of large-scale (regional to country) power systems. In PowNet, a power system is represented by a set of nodes that include power plants, high-voltage substations, and import/export stations (for cross-border systems). The model schedules and dispatches the electricity supply from power plant units to meet hourly electricity demand in substations at a minimum cost. It considers the techno-economic constraints of both generating units and high-voltage transmission network. The power flow calculation is based on a Direct Current (DC) network (with N-1 criterion), which provides a reasonable balance between modelling accuracy and data and computational requirements. PowNet can easily integrate information about variable renewable resources (e.g., hydro, wind, solar) into the UC/ED process. For example, it can be linked with models that estimate the electricity supply available from renewable resources as a function of the climatic conditions. In addition, PowNet has provision to account for the effect of droughts on the generation of dispatchable thermal units (e.g., coal, oil, gas-fired units) that depend on freshwater availability. These features facilitate the application of PowNet to problems in the water-energy nexus domain that investigate the impact of water availability on electricity supply and demand. 
+# PowNet: A Production Cost Modeling Framework for Large-scale Power Systems
+PowNet is an open-source production cost model (PCM) framework written in Python, designed to simulate the operational scheduling of large-scale (regional or national) power systems. It determines the least-cost schedule for power generation by solving the unit commitment (UC) and economic dispatch (ED) problems – a process commonly used for applications like day-ahead market simulation. Designed for users focused on power system analysis rather than complex model development, PowNet uses simple spreadsheet files for data inputs, significantly simplifying model setup and modification. As for advanced users, the framework's modular design provides modeling flexibility to implement customized analysis or explore complex modeling algorithms.
 
-Read the PowNet Documentation here: https://pownet.readthedocs.io/en/latest
+## Key functionalities
+- Models power systems including generator techno-economic constraints and network limits
+- Uses computationally efficient linearized DC power flow for network analysis
+- Supports variable renewable energy (VRE) sources, such as hydro, wind, and solar
+- Built for computational speed using the high-performance Gurobipy modeling framework with support for the open-source HiGHS solver
+- Includes features allowing the analysis of water-energy nexus impacts (e.g., drought effects on thermal units)
 
-## Installing and using PowNet
+PowNet enables analysts to readily study grid operations, VRE integration, and water-energy interactions in a low-code environment. For advanced users, it retains the flexibility needed to explore complex model configurations and research modeling algorithms.
+
+Read the Documentation for more information at https://pownet.readthedocs.io/en/latest.
+
+## Using PowNet
 To use PowNet, a user needs to supply it with CSV files. For guidance on creating these CSV files, please see examples provided [here](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/tree/master/model_library). Please ensure that column names matches with those from the examples. Details on preparing some input files can be found [here](https://critical-infrastructure-systems-lab.github.io/manual/docs/CIS-Lab-software).
 
 As for installing PowNet, there are multiple options depending on whether we want to modify the source code. However, the following step is highly recommended for any user: creating a virtual environment to manage dependencies. If using Conda, we can create an envrionment with the following command
@@ -45,7 +56,7 @@ working_directory/
 └── outputs/
 ```
 
-A Python script called "[run_quickstart.py](https://github.com/Critical-Infrastructure-Systems-Lab/PowNet/blob/master/scripts/run_quickstart.py)" provides an example on running a simulation, saving the simulation outputs, and visualizing the outputs.
+A tutorial "[quickstart.py](./examples/quickstart.ipynb)" provides an example on running a simulation, saving the simulation outputs, and visualizing the outputs.
 
 ### Option 2: Power user (no pun intended)
 In case we wish to modify the source code, PowNet should be installed as an editable package. First, download or clone the PowNet repository to your local machine. For example: if we want to clone to "C://user/pownet",
@@ -68,10 +79,9 @@ pip install -e .
 
 This command installs the package in "editable" mode (-e) using pyproject.toml that is located in the root directory of PowNet. The editable mode allows us to edit PowNet codebase when we need to modify or implement new features. The pyproject.toml file specifies the dependencies required to run PowNet.
 
-A quick start tutorial to run a simple case study is provided here: https://pownet.readthedocs.io/en/latest/pages/quickstarter.html
 
 ## Overview of PowNet
 
-![overview_pownet](./docs/overview_pownet.png)
+![overview_pownet](./joss_submission/overview_pownet.png)
 
 

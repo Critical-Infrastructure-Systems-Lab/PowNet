@@ -24,7 +24,7 @@ def get_dates(year, num_days=365):
     # Remove 29th Feb because we do not deal with them
     dates = dates.loc[dates.date.dt.strftime("%m-%d") != "02-29"]
     # Remove 1st Jan of the next year in case it is included when it is not a leap year
-    dates = dates.loc[dates.date.dt.strftime("%Y-%m-%d") != f"{year+1}-01-01"]
+    dates = dates.loc[dates.date.dt.strftime("%Y-%m-%d") != f"{year + 1}-01-01"]
 
     # In case we need three columns: date, hour, and day
     dates = dates.loc[dates.index.repeat(24)]
@@ -35,7 +35,7 @@ def get_dates(year, num_days=365):
 
 def get_datetime_index(year: int) -> pd.DatetimeIndex:
     """Return a datetime index for the given year. The index will have 8760 entries, one for each hour of the year. Exclude 29th February."""
-    dates = pd.date_range(start=f"{year}-01-01", end=f"{year+1}-01-01", freq="H")
+    dates = pd.date_range(start=f"{year}-01-01", end=f"{year + 1}-01-01", freq="h")
     # Remove 29th February
     dates = dates[~((dates.month == 2) & (dates.day == 29))]
     return dates[dates.year == year]
@@ -60,7 +60,9 @@ def remove_29feb(timeseries: pd.Series) -> pd.Series:
 
 
 def create_init_condition(
-    thermal_units: list, storage_units: list = None
+    thermal_units: list,
+    storage_units: list = None,
+    ess_max_capacity: dict[str, float] = None,
 ) -> dict[(str, int), dict]:
     """Return dicts of system statuses in the format {(unit, hour): value}"""
     # Assume thermal units in the systems are offline at the beginning
@@ -78,6 +80,9 @@ def create_init_condition(
         initial_charge_state = {}
     elif len(storage_units) > 0:
         initial_charge_state = {unit: 0 for unit in storage_units}
+        if ess_max_capacity is not None:
+            for unit in ess_max_capacity:
+                initial_charge_state[unit] = ess_max_capacity[unit]
     else:
         initial_charge_state = {}
 
@@ -112,7 +117,7 @@ def get_node_hour_from_flow_constraint(constraint_name: str) -> tuple[str, int]:
         return None, None
 
 
-def get_unit_hour_from_varnam(var_name: str) -> tuple[str, int]:
+def get_unit_hour_from_varname(var_name: str) -> tuple[str, int]:
     """Get the unit and hour from the variable name.
 
     Args:
@@ -133,23 +138,25 @@ def get_unit_hour_from_varnam(var_name: str) -> tuple[str, int]:
 
 
 def get_edge_hour_from_varname(var_name: str) -> tuple[tuple[str, str], int]:
-    """Get the edge and hour from the variable name: flow[a,b,t].
+    """Get the edge and hour from the variable name: flow_fwd[a,b,t] or flow_bwd[a,b,t].
 
     Args:
         var_name: The name of the variable.
 
     Returns:
-        The edge and hour.
+        The edge (tuple of two strings) and hour (int).
 
     """
-    edge_var_pattern = re.compile(r"flow\[(.+),(.+),(\d+)\]")
+    edge_var_pattern = re.compile(r"flow_(?:fwd|bwd)\[([^,]+),([^,]+),(\d+)\]")
     match = edge_var_pattern.match(var_name)
-    if match:
-        edge = (match.group(1), match.group(2))
-        hour = int(match.group(3))
-        return edge, hour
-    else:
-        raise ValueError("Invalid variable name format")
+    if not match:
+        raise ValueError(f"Invalid variable name format: {var_name}")
+
+    node1 = match.group(1)
+    node2 = match.group(2)
+    hour = int(match.group(3))
+    edge = (node1, node2)
+    return edge, hour
 
 
 def get_current_time() -> str:
@@ -320,27 +327,49 @@ def parse_flow_variables(
     solution: pd.DataFrame, sim_horizon: int, step_k: int
 ) -> pd.DataFrame:
     """
-    The flow variables are in the (node, node, t) format.
+    Parses flow variables from the solution DataFrame.
+    The flow variables are expected in the format:
+    flow_fwd[node_a,node_b,t] or flow_bwd[node_a,node_b,t].
 
     Args:
-        solution: The solution DataFrame.
-        sim_horizon: The length of the simulation horizon.
-        step_k: The current simulation period.
+        solution: The solution DataFrame with a 'varname' column.
+        sim_horizon: The length of the simulation horizon for a single step_k (e.g., 24 hours).
+        step_k: The current simulation period (1-indexed).
 
     Returns:
-        pd.DataFrame: The flow variables DataFrame
+        pd.DataFrame: A DataFrame with parsed flow variables, including
+                      columns for 'node_a', 'node_b', 'type' (fwd/bwd),
+                      'value', 'timestep' (relative to step_k), and 'hour' (absolute).
     """
-    flow_var_pattern = r"flow\[(.+),(.+),(\d+)\]"
-    cur_flow_vars = solution[solution["varname"].str.match(flow_var_pattern)].copy()
+    # Matches flow_fwd[node_a,node_b,t] or flow_bwd[node_a,node_b,t]
+    # It captures the type (fwd or bwd), node_a, node_b, and t.
+    flow_var_pattern = r"flow_(fwd|bwd)\[([^,]+),([^,]+),(\d+)\]"
 
-    cur_flow_vars[["node_a", "node_b", "timestep"]] = cur_flow_vars[
-        "varname"
-    ].str.extract(flow_var_pattern, expand=True)
+    # Filter rows that match the flow variable pattern
+    flow_vars_mask = solution["varname"].str.contains(
+        r"flow_(?:fwd|bwd)\[.+,.+,\d+\]", regex=True
+    )
+    cur_flow_vars = solution[flow_vars_mask].copy()
 
+    if cur_flow_vars.empty:
+        return pd.DataFrame(
+            columns=["node_a", "node_b", "type", "value", "timestep", "hour"]
+        )
+
+    # Extract components from varname
+    extracted_data = cur_flow_vars["varname"].str.extract(flow_var_pattern, expand=True)
+    cur_flow_vars[["type", "node_a", "node_b", "timestep"]] = extracted_data
+
+    # Convert timestep to integer
     cur_flow_vars["timestep"] = cur_flow_vars["timestep"].astype(int)
+
+    # Calculate absolute hour
+    # Assuming sim_horizon is the number of timesteps within one step_k
+    # and step_k is 1-indexed.
     cur_flow_vars["hour"] = cur_flow_vars["timestep"] + sim_horizon * (step_k - 1)
-    cur_flow_vars = cur_flow_vars.drop("varname", axis=1)
-    return cur_flow_vars
+
+    final_columns = ["node_a", "node_b", "value", "type", "timestep", "hour"]
+    return cur_flow_vars[final_columns]
 
 
 def parse_syswide_variables(
@@ -399,7 +428,6 @@ def get_fuel_mix_order() -> list[str]:
 
     Returns
         list[str]: The order of fuel mix.
-    -------
     """
     return pd.read_csv(
         os.path.join(get_database_dir(), "fuels.csv"),
@@ -449,3 +477,21 @@ def create_geoseries_columns(df: pd.DataFrame) -> pd.DataFrame:
     df["source_location"] = gpd.GeoSeries(df["source_location"])
     df["sink_location"] = gpd.GeoSeries(df["sink_location"])
     return df
+
+
+def get_capacity_value(t: int, unit: str, step_k: int, capacity_df) -> float:
+    """Get the capacity value for a given unit and timestep.
+    Args:
+        t: The timestep.
+        unit: The unit name.
+        step_k: The current simulation period.
+        capacity_df: The dataframe containing the capacity values.
+
+    Returns:
+        The capacity value for the given unit and timestep.
+    """
+    hours_per_timestep = 24  # For rolling horizon
+    value = capacity_df.loc[t + (step_k - 1) * hours_per_timestep, unit]
+    if isinstance(value, pd.Series):
+        return value.iloc[0]
+    return value
