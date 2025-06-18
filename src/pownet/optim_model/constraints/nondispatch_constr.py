@@ -36,6 +36,38 @@ def add_c_hourly_unit_ub(
         name=f"hourly_{unit_type}_ub",
     )
 
+def add_c_hourly_unit_lb(
+    model: gp.Model,
+    pdispatch: gp.tupledict,
+    unit_type: str,
+    timesteps: range,
+    units: list,
+    contracted_capacity_min_dict: dict[str, float],
+) -> gp.tupledict:
+    """
+    Add constraints to define the hourly availability of non-dispatchable units. This is limited by the
+    contracted_capacity
+
+    Args:
+        model (gp.Model): The optimization model.
+        pdispatch (gp.tupledict): The dispatch variable.
+        unit_type (str): The type of unit ("wind", "solar", "hydro", "import").
+        timesteps (range): The range of timesteps.
+        units (list): The list of units.
+        contracted_capacity_min_dict (dict[str, float]): The contracted minimum capacity of the unit.
+
+    Returns:
+        gp.tupledict: The constraints linking the dispatch variable and the unit status variable.
+    """
+    return model.addConstrs(
+        (
+            pdispatch[unit, t] >= contracted_capacity_min_dict[unit]
+            for unit in units
+            for t in timesteps
+        ),
+        name=f"hourly_{unit_type}_lb",
+    )
+
 
 def add_c_link_unit_pu(
     model: gp.Model,
@@ -45,6 +77,7 @@ def add_c_link_unit_pu(
     timesteps: range,
     units: list,
     contracted_capacity_dict: dict[str, float],
+    contracted_capacity_min_dict: dict[str, float],
 ) -> gp.tupledict:
     """
     Add constraints to link the dispatch variable and the unit status variable.
@@ -183,7 +216,6 @@ def add_c_hydro_limit_weekly(
     sim_horizon: int,
     hydro_units: list,
     hydro_capacity: pd.DataFrame,
-    # hydro_capacity_min: pd.DataFrame,
 ) -> gp.tupledict:
     """
     Defines the weekly limit (lower and upper bounds) of hydro generation.
@@ -218,7 +250,6 @@ def add_c_hydro_limit_weekly(
     for week in range(step_k, step_k + max_week):
         for hydro_unit in hydro_units:
             cname = f"hydro_limit_weekly_ub[{hydro_unit},{week}]"
-            cname_min = f"hydro_limit_weekly_lb[{hydro_unit},{week}]"
             current_week = week - step_k + 1
 
             # Upper bound constraint
@@ -240,12 +271,11 @@ def add_c_hydro_limit_weekly_lb(
     step_k: int,
     sim_horizon: int,
     hydro_units: list,
-    # hydro_capacity: pd.DataFrame,
     hydro_capacity_min: pd.DataFrame,
 ) -> gp.tupledict:
     """
     Defines the weekly limit (lower and upper bounds) of hydro generation.
-    Assumes that a certain amount of water is available for hydropower generation each day.
+    Assumes that a certain amount of water is available for hydropower generation each week.
 
     Args:
         model (gp.Model): The optimization model
@@ -275,7 +305,6 @@ def add_c_hydro_limit_weekly_lb(
     max_week = sim_horizon // 168
     for week in range(step_k, step_k + max_week):
         for hydro_unit in hydro_units:
-            # cname = f"hydro_limit_weekly_ub[{hydro_unit},{week}]"
             cname_min = f"hydro_limit_weekly_lb[{hydro_unit},{week}]"
             current_week = week - step_k + 1
 

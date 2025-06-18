@@ -160,6 +160,7 @@ class SystemInput:
 
         # Hydropower (hourly and daily timeseries)
         self.hydro_contracted_capacity: dict[str, float] = {}
+        self.hydro_contracted_capacity_min: dict[str, float] = {}
         self.hydro_capacity: pd.DataFrame = pd.DataFrame()
         self.hydro_min_capacity: pd.DataFrame = pd.DataFrame()
         self.hydro_max_capacity: dict[str, float] = {}
@@ -611,11 +612,13 @@ class SystemInput:
         if nondispatch_df.empty:
             return
         # Replace -1 in the contracted_capacity column to GRB.INFINITY
-        nondispatch_df["contracted_capacity"] = (
-            nondispatch_df["contracted_capacity"]
-            .astype(float)
-            .replace(-1, GRB.INFINITY)
-        )
+        for col in ["contracted_capacity", "contracted_capacity_min"]:
+            nondispatch_df[col] = (
+                nondispatch_df[col]
+                .astype(float)
+                .replace(-1, GRB.INFINITY)
+                .fillna(0)
+            )
 
         unit_types = {
             "hydro": self.hydro_unit_node,
@@ -643,6 +646,20 @@ class SystemInput:
         self.hydro_contracted_capacity.update(
             nondispatch_df.loc[nondispatch_df["name"].isin(self.weekly_hydro_unit_node)]
             .set_index("name")["contracted_capacity"]
+            .to_dict()
+        )
+
+        # Add daily hydro units to the contracted capacity under "hydro"
+        self.hydro_contracted_capacity_min.update(
+            nondispatch_df.loc[nondispatch_df["name"].isin(self.daily_hydro_unit_node)]
+            .set_index("name")["contracted_capacity_min"]
+            .to_dict()
+        )
+
+        # Add daily hydro units to the contracted capacity under "hydro"
+        self.hydro_contracted_capacity_min.update(
+            nondispatch_df.loc[nondispatch_df["name"].isin(self.weekly_hydro_unit_node)]
+            .set_index("name")["contracted_capacity_min"]
             .to_dict()
         )
 

@@ -58,6 +58,7 @@ class HydroUnitBuilder(ComponentBuilder):
 
         # Constraints
         self.c_hourly_hydro_ub = gp.tupledict()
+        self.c_hourly_hydro_lb = gp.tupledict()
         self.c_hydro_limit_daily = gp.tupledict()
         self.c_hydro_limit_weekly = gp.tupledict()
 
@@ -83,7 +84,11 @@ class HydroUnitBuilder(ComponentBuilder):
         self.daily_phydro = self.model.addVars(
             self.inputs.daily_hydro_unit_node.keys(),
             self.timesteps,
-            lb=0,
+            lb={
+                (unit, t): self.inputs.hydro_contracted_capacity_min[unit]
+                for unit in self.inputs.daily_hydro_unit_node.keys()
+                for t in self.timesteps
+            },
             ub={
                 (unit, t): self.inputs.hydro_contracted_capacity[unit]
                 for unit in self.inputs.daily_hydro_unit_node.keys()
@@ -96,7 +101,11 @@ class HydroUnitBuilder(ComponentBuilder):
         self.weekly_phydro = self.model.addVars(
             self.inputs.weekly_hydro_unit_node.keys(),
             self.timesteps,
-            lb=0,
+            lb={
+                (unit, t): self.inputs.hydro_contracted_capacity_min[unit]
+                for unit in self.inputs.weekly_hydro_unit_node.keys()
+                for t in self.timesteps
+            },
             ub={
                 (unit, t): self.inputs.hydro_contracted_capacity[unit]
                 for unit in self.inputs.weekly_hydro_unit_node.keys()
@@ -156,6 +165,15 @@ class HydroUnitBuilder(ComponentBuilder):
             timesteps=self.timesteps,
             units=self.inputs.hydro_unit_node.keys(),
             contracted_capacity_dict=self.inputs.hydro_contracted_capacity,
+        )
+
+        self.c_hourly_hydro_lb = nondispatch_constr.add_c_hourly_unit_lb(
+            model=self.model,
+            pdispatch=self.hourly_phydro,
+            unit_type="hydro",
+            timesteps=self.timesteps,
+            units=self.inputs.hydro_unit_node.keys(),
+            contracted_capacity_min_dict=self.inputs.hydro_contracted_capacity_min,
         )
 
         # Daily upper bound
