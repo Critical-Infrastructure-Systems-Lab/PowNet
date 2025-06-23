@@ -74,7 +74,7 @@ class OutputProcessor:
     def get_unit_hourly_generation(self, node_variables: pd.DataFrame) -> pd.DataFrame:
         power_variables = self._get_power_variables(node_variables)
         hourly_generation = (
-            power_variables[["unit", "value", "hour"]].groupby(["node", "hour"]).sum()
+            power_variables[["node", "value", "hour"]].groupby(["node", "hour"]).sum()
         )
         hourly_generation = hourly_generation.reset_index()
         hourly_generation = hourly_generation.pivot(

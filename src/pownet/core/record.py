@@ -106,6 +106,7 @@ class SystemRecord:
             pat_vartype, expand=True
         )
 
+        #### TODO: Use this to process the gurobi output
         node_vars = parse_node_variables(solution, self.inputs.sim_horizon, step_k)
         # Only keep 24-hours as we are doing rolling horizon
         node_vars = node_vars[node_vars["timestep"] <= 24]

@@ -283,7 +283,7 @@ def calc_remaining_off_duration(
     """
     return calc_remaining_duration(solution, sim_horizon, thermal_units, TD, "shutdown")
 
-
+#### TODO: Use this to process the gurobi output
 def parse_node_variables(
     solution: pd.DataFrame, sim_horizon: int, step_k: int
 ) -> pd.DataFrame:
@@ -322,7 +322,7 @@ def parse_node_variables(
     ] = 1
     return current_node_vars
 
-
+#### TODO: Use this to process the gurobi output
 def parse_flow_variables(
     solution: pd.DataFrame, sim_horizon: int, step_k: int
 ) -> pd.DataFrame:
@@ -371,7 +371,7 @@ def parse_flow_variables(
     final_columns = ["node_a", "node_b", "value", "type", "timestep", "hour"]
     return cur_flow_vars[final_columns]
 
-
+#### TODO: Use this to process the gurobi output
 def parse_syswide_variables(
     solution: pd.DataFrame, sim_horizon: int, step_k: int
 ) -> pd.DataFrame:
@@ -399,7 +399,7 @@ def parse_syswide_variables(
     cur_syswide_vars = cur_syswide_vars.drop("varname", axis=1)
     return cur_syswide_vars
 
-
+#### TODO: Use this to process the gurobi output
 def parse_lmp(lmp: dict[str, float], sim_horizon: int, step_k: int) -> pd.DataFrame:
     """Parse the LMP dictionary and return a DataFrame.
 
