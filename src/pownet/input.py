@@ -876,7 +876,7 @@ class SystemInput:
         for nodes, node_type in nodes_to_check:
             if not set(getattr(self, nodes).values()).issubset(self.nodes):
                 raise ValueError(
-                    f"PowNet: {node_type} must be connected to the grid: {set(getattr(self, nodes)) - self.nodes}"
+                    f"PowNet: {node_type} must be connected to the grid: {set(getattr(self, nodes).values()) - self.nodes}"
                 )
 
         ##################################
