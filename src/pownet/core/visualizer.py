@@ -116,7 +116,7 @@ class Visualizer:
             bbox_to_anchor=(0.5, -0.12),
         )
         ax.set_ylabel("Power (MW)")
-        ax.set_ylim(top=(demand[:total_timesteps].max() * 1.30).values[0])
+        ax.set_ylim(top=(demand[:total_timesteps].max() * 1.30))
 
         if output_folder is not None:
             figure_name = f"{self.model_id}_fuelmix.png"
