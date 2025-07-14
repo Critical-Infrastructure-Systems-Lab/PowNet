@@ -86,40 +86,46 @@ class DataProcessor:
         source_kv: int,
         sink_kv: int,
         distance: float,
-        wavelength: int,
         n_circuits: int,
     ) -> float:
-        """This function calculates the steady-state stability limit of a transmission line.
-        From Chapter 5 of Power System Analysis and Design 5th (EQ 5.4.30)
+        """Calculates the theoretical steady-state stability limit of a transmission line.
+        
+        This function uses the fundamental power transfer formula based on total line 
+        reactance, as shown in "Power System Analysis and Design" (Eq. 5.4.27):
 
-        The stability limit per circuit is given by:
-
-            P = V1 * V2 / X * sin(2 * pi * d / lambda)
+            P_max = (V_S * V_R) / X'
 
         where:
-            P is the stability limit in MW
-            V1 and V2 are the voltages at the two ends of the line
-            X is the reactance of the line in ohms per km
-            d is the distance between the two ends of the line in km
-            lambda is the wavelength of the system in km
+            P_max is the stability limit in MW.
+            V_S and V_R are the sending and receiving end voltages in kV.
+            X' is the total line reactance in ohms.
 
         Args:
-            source_kv (int): Voltage level of the source bus
-            sink_kv (int): Voltage level of the sink bus
-            distance (float): Distance between the two buses in km
-            wavelength (int): Wavelength of the system in km
-            n_circuits (int): Number of circuits in the transmission line
+            source_kv (int): Voltage level of the source bus in kV.
+            sink_kv (int): Voltage level of the sink bus in kV.
+            distance (float): Distance between the two buses in km.
+            n_circuits (int): Number of circuits in the transmission line.
 
         Returns:
-            float: The stability limit of the transmission line in MW
+            float: The stability limit of the transmission line in MW.
         """
-        # The reactance of the line is a function of the maximum voltage level
-        # of the two buses.
+        # Get the reactance per kilometer for the line's voltage level.
         max_kv = max(source_kv, sink_kv)
         reactance_per_km = self.transmission_params["reactance_ohms_per_km"][max_kv]
-        # Calculate the Surge Impedance Limit (SIL)
-        sil = source_kv * sink_kv / reactance_per_km / 1000  # Divide by 1000 to get MW
-        stability_limit_per_circuit = sil / np.sin(2 * np.pi * distance / wavelength)
+
+        # 1. Calculate the TOTAL line reactance.
+        total_reactance = reactance_per_km * distance
+
+        # Avoid division by zero for co-located buses (distance = 0).
+        if total_reactance == 0:
+            return float('inf')
+
+        # 2. Calculate the stability limit per circuit.
+        # The result is in MW because (kV * kV) / ohms = MVA. We assume a 
+        # power factor of 1 (MW = MVA).
+        stability_limit_per_circuit = (source_kv * sink_kv) / total_reactance
+
+        # 3. Return the total limit for all circuits.
         return int(n_circuits * stability_limit_per_circuit)
 
     def calc_thermal_limit(
@@ -162,7 +168,6 @@ class DataProcessor:
                 x["source_kv"],
                 x["sink_kv"],
                 x["distance"],
-                self.wavelength,
                 x["n_circuits"],
             ),
             axis=1,
@@ -196,6 +201,10 @@ class DataProcessor:
 
     def calc_line_susceptance(self) -> None:
         """Calculate the susceptance of line segments. The unit is in Siemens (S)."""
+
+        # TODO: This is a misnomer as we are calculating the maximum power that
+        # can be transferred over the line, not the susceptance.
+
         # Assume reactance based on the maximum voltage level of the two buses
         self.transmission_data["max_kv"] = self.user_transmission.apply(
             lambda x: max(x["source_kv"], x["sink_kv"]), axis=1
@@ -216,22 +225,29 @@ class DataProcessor:
             axis=1,
         )
 
-        # Replace with user-specified values
-        excluded_values = [-1, None]
-        user_specified_susceptance = self.user_transmission.loc[
-            ~self.user_transmission["user_susceptance"].isin(excluded_values),
-            ["source", "sink", "user_susceptance"],
-        ]
-        user_specified_susceptance = user_specified_susceptance.set_index(
-            ["source", "sink"]
-        )
-        # Change from float to int
-        user_specified_susceptance = user_specified_susceptance.astype(
-            {"user_susceptance": int}
-        )
+        # Raise an error if there are other values other than -1 or None
+        if not self.user_transmission["user_susceptance"].isin([-1, None]).all():
+            raise ValueError(
+                "Currently does not support user specified susceptance values."
+            )
+
+        # TODO: Revise the following code
+        # # Replace with user-specified values
+        # excluded_values = [-1, None]
+        # user_specified_susceptance = self.user_transmission.loc[
+        #     ~self.user_transmission["user_susceptance"].isin(excluded_values),
+        #     ["source", "sink", "user_susceptance"],
+        # ]
+        # user_specified_susceptance = user_specified_susceptance.set_index(
+        #     ["source", "sink"]
+        # )
+        # # Change from float to int
+        # user_specified_susceptance = user_specified_susceptance.astype(
+        #     {"user_susceptance": int}
+        # )
 
         self.transmission_data = self.transmission_data.set_index(["source", "sink"])
-        self.transmission_data.update(user_specified_susceptance)
+        # self.transmission_data.update(user_specified_susceptance)
         self.transmission_data = self.transmission_data.reset_index()
 
     def write_transmission_data(self) -> None:
