@@ -88,16 +88,18 @@ This command installs the package in "editable" mode (-e) using pyproject.toml t
 # Citing this software
 If you use PowNet 2.0 in your work, please cite the following article:
 
+```
 @article{
   Bunnak2025,
-  doi = {10.21105/joss.08035},
-  url = {https://doi.org/10.21105/joss.08035},
+  title = {PowNet 2.0: A production cost modeling framework for large-scale power systems},
+  author = {Bunnak, Phumthep and Eldardiry, Hisham and Pavičević, Matija and Feng, Jerry Zhuoer and Galelli, Stefano},
   year = {2025},
   publisher = {The Open Journal},
   volume = {10},
   number = {111},
   pages = {8035},
-  author = {Bunnak, Phumthep and Eldardiry, Hisham and Pavičević, Matija and Feng, Jerry Zhuoer and Galelli, Stefano},
-  title = {PowNet 2.0: A production cost modeling framework for large-scale power systems},
   journal = {Journal of Open Source Software}
+  doi = {10.21105/joss.08035},
+  url = {https://doi.org/10.21105/joss.08035},
 }
+```
