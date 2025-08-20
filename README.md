@@ -86,7 +86,7 @@ This command installs the package in "editable" mode (-e) using pyproject.toml t
 
 
 # Citing this software
-If you use PowNet 2.0 in your work, please cite the following article:
+If you use PowNet 2.0 in your work, please cite the following [JOSS article](https://joss.theoj.org/papers/10.21105/joss.08035):
 
 ```
 @article{
