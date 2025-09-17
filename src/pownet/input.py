@@ -925,6 +925,23 @@ class SystemInput:
             raise ValueError(
                 f"PowNet: Weekly hydropower timeseries must be of length {self.num_sim_days}."
             )
+        
+        ##################################
+        # Capacities are non-negative
+        ##################################
+
+        attrs_to_check = [
+            "solar_capacity",
+            "wind_capacity",
+            "import_capacity",
+            "hydro_capacity",
+            "susceptance",
+            "line_capacity",
+        ]
+        for attr in attrs_to_check:
+            temp_df = getattr(self, attr)
+            if (not temp_df.empty) and (temp_df < 0).any().any():
+                raise ValueError(f"PowNet: {attr} must be non-negative.")
 
         ##################################
         # The derated capacities of thermal units must be above its minimum capacity
