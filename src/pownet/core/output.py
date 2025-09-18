@@ -487,7 +487,7 @@ class OutputProcessor:
         )
 
         return power_variables[["contract", "hour", "value"]].pivot_table(
-            index="hour", columns="contract", values="value"
+            index="hour", columns="contract", values="value", aggfunc="sum"
         )
 
     def get_contract_generation(
