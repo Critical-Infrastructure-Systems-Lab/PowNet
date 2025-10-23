@@ -89,19 +89,19 @@ These files describe different components of the power system. While optional, y
         * ``sink_lon``, ``sink_lat``: Coordinates for the sink node (needed for map plotting).
 
 * ``hydropower.csv`` / ``hydropower_daily.csv``:
-    * **Description**: Hourly (``hydropower.csv``) or daily (``hydropower_daily.csv``) timeseries of maximum available hydropower generation (e.g., in MW) for each hydro unit. `Do not provide` both for the same unit.
+    * **Description**: Hourly (``hydropower.csv``) or daily (``hydropower_daily.csv``) timeseries of maximum available hydropower energy in MWh for each hydro unit. `Do not provide` both for the same unit.
     * **Format**: Uses a two-level column header. Level 1: Unit name. Level 2: Node name where the unit connects. Rows correspond to hours or days.
 
 * ``solar.csv``:
-    * **Description**: Hourly timeseries of maximum available solar power generation (e.g., in MW) for each solar unit.
+    * **Description**: Hourly timeseries of maximum available solar energy in MWh for each solar unit.
     * **Format**: Two-level column header (Level 1: Unit name, Level 2: Node name). Rows correspond to hours.
 
 * ``wind.csv``:
-    * **Description**: Hourly timeseries of maximum available wind power generation (e.g., in MW) for each wind unit.
+    * **Description**: Hourly timeseries of maximum available wind energy in MWh for each wind unit.
     * **Format**: Two-level column header (Level 1: Unit name, Level 2: Node name). Rows correspond to hours.
 
 * ``import.csv``:
-    * **Description**: Hourly timeseries of maximum available power import (e.g., in MW) for each import source/node.
+    * **Description**: Hourly timeseries of maximum available import energy in MWh for each import source/node.
     * **Format**: Two-level column header (Level 1: Source/Unit name, Level 2: Node name). Rows correspond to hours.
 
 Auto-Generated Inputs (by `PowNet`'s DataProcessor)
