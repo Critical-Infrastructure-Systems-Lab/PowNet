@@ -68,6 +68,8 @@ class HydroUnitBuilder(ComponentBuilder):
         self.c_hydro_ramp_up = gp.tupledict()
         self.c_hydro_ramp_down_init = gp.tupledict()
         self.c_hydro_ramp_down = gp.tupledict()
+        self.c_hydro_ramp_cost_def = gp.tupledict()
+        self.c_hydro_ramp_cost_def_init = gp.tupledict()
 
     def add_variables(self, step_k: int) -> None:
         """Add variables to the model for hydro units.
@@ -134,6 +136,16 @@ class HydroUnitBuilder(ComponentBuilder):
                 name="uhydro",
             )
 
+        # Ramp magnitude variables for ramping penalty
+        # Defined for all hydro units and all timesteps
+        self.hydro_ramp_up = self.model.addVars(
+            self.inputs.hydro_units, self.timesteps, lb=0, vtype=gp.GRB.CONTINUOUS, name="hydro_ramp_up"
+        )
+        self.hydro_ramp_dn = self.model.addVars(
+            self.inputs.hydro_units, self.timesteps, lb=0, vtype=gp.GRB.CONTINUOUS, name="hydro_ramp_dn"
+        )
+
+
 #TODO add fixed ramping cost term to the objective
     def get_fixed_objective_terms(self) -> gp.LinExpr:
         """Hydropower units have no fixed objective terms."""
@@ -159,7 +171,18 @@ class HydroUnitBuilder(ComponentBuilder):
         )
         self.total_energy_cost_expr = self.phydro.prod(energy_cost_coeffs)
 
-        return self.total_energy_cost_expr
+        # Ramping penalty cost: Default to 0 if not provided
+        ramp_pen = getattr(self.inputs, "hydro_ramp_penalty", {})
+        ramp_pen = {u: float(ramp_pen.get(u, 0.0)) for u in self.inputs.hydro_units}
+
+        ramp_cost_expr = gp.LinExpr()
+        for u in self.inputs.hydro_units:
+            if ramp_pen[u] == 0.0:
+                continue
+            for t in self.timesteps:
+                ramp_cost_expr += ramp_pen[u] * (self.hydro_ramp_up[u, t] + self.hydro_ramp_dn[u, t])
+
+        return self.total_energy_cost_expr + ramp_cost_expr
 
 # TODO check if you can just add the ramp constr here
     def add_constraints(self, step_k: int, init_conds: dict, **kwargs) -> None:
@@ -257,6 +280,37 @@ class HydroUnitBuilder(ComponentBuilder):
             hydro_RD=self.inputs.hydro_RD,
         )
 
+        # Ramp magnitude definitions for ramping penalty
+        # t=1 uses initial_phydro, t>1 uses phydro[t-1]
+        init_phydro = init_conds.get("initial_phydro", {})
+        safe_init = {u: float(init_phydro.get(u, 0.0)) for u in self.inputs.hydro_units}
+
+        # t=1
+        self.c_hydro_ramp_cost_def_init = self.model.addConstrs(
+            (self.hydro_ramp_up[u, 1] >= self.phydro[u, 1] - safe_init[u] for u in self.inputs.hydro_units),
+            name="hydro_ramp_cost_def_up_init",
+        )
+        self.c_hydro_ramp_cost_def_init.update(
+            self.model.addConstrs(
+                (self.hydro_ramp_dn[u, 1] >= safe_init[u] - self.phydro[u, 1] for u in self.inputs.hydro_units),
+                name="hydro_ramp_cost_def_dn_init",
+            )
+        )
+
+        # t>=2
+        self.c_hydro_ramp_cost_def = self.model.addConstrs(
+            (self.hydro_ramp_up[u, t] >= self.phydro[u, t] - self.phydro[u, t - 1]
+             for u in self.inputs.hydro_units for t in range(2, self.inputs.sim_horizon + 1)),
+            name="hydro_ramp_cost_def_up",
+        )
+        self.c_hydro_ramp_cost_def.update(
+            self.model.addConstrs(
+                (self.hydro_ramp_dn[u, t] >= self.phydro[u, t - 1] - self.phydro[u, t]
+                 for u in self.inputs.hydro_units for t in range(2, self.inputs.sim_horizon + 1)),
+                name="hydro_ramp_cost_def_dn",
+            )
+        )
+
     def update_variables(self, step_k: int) -> None:
         "Some hydropower units have hourly upper bounds."
         # Update the time-dependent upper bound of the variable
@@ -313,21 +367,21 @@ class HydroUnitBuilder(ComponentBuilder):
         self.model.remove(self.c_hydro_ramp_up_init)
         self.model.remove(self.c_hydro_ramp_down_init)
 
-        # Re-add with new initial conditions
-        self.c_hydro_ramp_up_init = nondispatch_constr.add_c_hydro_ramp_up_init(
-            model=self.model,
-            phydro=self.phydro,
-            hydro_units=self.inputs.hydro_units,
-            initial_phydro=init_conds.get("initial_phydro", {}),
-            hydro_RU=self.inputs.hydro_RU,
-        )
+        if self.c_hydro_ramp_cost_def_init:
+            self.model.remove(self.c_hydro_ramp_cost_def_init)
 
-        self.c_hydro_ramp_down_init = nondispatch_constr.add_c_hydro_ramp_down_init(
-            model=self.model,
-            phydro=self.phydro,
-            hydro_units=self.inputs.hydro_units,
-            initial_phydro=init_conds.get("initial_phydro", {}),
-            hydro_RD=self.inputs.hydro_RD,
+        init_phydro = init_conds.get("initial_phydro", {})
+        safe_init = {u: float(init_phydro.get(u, 0.0)) for u in self.inputs.hydro_units}
+
+        self.c_hydro_ramp_cost_def_init = self.model.addConstrs(
+            (self.hydro_ramp_up[u, 1] >= self.phydro[u, 1] - safe_init[u] for u in self.inputs.hydro_units),
+            name="hydro_ramp_cost_def_up_init",
+        )
+        self.c_hydro_ramp_cost_def_init.update(
+            self.model.addConstrs(
+                (self.hydro_ramp_dn[u, 1] >= safe_init[u] - self.phydro[u, 1] for u in self.inputs.hydro_units),
+                name="hydro_ramp_cost_def_dn_init",
+            )
         )
 
     def update_daily_hydropower_capacity(

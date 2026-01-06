@@ -129,10 +129,6 @@ class SystemInput:
         self.RD: dict[str, float] = {}
         self.RU: dict[str, float] = {}
 
-        # Hydro units
-        self.hydro_RU: dict[str, float] = {}  # MW/h ramp-up limit
-        self.hydro_RD: dict[str, float] = {}  # MW/h ramp-down limit
-
         # Energy storage
         self.ess_unit_attach: dict[str, str] = {}
         self.ess_attach_unit: dict[str, list[str]] = {}
@@ -169,10 +165,16 @@ class SystemInput:
         self.hydro_min_capacity: pd.DataFrame = pd.DataFrame()
         self.hydro_max_capacity: dict[str, float] = {}
         self.hydro_unit_node: dict[str, str] = {}
+        # Daily hydro
         self.daily_hydro_capacity: pd.DataFrame = pd.DataFrame()
         self.daily_hydro_unit_node: dict[str, str] = {}
+        # Weekly hydro
         self.weekly_hydro_capacity: pd.DataFrame = pd.DataFrame()
         self.weekly_hydro_unit_node: dict[str, str] = {}
+        # Ramping
+        self.hydro_RU: dict[str, float] = {}  # MW/h ramp-up limit
+        self.hydro_RD: dict[str, float] = {}  # MW/h ramp-down limit
+        self.hydro_ramp_penalty: dict[str, float] = {}
 
         self.solar_contracted_capacity: dict[str, float] = {}
         self.solar_capacity: pd.DataFrame = pd.DataFrame()
@@ -529,10 +531,10 @@ class SystemInput:
                 )
             )
 
-        if os.path.exists(os.path.join(self.model_dir, "hydro_min_capacity.csv")):
-            self.hydro_min_capacity = pd.read_csv(
-                os.path.join(self.model_dir, "hydro_min_capacity.csv")
-            )
+            if os.path.exists(os.path.join(self.model_dir, "hydro_min_capacity.csv")):
+                self.hydro_min_capacity = pd.read_csv(
+                    os.path.join(self.model_dir, "hydro_min_capacity.csv")
+                )
 
         # Check that the names do not repeat across different types
         repeated_units = set(self.hydro_unit_node.keys()).intersection(
@@ -553,36 +555,112 @@ class SystemInput:
             )
 
         # Check that the names do not repeat across different types
-        repeated_units_daily_weekly = set(
-            self.daily_hydro_unit_node.keys()
-        ).intersection(self.weekly_hydro_unit_node.keys())
+        repeated_units_daily_weekly = set(self.daily_hydro_unit_node.keys()).intersection(
+            self.weekly_hydro_unit_node.keys())
         if repeated_units_daily_weekly:
             raise ValueError(
                 f"PowNet: Found hydropower units to formulate with both daily and weekly formulations: {repeated_units_daily_weekly}"
             )
 
-        # Load ramp rates if available
-        all_hydro = (
-                list(self.hydro_unit_node.keys())
-                + list(self.daily_hydro_unit_node.keys())
-                + list(self.weekly_hydro_unit_node.keys())
+        # # Load ramp rates if available
+        # all_hydro = (
+        #         list(self.hydro_unit_node.keys())
+        #         + list(self.daily_hydro_unit_node.keys())
+        #         + list(self.weekly_hydro_unit_node.keys())
+        # )
+        #
+        # hydro_ramp_file = os.path.join(self.model_dir, "hydro_ramp.csv")
+        # if os.path.exists(hydro_ramp_file):
+        #     hydro_ramp_df = pd.read_csv(hydro_ramp_file, index_col="name")
+        #     self.hydro_RU = hydro_ramp_df["ramp_up"].to_dict()
+        #     self.hydro_RD = hydro_ramp_df["ramp_down"].to_dict()
+        #
+        #     # Fill missing units
+        #     for unit in all_hydro:
+        #         if unit not in self.hydro_RU:
+        #             self.hydro_RU[unit] = self.hydro_max_capacity.get(unit, 1e6)
+        #         if unit not in self.hydro_RD:
+        #             self.hydro_RD[unit] = self.hydro_max_capacity.get(unit, 1e6)
+        # else:
+        #     self.hydro_RU = {u: self.hydro_max_capacity.get(u, 1e6) for u in all_hydro}
+        #     self.hydro_RD = {u: self.hydro_max_capacity.get(u, 1e6) for u in all_hydro}
+
+    def _load_hydropower_static_params(self) -> None:
+        """Load static hydropower parameters from nondispatch_unit.csv.
+
+        This includes:
+        - Ramping rates (ramp_up, ramp_down)
+
+        Falls back to max_capacity if ramping rates are not specified.
+        """
+        nondispatch_df = self._check_and_load_csv("nondispatch_unit.csv")
+
+        if nondispatch_df.empty:
+            # Initialize empty dicts if no file exists
+            self.hydro_RU = {}
+            self.hydro_RD = {}
+            self.hydro_ramp_penalty = {}
+            logger.warning("PowNet: nondispatch_unit.csv not found. Hydro ramping rates will use defaults.")
+            return
+
+        # Filter for hydro units only
+        hydro_df = nondispatch_df[nondispatch_df["type"] == "hydro"].set_index("name")
+
+        # Get all hydro units (hourly, daily, weekly)
+        all_hydro_units = (
+                list(self.hydro_unit_node.keys()) +
+                list(self.daily_hydro_unit_node.keys()) +
+                list(self.weekly_hydro_unit_node.keys())
         )
 
-        hydro_ramp_file = os.path.join(self.model_dir, "hydro_ramp.csv")
-        if os.path.exists(hydro_ramp_file):
-            hydro_ramp_df = pd.read_csv(hydro_ramp_file, index_col="name")
-            self.hydro_RU = hydro_ramp_df["ramp_up"].to_dict()
-            self.hydro_RD = hydro_ramp_df["ramp_down"].to_dict()
+        # Initialize dictionaries
+        self.hydro_RU = {}
+        self.hydro_RD = {}
+        self.hydro_ramp_penalty = {}
 
-            # Fill missing units
-            for unit in all_hydro:
-                if unit not in self.hydro_RU:
-                    self.hydro_RU[unit] = self.hydro_max_capacity.get(unit, 1e6)
-                if unit not in self.hydro_RD:
-                    self.hydro_RD[unit] = self.hydro_max_capacity.get(unit, 1e6)
-        else:
-            self.hydro_RU = {u: self.hydro_max_capacity.get(u, 1e6) for u in all_hydro}
-            self.hydro_RD = {u: self.hydro_max_capacity.get(u, 1e6) for u in all_hydro}
+        # Load ramping rates for each hydro unit
+        for unit in all_hydro_units:
+            if unit not in hydro_df.index:
+                # Use max capacity as default (effectively no ramping limit)
+                default_ramp = self.hydro_max_capacity.get(unit, 1e6)
+                self.hydro_RU[unit] = default_ramp
+                self.hydro_RD[unit] = default_ramp
+                self.hydro_ramp_penalty[unit] = 0.0
+                logger.warning(
+                    f"PowNet: Unit '{unit}' not found in nondispatch_unit.csv. "
+                    f"Using default RU/RD={default_ramp:.1f} MW/h and ramp_penalty=0."
+                )
+                continue
+
+            unit_data = hydro_df.loc[unit]
+
+            # Ramp-up rate
+            if pd.notna(unit_data.get("ramp_up")):
+                self.hydro_RU[unit] = float(unit_data["ramp_up"])
+            else:
+                # Default to max capacity (no effective limit)
+                self.hydro_RU[unit] = self.hydro_max_capacity.get(unit, 1e6)
+                logger.info(
+                    f"PowNet: No ramp_up specified for '{unit}'. "
+                    f"Using max_capacity: {self.hydro_RU[unit]:.1f} MW/h"
+                )
+
+            # Ramp-down rate
+            if pd.notna(unit_data.get("ramp_down")):
+                self.hydro_RD[unit] = float(unit_data["ramp_down"])
+            else:
+                # Default to max capacity (no effective limit)
+                self.hydro_RD[unit] = self.hydro_max_capacity.get(unit, 1e6)
+                logger.info(
+                    f"PowNet: No ramp_down specified for '{unit}'. "
+                    f"Using max_capacity: {self.hydro_RD[unit]:.1f} MW/h"
+                )
+
+            # Default 0 if missing column or missing value
+            if "ramp_penalty" in hydro_df.columns and pd.notna(unit_data.get("ramp_penalty")):
+                self.hydro_ramp_penalty[unit] = float(unit_data["ramp_penalty"])
+            else:
+                self.hydro_ramp_penalty[unit] = 0.0
 
     def _load_nondispatchable_must_take_units(self):
         # A system can comprise only thermal units
@@ -705,23 +783,16 @@ class SystemInput:
         #################
         # Demand (timeseries)
         #################
-
-        self.demand = self._load_timeseries_from_csv(
-            "demand_export.csv", header_levels=0
-        )
-
+        self.demand = self._load_timeseries_from_csv("demand_export.csv", header_levels=0)
         self.total_demand = self.demand.sum(axis=1)
-
-        # Demand nodes
         self.demand_nodes = self.demand.columns.tolist()
-        # Identify the node with the maximum demand
         self.max_demand_node = self.demand.idxmax().idxmax()
 
         #################
         # Hydropower
         #################
-
         self._load_hydropower()
+        self._load_hydropower_static_params()
 
         #################
         # Renewables (timeseries)
@@ -1080,6 +1151,45 @@ class SystemInput:
             raise ValueError(
                 "PowNet: Energy storage systems must be connected to either a node or a generator."
             )
+
+        ##################################
+        # Hydropower parameter validation
+        ##################################
+        all_hydro = (
+                list(self.hydro_unit_node.keys()) +
+                list(self.daily_hydro_unit_node.keys()) +
+                list(self.weekly_hydro_unit_node.keys())
+        )
+
+        # Check that all hydro units have ramping parameters
+        for unit in all_hydro:
+            if unit not in self.hydro_RU:
+                raise ValueError(f"PowNet: Missing ramp-up rate for hydro unit '{unit}'")
+            if unit not in self.hydro_RD:
+                raise ValueError(f"PowNet: Missing ramp-down rate for hydro unit '{unit}'")
+
+            # Ramping rates should be positive
+            if self.hydro_RU[unit] <= 0:
+                raise ValueError(
+                    f"PowNet: Ramp-up rate for '{unit}' must be positive, got {self.hydro_RU[unit]}"
+                )
+            if self.hydro_RD[unit] <= 0:
+                raise ValueError(
+                    f"PowNet: Ramp-down rate for '{unit}' must be positive, got {self.hydro_RD[unit]}"
+                )
+
+            # Ramping rates should not exceed max capacity
+            max_cap = self.hydro_max_capacity.get(unit, float('inf'))
+            if self.hydro_RU[unit] > max_cap * 1.1:  # Allow 10% tolerance
+                logger.warning(
+                    f"PowNet: Ramp-up rate for '{unit}' ({self.hydro_RU[unit]:.1f} MW/h) "
+                    f"exceeds max capacity ({max_cap:.1f} MW)"
+                )
+            if self.hydro_RD[unit] > max_cap * 1.1:
+                logger.warning(
+                    f"PowNet: Ramp-down rate for '{unit}' ({self.hydro_RD[unit]:.1f} MW/h) "
+                    f"exceeds max capacity ({max_cap:.1f} MW)"
+                )
 
     def print_summary(self):
         input_summary = textwrap.dedent(

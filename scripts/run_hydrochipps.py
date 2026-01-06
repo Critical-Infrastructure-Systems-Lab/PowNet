@@ -144,6 +144,9 @@ inputs = SystemInput(
 )
 
 inputs.load_and_check_data()
+print("\n=== Hydro Ramping Rates ===")
+for unit in inputs.hydro_units:
+    print(f"{unit:20s} | RU: {inputs.hydro_RU[unit]:6.1f} MW/h | RD: {inputs.hydro_RD[unit]:6.1f} MW/h")
 
 # Dictionaries to store results and models
 power_system_model = {}
@@ -291,122 +294,171 @@ for start_day in range(1, end_day):
 
 import matplotlib.pyplot as plt
 
-# Extract hydro dispatch from last solved day
-final_day_results = export_results[start_day + steps_to_run - 2]
-hydro_data = final_day_results[final_day_results['vartype'] == 'phydro']
+# =========================
+# Hydro ramping check + plot
+# =========================
 
-if not hydro_data.empty:
-    # ========================================================================
-    # CRITICAL FIX: Convert 'hour' to numeric and sort before pivoting
-    # ========================================================================
-    hydro_data = hydro_data.copy()
-    hydro_data['hour'] = pd.to_numeric(hydro_data['hour'], errors='coerce')
+EPS = 1e-3  # tolerance for float noise; adjust to 1e-5 if needed
 
-    # Drop any rows where hour couldn't be converted
-    hydro_data = hydro_data.dropna(subset=['hour'])
+def plot_hydro_ramping_check(
+    hydro_data: pd.DataFrame,
+    hydro_RU: dict,
+    hydro_RD: dict,
+    output_folder: str,
+    units_to_plot=None,
+    eps: float = EPS,
+):
+    """
+    hydro_data: long dataframe with columns ['hour','unit','value'] for vartype='phydro'
+    hydro_RU / hydro_RD: dict[unit] -> MW/h
+    """
+    if hydro_data.empty:
+        print("No hydro dispatch to check.")
+        return
 
-    # Convert to integer
-    hydro_data['hour'] = hydro_data['hour'].astype(int)
+    # --- Clean hour, ensure numeric, sort ---
+    df = hydro_data.copy()
+    df["hour"] = pd.to_numeric(df["hour"], errors="coerce")
+    df = df.dropna(subset=["hour"])
+    df["hour"] = df["hour"].astype(int)
+    df = df.sort_values(["unit", "hour"])
 
-    # Sort by hour before pivoting
-    hydro_data = hydro_data.sort_values('hour')
+    # --- Pivot: hour index, unit columns ---
+    pivot = df.pivot(index="hour", columns="unit", values="value").sort_index()
 
-    # Now pivot
-    hydro_pivot = hydro_data.pivot(columns='unit', index='hour', values='value')
+    # Validate index integrity
+    if pivot.index.has_duplicates:
+        dupes = pivot.index[pivot.index.duplicated()].unique().tolist()
+        raise ValueError(f"Duplicate hours in hydro pivot index: {dupes[:20]} ...")
 
-    # ========================================================================
-    # VERIFY: Check if index is properly sorted
-    # ========================================================================
-    print(f"\n📊 Hydro dispatch index check:")
-    print(f"   First 5 hours: {hydro_pivot.index[:5].tolist()}")
-    print(f"   Last 5 hours: {hydro_pivot.index[-5:].tolist()}")
-    print(f"   Is sorted: {hydro_pivot.index.is_monotonic_increasing}")
+    # Choose units
+    units = list(pivot.columns) if units_to_plot is None else [u for u in units_to_plot if u in pivot.columns]
+    if not units:
+        print("No matching hydro units to plot.")
+        return
 
-    for unit in hydro_pivot.columns:
-        dispatch = hydro_pivot[unit]
+    os.makedirs(output_folder, exist_ok=True)
 
-        # ========================================================================
-        # CRITICAL: Ensure dispatch is sorted by index before diff()
-        # ========================================================================
-        dispatch = dispatch.sort_index()
-        ramp_changes = dispatch.diff()
+    for unit in units:
+        dispatch = pivot[unit].dropna().sort_index()
+        if dispatch.empty or len(dispatch) < 2:
+            print(f"{unit}: not enough data to compute ramps.")
+            continue
 
-        # ========================================================================
-        # DIAGNOSTIC: Check for ramping violations
-        # ========================================================================
-        ramp_up_limit = inputs.hydro_RU.get(unit, 1e6)
-        ramp_down_limit = inputs.hydro_RD.get(unit, 1e6)
+        ru = float(hydro_RU.get(unit, np.inf))
+        rd = float(hydro_RD.get(unit, np.inf))
 
-        violations_up = (ramp_changes > ramp_up_limit).sum()
-        violations_down = (ramp_changes < -ramp_down_limit).sum()
+        ramps = dispatch.diff()  # MW/h; first is NaN
+        ramps_no_na = ramps.dropna()
 
-        if violations_up > 0 or violations_down > 0:
+        pen = float(getattr(inputs, "hydro_ramp_penalty", {}).get(unit, 0.0))
+        ramp_cost_series = pen * ramps_no_na.abs()
+        total_ramp_cost = float(ramp_cost_series.sum())
+
+        # --- Violation logic with tolerance ---
+        # ramp-up violation if change > RU + eps
+        # ramp-down violation if change < -RD - eps
+        viol_up_mask = ramps_no_na > (ru + eps)
+        viol_dn_mask = ramps_no_na < (-rd - eps)
+        viol_mask = viol_up_mask | viol_dn_mask
+
+        n_up = int(viol_up_mask.sum())
+        n_dn = int(viol_dn_mask.sum())
+
+        # --- Diagnostics: show exact float residuals for "near-limit" issues ---
+        max_ramp = float(ramps_no_na.max())
+        min_ramp = float(ramps_no_na.min())
+
+        if (n_up > 0) or (n_dn > 0):
             print(f"\n⚠️  RAMPING VIOLATIONS DETECTED for {unit}:")
-            print(f"   Ramp-up violations: {violations_up}")
-            print(f"   Ramp-down violations: {violations_down}")
-            print(f"   Max ramp change: {ramp_changes.max():.2f} MW/h (limit: {ramp_up_limit:.2f})")
-            print(f"   Min ramp change: {ramp_changes.min():.2f} MW/h (limit: -{ramp_down_limit:.2f})")
+            print(f"   Ramp-up violations: {n_up}")
+            print(f"   Ramp-down violations: {n_dn}")
+            print(f"   Max ramp change: {max_ramp:.12f} MW/h (limit: {ru:.12f})")
+            print(f"   Min ramp change: {min_ramp:.12f} MW/h (limit: {-rd:.12f})")
+            print("   Violation details (full precision):")
+            viol_series = ramps_no_na[viol_mask].copy()
+            # show residual above RU for up, below -RD for down
+            resid = pd.Series(index=viol_series.index, dtype=float)
+            resid.loc[viol_up_mask[viol_mask].index] = viol_series.loc[viol_up_mask] - ru
+            resid.loc[viol_dn_mask[viol_mask].index] = (-rd) - viol_series.loc[viol_dn_mask]  # positive means beyond limit
+            out = pd.DataFrame({"ramp": viol_series, "residual": resid})
+            pd.set_option("display.precision", 15)
+            print(out)
+            print(f"   Ramping cost (${pen}/MW): {total_ramp_cost:.2f}")
+        else:
+            print(f"\n✅ {unit}: all ramps within limits (eps={eps}).")
+            print(f"   Max ramp change: {max_ramp:.12f} MW/h (limit: {ru:.12f})")
+            print(f"   Min ramp change: {min_ramp:.12f} MW/h (limit: {-rd:.12f})")
+            print(f"   Ramping cost (${pen}/MW): {total_ramp_cost:.2f}")
 
-            # Show the specific violations
-            violation_hours = ramp_changes[
-                (ramp_changes > ramp_up_limit) | (ramp_changes < -ramp_down_limit)
-                ]
-            print(f"   Violation details:\n{violation_hours}")
+        # --- Colors for bars (correct, sign-aware) ---
+        colors = []
+        for h, c in ramps_no_na.items():
+            if c > ru + eps:
+                colors.append("red")
+            elif c < -rd - eps:
+                colors.append("red")
+            else:
+                colors.append("green")
 
-        # ========================================================================
-        # PLOTTING
-        # ========================================================================
+        # --- Plot ---
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 
-        # Dispatch
-        ax1.plot(dispatch.index, dispatch.values, 'b-', linewidth=2, marker='o', markersize=3)
-        ax1.set_ylabel('Power (MW)', fontsize=12)
-        ax1.set_title(f'{unit} - Dispatch and Ramping', fontsize=14, weight='bold')
+        # Dispatch plot
+        ax1.plot(dispatch.index, dispatch.values, "-o", linewidth=2, markersize=3, color="blue")
+        ax1.set_ylabel("Power (MW)")
+        ax1.set_title(f"{unit} - Dispatch and Ramping Check")
         ax1.grid(True, alpha=0.3)
 
-        # Ramp changes with proper coloring
-        colors = []
-        for c in ramp_changes.values[1:]:  # Skip first NaN
-            if abs(c) > ramp_up_limit:
-                colors.append('red')
-            else:
-                colors.append('green')
+        # Ramp bars
+        ax2.bar(ramps_no_na.index, ramps_no_na.values, color=colors, alpha=0.75, edgecolor="black", linewidth=0.4)
+        ax2.axhline(ru, color="darkred", linestyle="--", linewidth=2, label=f"Ramp-up limit (+{ru:g} MW/h)")
+        ax2.axhline(-rd, color="darkred", linestyle="--", linewidth=2, label=f"Ramp-down limit (-{rd:g} MW/h)")
+        ax2.axhline(0, color="black", linewidth=0.8)
 
-        # Plot bars
-        ax2.bar(ramp_changes.index[1:], ramp_changes.values[1:],
-                color=colors, alpha=0.7, edgecolor='black', linewidth=0.5)
+        ax2.set_xlabel("Hour")
+        ax2.set_ylabel("Ramp (MW/h)")
+        ax2.grid(True, alpha=0.3, axis="y")
+        ax2.legend(loc="upper right")
 
-        # Add limit lines
-        ax2.axhline(ramp_up_limit, color='darkred', linestyle='--', linewidth=2,
-                    label=f'Ramp-up limit ({ramp_up_limit:.0f} MW/h)')
-        ax2.axhline(-ramp_down_limit, color='darkred', linestyle='--', linewidth=2,
-                    label=f'Ramp-down limit ({ramp_down_limit:.0f} MW/h)')
-        ax2.axhline(0, color='black', linestyle='-', linewidth=0.8)
-
-        ax2.set_xlabel('Hour', fontsize=12)
-        ax2.set_ylabel('Ramp (MW/h)', fontsize=12)
-        ax2.set_title('Hour-to-Hour Changes', fontsize=12)
-        ax2.legend(loc='upper right')
-        ax2.grid(True, alpha=0.3, axis='y')
-
-        # Add text annotation for violations
-        if violations_up > 0 or violations_down > 0:
-            ax2.text(0.02, 0.98,
-                     f'⚠️ Violations: {violations_up + violations_down} ({violations_up} up, {violations_down} down)',
-                     transform=ax2.transAxes, fontsize=11, weight='bold',
-                     verticalalignment='top',
-                     bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.8))
+        # Annotation
+        if n_up + n_dn > 0:
+            ax2.text(
+                0.02, 0.98,
+                f"Violations: {n_up + n_dn} ({n_up} up, {n_dn} down)",
+                transform=ax2.transAxes,
+                va="top",
+                fontsize=11,
+                bbox=dict(boxstyle="round", facecolor="yellow", alpha=0.85),
+            )
         else:
-            ax2.text(0.02, 0.98,
-                     '✓ All ramps within limits',
-                     transform=ax2.transAxes, fontsize=11, weight='bold',
-                     verticalalignment='top',
-                     bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
+            ax2.text(
+                0.02, 0.98,
+                "All ramps within limits",
+                transform=ax2.transAxes,
+                va="top",
+                fontsize=11,
+                bbox=dict(boxstyle="round", facecolor="lightgreen", alpha=0.85),
+            )
 
         plt.tight_layout()
-        plt.savefig(f'{output_folder}/{unit}_ramping_check.png',
-                    dpi=300, bbox_inches='tight')
+        fname = os.path.join(output_folder, f"{unit}_ramping_check.png")
+        plt.savefig(fname, dpi=300, bbox_inches="tight")
         plt.show()
+
+# final_day_results should be a dataframe with columns: ['hour','vartype','unit','node','value']
+final_day_results = export_results[start_day + steps_to_run - 2]
+
+hydro_data = final_day_results.loc[final_day_results["vartype"] == "phydro", ["hour", "unit", "value"]]
+
+plot_hydro_ramping_check(
+    hydro_data=hydro_data,
+    hydro_RU=inputs.hydro_RU,
+    hydro_RD=inputs.hydro_RD,
+    output_folder=output_folder,
+    units_to_plot=None,   # or e.g. ["J_Percy_Priest"]
+    eps=1e-6,
+)
 
 # for i in range(1,6):
 #     print(export_results[i][(export_results[i]['vartype'] == 'phydro') & (export_results[i]['unit'] == 'Barkley')]['value'].sum())
