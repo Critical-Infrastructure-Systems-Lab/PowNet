@@ -144,6 +144,11 @@ inputs = SystemInput(
 )
 
 inputs.load_and_check_data()
+
+# Check if penalty zones were loaded
+print(inputs.use_hydro_penalty_zones)  # True
+print(inputs.hydro_penalty_zones["Barkley"])
+
 print("\n=== Hydro Ramping Rates ===")
 for unit in inputs.hydro_units:
     print(f"{unit:20s} | RU: {inputs.hydro_RU[unit]:6.1f} MW/h | RD: {inputs.hydro_RD[unit]:6.1f} MW/h")
@@ -451,13 +456,257 @@ final_day_results = export_results[start_day + steps_to_run - 2]
 
 hydro_data = final_day_results.loc[final_day_results["vartype"] == "phydro", ["hour", "unit", "value"]]
 
-plot_hydro_ramping_check(
+# plot_hydro_ramping_check(
+#     hydro_data=hydro_data,
+#     hydro_RU=inputs.hydro_RU,
+#     hydro_RD=inputs.hydro_RD,
+#     output_folder=output_folder,
+#     units_to_plot=None,   # or e.g. ["J_Percy_Priest"]
+#     eps=1e-6,
+# )
+
+
+def plot_hydro_ramping(
+    hydro_data: pd.DataFrame,
+    hydro_RU: dict,
+    hydro_RD: dict,
+    output_folder: str,
+    units_to_plot=None,
+    eps: float = 1e-3,
+    penalty_zones: dict[str, list[dict]] = None,
+    hydro_max_capacity: dict[str, float] = None,
+) -> None:
+    """
+    hydro_data: long dataframe with columns ['hour', 'unit', 'value'] for vartype='phydro'
+    hydro_RU / hydro_RD: dict[unit] -> MW/h
+    penalty_zones: dict[unit] -> list of dicts with keys 'min_pct', 'max_pct', 'penalty'
+    hydro_max_capacity: dict[unit] -> MW (max capacity for converting percentages)
+    eps: tolerance for ramping violations
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+    import os
+
+    if hydro_data.empty:
+        print("No hydro dispatch to check.")
+        return
+
+    # --- Clean hour, ensure numeric, sort ---
+    df = hydro_data.copy()
+    df["hour"] = pd.to_numeric(df["hour"], errors="coerce")
+    df = df.dropna(subset=["hour"])
+    df["hour"] = df["hour"].astype(int)
+    df = df.sort_values(["unit", "hour"])
+
+    # --- Pivot: hour index, unit columns ---
+    pivot = df.pivot(index="hour", columns="unit", values="value").sort_index()
+
+    # Validate index integrity
+    if pivot.index.has_duplicates:
+        dupes = pivot.index[pivot.index.duplicated()].unique().tolist()
+        raise ValueError(f"Duplicate hours in hydro pivot index: {dupes[:20]}...")
+
+    # Choose units
+    units = list(pivot.columns) if units_to_plot is None else [u for u in units_to_plot if u in pivot.columns]
+
+    if not units:
+        print("No matching hydro units to plot.")
+        return
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    for unit in units:
+        dispatch = pivot[unit].dropna().sort_index()
+
+        if dispatch.empty or len(dispatch) < 2:
+            print(f"{unit}: not enough data to compute ramps.")
+            continue
+
+        ru = float(hydro_RU.get(unit, np.inf))
+        rd = float(hydro_RD.get(unit, np.inf))
+
+        ramps = dispatch.diff()  # MW/h; first is NaN
+        ramps_no_na = ramps.dropna()
+
+        # --- Violation logic with tolerance ---
+        viol_up_mask = ramps_no_na > (ru + eps)
+        viol_dn_mask = ramps_no_na < (-rd - eps)
+        viol_mask = viol_up_mask | viol_dn_mask
+
+        n_up = int(viol_up_mask.sum())
+        n_dn = int(viol_dn_mask.sum())
+
+        # --- Diagnostics ---
+        max_ramp = float(ramps_no_na.max())
+        min_ramp = float(ramps_no_na.min())
+
+        if (n_up > 0) or (n_dn > 0):
+            print(f"\n⚠️ RAMPING VIOLATIONS DETECTED for {unit}:")
+            print(f"   Ramp-up violations: {n_up}")
+            print(f"   Ramp-down violations: {n_dn}")
+            print(f"   Max ramp change: {max_ramp:.12f} MW/h (limit: {ru:.12f})")
+            print(f"   Min ramp change: {min_ramp:.12f} MW/h (limit: {-rd:.12f})")
+            print("   Violation details (full precision):")
+            viol_series = ramps_no_na[viol_mask].copy()
+            resid = pd.Series(index=viol_series.index, dtype=float)
+            resid.loc[viol_up_mask[viol_mask].index] = viol_series.loc[viol_up_mask] - ru
+            resid.loc[viol_dn_mask[viol_mask].index] = (-rd) - viol_series.loc[viol_dn_mask]
+            out = pd.DataFrame({"ramp": viol_series, "residual": resid})
+            pd.set_option("display.precision", 15)
+            print(out)
+        else:
+            print(f"\n✓ {unit}: all ramps within limits (eps={eps}).")
+            print(f"   Max ramp change: {max_ramp:.12f} MW/h (limit: {ru:.12f})")
+            print(f"   Min ramp change: {min_ramp:.12f} MW/h (limit: {-rd:.12f})")
+
+        # --- Colors for bars (correct, sign-aware) ---
+        colors = []
+        for h, c in ramps_no_na.items():
+            if c > ru + eps:
+                colors.append("red")
+            elif c < -rd - eps:
+                colors.append("red")
+            else:
+                colors.append("green")
+
+        # --- Plot ---
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+
+        # ============================================================
+        # TOP PANEL: Dispatch with penalty zones
+        # ============================================================
+
+        # Get x-axis limits (hour range)
+        x_min = dispatch.index.min()
+        x_max = dispatch.index.max()
+
+        # Plot penalty zones FIRST (so they appear behind the dispatch line)
+        if penalty_zones and unit in penalty_zones and hydro_max_capacity:
+            max_cap = hydro_max_capacity.get(unit, dispatch.max())
+            zones = penalty_zones[unit]
+
+            print(f"\n📊 Plotting penalty zones for {unit}:")
+            print(f"   Max capacity: {max_cap:.2f} MW")
+            print(f"   Number of zones: {len(zones)}")
+
+            # Sort zones by penalty (ascending) for consistent shading
+            zones_sorted = sorted(zones, key=lambda z: z["penalty"])
+
+            # Create blue gradient: light blue for cheap, dark blue for expensive
+            n_zones = len(zones_sorted)
+
+            # Define color range
+            light_blue = np.array([227/255, 242/255, 253/255])  # #E3F2FD
+            dark_blue = np.array([13/255, 71/255, 161/255])     # #0D47A1
+
+            legend_added = set()
+
+            for idx, zone in enumerate(zones_sorted):
+                # Calculate color intensity (0 = lightest, 1 = darkest)
+                intensity = idx / max(1, n_zones - 1)
+
+                # Interpolate color
+                color = light_blue + intensity * (dark_blue - light_blue)
+
+                # Convert percentages to MW
+                min_mw = (zone["min_pct"] / 100.0) * max_cap
+                max_mw = (zone["max_pct"] / 100.0) * max_cap
+
+                print(f"   Zone {idx+1}: {zone['min_pct']:.0f}%-{zone['max_pct']:.0f}% "
+                      f"({min_mw:.2f}-{max_mw:.2f} MW), penalty=${zone['penalty']:.0f}/MWh")
+
+                # Determine zone label
+                if zone["penalty"] >= 500:
+                    zone_label = "High Penalty (≥$500/MWh)"
+                    zone_type = "high"
+                elif zone["penalty"] >= 50:
+                    zone_label = "Medium Penalty ($50-500/MWh)"
+                    zone_type = "medium"
+                else:
+                    zone_label = "Low/Zero Penalty (<$50/MWh)"
+                    zone_type = "low"
+
+                # Fill the entire zone area using axhspan (horizontal span)
+                ax1.axhspan(
+                    min_mw,
+                    max_mw,
+                    color=color,
+                    alpha=0.4,
+                    label=zone_label if zone_type not in legend_added else None,
+                    zorder=1
+                )
+                legend_added.add(zone_type)
+
+                # Add penalty annotation on the right side
+                mid_mw = (min_mw + max_mw) / 2
+                ax1.text(
+                    1.01,
+                    mid_mw,
+                    f"${zone['penalty']:.0f}/MWh",
+                    transform=ax1.get_yaxis_transform(),
+                    verticalalignment='center',
+                    fontsize=9,
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.9, edgecolor='gray')
+                )
+
+        # Plot dispatch line (on top of zones)
+        ax1.plot(dispatch.index, dispatch.values, "-o", linewidth=2, markersize=3,
+                color="darkblue", label="Dispatch", zorder=10)
+        ax1.set_ylabel("Power (MW)", fontsize=12)
+        ax1.set_title(f"{unit} - Dispatch and Ramping Check", fontsize=14, weight='bold')
+        ax1.grid(True, alpha=0.3, zorder=0)
+        ax1.legend(loc='upper left', fontsize=10, framealpha=0.95)
+
+        # ============================================================
+        # BOTTOM PANEL: Ramp bars
+        # ============================================================
+        ax2.bar(ramps_no_na.index, ramps_no_na.values, color=colors, alpha=0.75,
+               edgecolor="black", linewidth=0.4)
+        ax2.axhline(ru, color="darkred", linestyle="--", linewidth=2,
+                   label=f"Ramp-up limit (+{ru:g} MW/h)")
+        ax2.axhline(-rd, color="darkred", linestyle="--", linewidth=2,
+                   label=f"Ramp-down limit (-{rd:g} MW/h)")
+        ax2.axhline(0, color="black", linewidth=0.8)
+        ax2.set_xlabel("Hour", fontsize=12)
+        ax2.set_ylabel("Ramp (MW/h)", fontsize=12)
+        ax2.grid(True, alpha=0.3, axis="y")
+        ax2.legend(loc="upper right", fontsize=10)
+
+        # Annotation
+        if n_up + n_dn > 0:
+            ax2.text(
+                0.02, 0.98,
+                f"Violations: {n_up + n_dn} ({n_up} up, {n_dn} down)",
+                transform=ax2.transAxes,
+                va="top",
+                fontsize=11,
+                bbox=dict(boxstyle="round", facecolor="yellow", alpha=0.85),
+            )
+        else:
+            ax2.text(
+                0.02, 0.98,
+                "All ramps within limits",
+                transform=ax2.transAxes,
+                va="top",
+                fontsize=11,
+                bbox=dict(boxstyle="round", facecolor="lightgreen", alpha=0.85),
+            )
+
+        plt.tight_layout()
+        fname = os.path.join(output_folder, f"{unit}_ramping_check.png")
+        plt.savefig(fname, dpi=300, bbox_inches="tight")
+        plt.show()
+
+
+# Call the function
+plot_hydro_ramping(
     hydro_data=hydro_data,
     hydro_RU=inputs.hydro_RU,
     hydro_RD=inputs.hydro_RD,
-    output_folder=output_folder,
-    units_to_plot=None,   # or e.g. ["J_Percy_Priest"]
-    eps=1e-6,
+    penalty_zones=inputs.hydro_penalty_zones if inputs.use_hydro_penalty_zones else None,
+    hydro_max_capacity=inputs.hydro_contracted_capacity,
+    output_folder="./outputs"
 )
 
 # for i in range(1,6):

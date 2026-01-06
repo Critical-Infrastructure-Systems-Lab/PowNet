@@ -175,6 +175,9 @@ class SystemInput:
         self.hydro_RU: dict[str, float] = {}  # MW/h ramp-up limit
         self.hydro_RD: dict[str, float] = {}  # MW/h ramp-down limit
         self.hydro_ramp_penalty: dict[str, float] = {}
+        # Penalty zones
+        self.hydro_penalty_zones: dict[str, list[dict]] = {}  # {unit: [{min_pct, max_pct, penalty}, ...]}
+        self.use_hydro_penalty_zones: bool = False
 
         self.solar_contracted_capacity: dict[str, float] = {}
         self.solar_capacity: pd.DataFrame = pd.DataFrame()
@@ -662,6 +665,68 @@ class SystemInput:
             else:
                 self.hydro_ramp_penalty[unit] = 0.0
 
+    def _load_hydro_penalty_zones(self) -> None:
+        """Load operating penalty zones for hydro units.
+
+        Format: hydro_penalty_zones.csv with columns:
+        name, zone_1_min, zone_1_max, zone_1_penalty, zone_2_min, ...
+
+        Penalties are in $/MWh for operating in each zone.
+        If file doesn't exist, no penalties are applied (units can operate freely).
+        """
+        penalty_file = os.path.join(self.model_dir, "hydro_penalty_zones.csv")
+
+        if not os.path.exists(penalty_file):
+            logger.info("PowNet: No hydro_penalty_zones.csv found. No operating penalties applied.")
+            self.use_hydro_penalty_zones = False
+            return
+
+        penalty_df = pd.read_csv(penalty_file, header=0)
+
+        for _, row in penalty_df.iterrows():
+            unit_name = row["name"]
+            zones = []
+
+            zone_idx = 1
+            while f"zone_{zone_idx}_min" in row.index:
+                min_pct = row[f"zone_{zone_idx}_min"]
+                max_pct = row[f"zone_{zone_idx}_max"]
+                penalty = row[f"zone_{zone_idx}_penalty"]
+
+                if pd.notna(min_pct) and pd.notna(max_pct) and pd.notna(penalty):
+                    zones.append({
+                        "min_pct": float(min_pct),
+                        "max_pct": float(max_pct),
+                        "penalty": float(penalty),
+                    })
+
+                zone_idx += 1
+
+            # Validation
+            if not zones:
+                raise ValueError(f"PowNet: Unit {unit_name} has no valid penalty zones.")
+
+            # Check zones cover 0-100% and don't overlap
+            zones_sorted = sorted(zones, key=lambda z: z["min_pct"])
+
+            if zones_sorted[0]["min_pct"] != 0.0:
+                raise ValueError(f"PowNet: Penalty zones for {unit_name} must start at 0%.")
+
+            if zones_sorted[-1]["max_pct"] != 100.0:
+                raise ValueError(f"PowNet: Penalty zones for {unit_name} must end at 100%.")
+
+            for i in range(len(zones_sorted) - 1):
+                if zones_sorted[i]["max_pct"] != zones_sorted[i + 1]["min_pct"]:
+                    raise ValueError(
+                        f"PowNet: Penalty zones for {unit_name} have gaps or overlaps. "
+                        f"Zone {i + 1} ends at {zones_sorted[i]['max_pct']}% but zone {i + 2} starts at {zones_sorted[i + 1]['min_pct']}%."
+                    )
+
+            self.hydro_penalty_zones[unit_name] = zones_sorted
+
+        self.use_hydro_penalty_zones = True
+        logger.info(f"PowNet: Loaded penalty zones for {len(self.hydro_penalty_zones)} hydro units.")
+
     def _load_nondispatchable_must_take_units(self):
         # A system can comprise only thermal units
         if not os.path.exists(os.path.join(self.model_dir, "nondispatch_unit.csv")):
@@ -793,6 +858,7 @@ class SystemInput:
         #################
         self._load_hydropower()
         self._load_hydropower_static_params()
+        self._load_hydro_penalty_zones()
 
         #################
         # Renewables (timeseries)
@@ -1083,6 +1149,22 @@ class SystemInput:
             | self.wind_unit_node
             | self.import_unit_node
         )
+
+        if self.use_hydro_penalty_zones:
+            for unit, zones in self.hydro_penalty_zones.items():
+                # Check that unit exists
+                if unit not in self.hydro_units:
+                    raise ValueError(
+                        f"PowNet: Penalty zones defined for '{unit}' but unit not found in hydro_units."
+                    )
+
+                # Check that penalties are non-negative
+                for zone in zones:
+                    if zone["penalty"] < 0:
+                        raise ValueError(
+                            f"PowNet: Penalty for {unit} in zone {zone['min_pct']}-{zone['max_pct']}% "
+                            f"is negative ({zone['penalty']}). Penalties must be >= 0."
+                        )
 
         # Number of nondispatch contracts
         if len(self.nondispatch_contracts) != number_of_non_fossil_generators:
