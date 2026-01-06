@@ -88,6 +88,7 @@ class ThermalUnitBuilder(ComponentBuilder):
         self.c_peak_up_bound = gp.tupledict()
         self.c_ramp_down_init = gp.tupledict()
         self.c_ramp_up_init = gp.tupledict()
+        #TODO take those and add to hydro builder
         self.c_ramp_down = gp.tupledict()
         self.c_ramp_up = gp.tupledict()
 
@@ -400,6 +401,7 @@ class ThermalUnitBuilder(ComponentBuilder):
         ]
         for var_dict in thermal_unit_vars:
             update_var_with_variable_ub(var_dict, step_k, self.thermal_derated_capacity)
+
 
     def update_constraints(self, step_k: int, init_conds: dict, **kwargs) -> None:
         """Update time-dependent constraints:

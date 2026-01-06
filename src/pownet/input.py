@@ -129,6 +129,10 @@ class SystemInput:
         self.RD: dict[str, float] = {}
         self.RU: dict[str, float] = {}
 
+        # Hydro units
+        self.hydro_RU: dict[str, float] = {}  # MW/h ramp-up limit
+        self.hydro_RD: dict[str, float] = {}  # MW/h ramp-down limit
+
         # Energy storage
         self.ess_unit_attach: dict[str, str] = {}
         self.ess_attach_unit: dict[str, list[str]] = {}
@@ -278,6 +282,7 @@ class SystemInput:
         column_pairs = df.columns.to_flat_index().tolist()
         return dict(column_pairs)
 
+    #TODO: Make a copy and adjust for hydro units
     def load_thermal_unit_params(self):
         """Load the techno-economic parameters of thermal units from thermal_unit.csv."""
         thermal_unit_df = self._check_and_load_csv("thermal_unit.csv")
@@ -496,6 +501,7 @@ class SystemInput:
 
     def _load_hydropower(self) -> None:
 
+        #TODO: add the function execution here
         # Units with hourly timeseries
         if os.path.exists(os.path.join(self.model_dir, "hydropower.csv")):
             self.hydro_capacity, self.hydro_unit_node = (
@@ -554,6 +560,29 @@ class SystemInput:
             raise ValueError(
                 f"PowNet: Found hydropower units to formulate with both daily and weekly formulations: {repeated_units_daily_weekly}"
             )
+
+        # Load ramp rates if available
+        all_hydro = (
+                list(self.hydro_unit_node.keys())
+                + list(self.daily_hydro_unit_node.keys())
+                + list(self.weekly_hydro_unit_node.keys())
+        )
+
+        hydro_ramp_file = os.path.join(self.model_dir, "hydro_ramp.csv")
+        if os.path.exists(hydro_ramp_file):
+            hydro_ramp_df = pd.read_csv(hydro_ramp_file, index_col="name")
+            self.hydro_RU = hydro_ramp_df["ramp_up"].to_dict()
+            self.hydro_RD = hydro_ramp_df["ramp_down"].to_dict()
+
+            # Fill missing units
+            for unit in all_hydro:
+                if unit not in self.hydro_RU:
+                    self.hydro_RU[unit] = self.hydro_max_capacity.get(unit, 1e6)
+                if unit not in self.hydro_RD:
+                    self.hydro_RD[unit] = self.hydro_max_capacity.get(unit, 1e6)
+        else:
+            self.hydro_RU = {u: self.hydro_max_capacity.get(u, 1e6) for u in all_hydro}
+            self.hydro_RD = {u: self.hydro_max_capacity.get(u, 1e6) for u in all_hydro}
 
     def _load_nondispatchable_must_take_units(self):
         # A system can comprise only thermal units

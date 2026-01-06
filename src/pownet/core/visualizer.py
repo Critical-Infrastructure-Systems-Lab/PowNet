@@ -588,3 +588,87 @@ class Visualizer:
                    frameon=False)
 
         plt.show()
+
+    def plot_hydro_ramping(
+            self,
+            hourly_dispatch: pd.DataFrame,
+            hydro_RU: dict[str, float],
+            hydro_RD: dict[str, float],
+            output_folder: str = None,
+    ) -> None:
+        """Plot hourly hydro dispatch with ramping limits highlighted.
+
+        Args:
+            hourly_dispatch: DataFrame with columns = hydro units, index = hours
+            hydro_RU: Dict of ramp-up limits (MW/h) per unit
+            hydro_RD: Dict of ramp-down limits (MW/h) per unit
+            output_folder: If specified, save plots to this folder
+        """
+        hydro_units = hourly_dispatch.columns
+
+        for unit in hydro_units:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+
+            # Top panel: Dispatch over time
+            dispatch = hourly_dispatch[unit]
+            ax1.plot(dispatch.index, dispatch.values, 'b-', linewidth=2, label='Dispatch')
+            ax1.set_ylabel('Power (MW)', fontsize=12)
+            ax1.set_title(f'{unit} - Hourly Dispatch and Ramping', fontsize=14, weight='bold')
+            ax1.grid(True, alpha=0.3)
+            ax1.legend(loc='upper right')
+
+            # Bottom panel: Hour-to-hour changes with ramp limits
+            ramp_changes = dispatch.diff()  # MW change per hour
+            hours = ramp_changes.index[1:]  # Skip first NaN
+            changes = ramp_changes.values[1:]
+
+            # Color bars: green if within limits, red if violated
+            colors = []
+            for change in changes:
+                if change > 0:  # Ramp up
+                    colors.append('red' if change > hydro_RU[unit] else 'green')
+                elif change < 0:  # Ramp down
+                    colors.append('red' if abs(change) > hydro_RD[unit] else 'green')
+                else:
+                    colors.append('gray')
+
+            ax2.bar(hours, changes, color=colors, alpha=0.7, edgecolor='black', linewidth=0.5)
+
+            # Add horizontal lines for ramp limits
+            ax2.axhline(hydro_RU[unit], color='darkred', linestyle='--', linewidth=2,
+                        label=f'Ramp-up limit ({hydro_RU[unit]:.0f} MW/h)')
+            ax2.axhline(-hydro_RD[unit], color='darkred', linestyle='--', linewidth=2,
+                        label=f'Ramp-down limit ({hydro_RD[unit]:.0f} MW/h)')
+            ax2.axhline(0, color='black', linestyle='-', linewidth=0.8)
+
+            ax2.set_xlabel('Hour', fontsize=12)
+            ax2.set_ylabel('Ramp (MW/h)', fontsize=12)
+            ax2.set_title('Hour-to-Hour Changes', fontsize=12)
+            ax2.grid(True, alpha=0.3, axis='y')
+            ax2.legend(loc='upper right')
+
+            # Add text annotation for violations
+            violations_up = sum(1 for c in changes if c > hydro_RU[unit])
+            violations_down = sum(1 for c in changes if c < -hydro_RD[unit])
+            total_violations = violations_up + violations_down
+
+            if total_violations > 0:
+                ax2.text(0.02, 0.98,
+                         f'⚠ Violations: {total_violations} ({violations_up} up, {violations_down} down)',
+                         transform=ax2.transAxes, fontsize=11, weight='bold',
+                         verticalalignment='top', bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.8))
+            else:
+                ax2.text(0.02, 0.98,
+                         '✓ All ramps within limits',
+                         transform=ax2.transAxes, fontsize=11, weight='bold',
+                         verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
+
+            plt.tight_layout()
+
+            if output_folder:
+                unit_plot_folder = os.path.join(output_folder, f"{self.model_id}_hydro_ramping")
+                if not os.path.exists(unit_plot_folder):
+                    os.makedirs(unit_plot_folder)
+                fig.savefig(os.path.join(unit_plot_folder, f"{unit}_ramping.png"), dpi=350, bbox_inches='tight')
+
+            plt.show()

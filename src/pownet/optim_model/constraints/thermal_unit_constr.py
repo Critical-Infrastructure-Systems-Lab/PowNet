@@ -593,7 +593,7 @@ def add_c_ramp_down(
         name="rampDown",
     )
 
-
+#TODO use this as inspiration and make it more simple for hydro
 def add_c_ramp_up_init(
     model: gp.Model,
     pbar: gp.tupledict,

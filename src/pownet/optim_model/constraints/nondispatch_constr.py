@@ -318,3 +318,87 @@ def add_c_hydro_limit_weekly_lb(
                 name=cname_min,
             )
     return constraints
+
+
+def add_c_hydro_ramp_up_init(
+        model: gp.Model,
+        phydro: gp.tupledict,
+        hydro_units: list,
+        initial_phydro: dict,
+        hydro_RU: dict,
+) -> gp.tupledict:
+    """Ramp-up constraint for hydro at t=1.
+
+    phydro[unit, 1] - initial_phydro[unit] <= hydro_RU[unit]
+    """
+    safe_initial_phydro = {
+        unit: initial_phydro.get(unit, 0.0)
+        for unit in hydro_units
+    }
+
+    return model.addConstrs(
+        (phydro[unit, 1] - safe_initial_phydro[unit] <= hydro_RU[unit]
+         for unit in hydro_units),
+        name="hydro_ramp_up_init",
+    )
+
+
+def add_c_hydro_ramp_up(
+        model: gp.Model,
+        phydro: gp.tupledict,
+        sim_horizon: int,
+        hydro_units: list,
+        hydro_RU: dict,
+) -> gp.tupledict:
+    """Ramp-up constraint for hydro at t > 1.
+
+    phydro[unit, t] - phydro[unit, t-1] <= hydro_RU[unit]
+    """
+    return model.addConstrs(
+        (phydro[unit, t] - phydro[unit, t - 1] <= hydro_RU[unit]
+         for unit in hydro_units
+         for t in range(2, sim_horizon + 1)),
+        name="hydro_ramp_up",
+    )
+
+
+def add_c_hydro_ramp_down_init(
+        model: gp.Model,
+        phydro: gp.tupledict,
+        hydro_units: list,
+        initial_phydro: dict,
+        hydro_RD: dict,
+) -> gp.tupledict:
+    """Ramp-down constraint for hydro at t=1.
+
+    initial_phydro[unit] - phydro[unit, 1] <= hydro_RD[unit]
+    """
+    safe_initial_phydro = {
+        unit: initial_phydro.get(unit, 0.0)
+        for unit in hydro_units
+    }
+
+    return model.addConstrs(
+        (safe_initial_phydro[unit] - phydro[unit, 1] <= hydro_RD[unit]
+         for unit in hydro_units),
+        name="hydro_ramp_down_init",
+    )
+
+
+def add_c_hydro_ramp_down(
+        model: gp.Model,
+        phydro: gp.tupledict,
+        sim_horizon: int,
+        hydro_units: list,
+        hydro_RD: dict,
+) -> gp.tupledict:
+    """Ramp-down constraint for hydro at t > 1.
+
+    phydro[unit, t-1] - phydro[unit, t] <= hydro_RD[unit]
+    """
+    return model.addConstrs(
+        (phydro[unit, t - 1] - phydro[unit, t] <= hydro_RD[unit]
+         for unit in hydro_units
+         for t in range(2, sim_horizon + 1)),
+        name="hydro_ramp_down",
+    )

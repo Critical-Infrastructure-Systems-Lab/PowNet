@@ -235,6 +235,21 @@ class OutputProcessor:
     ) -> pd.DataFrame:
         return node_variables[node_variables["vartype"] == "pthermal"].copy()
 
+    def get_hydro_unit_hourly_dispatch(
+            self, node_variables: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Return hourly hydro dispatch for each unit.
+
+        Returns:
+            DataFrame with columns = hydro units, index = hour
+        """
+        hydro_dispatch = node_variables[node_variables["vartype"] == "phydro"].copy()
+
+        if hydro_dispatch.empty:
+            return pd.DataFrame()
+
+        return hydro_dispatch.pivot(columns="node", index="hour", values="value")
+
     def get_nondispatch_hourly_capacity_factor(
         self,
         unit_type: str,

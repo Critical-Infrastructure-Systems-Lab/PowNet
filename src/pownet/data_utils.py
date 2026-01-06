@@ -63,6 +63,7 @@ def create_init_condition(
     thermal_units: list,
     storage_units: list = None,
     ess_max_capacity: dict[str, float] = None,
+    hydro_units: list = None,
 ) -> dict[(str, int), dict]:
     """Return dicts of system statuses in the format {(unit, hour): value}"""
     # Assume thermal units in the systems are offline at the beginning
@@ -86,6 +87,12 @@ def create_init_condition(
     else:
         initial_charge_state = {}
 
+    # Hydro units start at zero dispatch
+    if hydro_units is None:
+        initial_phydro = {}
+    else:
+        initial_phydro = {unit: 0 for unit in hydro_units}
+
     return {
         "initial_p": initial_p,
         "initial_u": initial_u,
@@ -94,6 +101,7 @@ def create_init_condition(
         "initial_min_on": initial_min_on,
         "initial_min_off": initial_min_off,
         "initial_charge_state": initial_charge_state,
+        "initial_phydro": initial_phydro,
     }
 
 

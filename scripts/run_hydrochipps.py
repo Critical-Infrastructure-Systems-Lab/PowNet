@@ -23,6 +23,7 @@ Project:
     - HydroCHIPPs (DoE-sponsored HydroWIRES project)
 """
 import os
+import pandas as pd
 import numpy as np
 from datetime import datetime
 from pownet.core import (
@@ -114,9 +115,10 @@ for week in range(7):
     weekly_prices = np.round(np.random.uniform(5, 240, 168), 1)
     weekly_contract_costs.append(weekly_prices)
 
-#%%########################################
-#     Input Processing and Simulation Loop
-###########################################
+####################################
+# Input Processing and Simulation Loop
+#####################################
+
 # Optional: re-process input data from scratch
 if to_process_inputs:
     data_processor = DataProcessor(
@@ -140,6 +142,7 @@ inputs = SystemInput(
     line_capacity_factor=1,
     line_loss_factor=0,
 )
+
 inputs.load_and_check_data()
 
 # Dictionaries to store results and models
@@ -154,27 +157,31 @@ for start_day in range(1, end_day):
     update_weekly_hydro_capacity(inputs.weekly_hydro_capacity, start_day, first_values)
 
     # === Apply updated weekly prices for this day ===
-    update_contract_costs(inputs, 'supplier', weekly_contract_costs[start_day-1], start_day)
-
-    # Optional: push updates into the model (uncomment if needed)
-    # inputs.update_capacity()
+    update_contract_costs(inputs, 'supplier', weekly_contract_costs[start_day - 1], start_day)
 
     # Initialize model and record-keeping objects
     model_builder = ModelBuilder(inputs)
     record = SystemRecord(inputs)
+
     build_times = []
     opt_times = []
     objvals = []
 
-    # Get initial condition state (e.g., generator status)
-    init_conditions = create_init_condition(inputs.thermal_units)
+    # ========================================================================
+    # CRITICAL FIX: Initialize with proper hydro initial conditions
+    # ========================================================================
+    init_conditions = create_init_condition(
+        thermal_units=inputs.thermal_units,
+        storage_units=inputs.storage_units,
+        ess_max_capacity=inputs.ess_max_capacity,
+        hydro_units=inputs.hydro_units,
+    )
 
     # === Inner loop: run multiple steps from this starting day ===
     if steps_to_run is None:
-        steps_to_run = 10  # 365 - (sim_horizon // 24 - 1)
+        steps_to_run = 10
 
-    #todo:select the start date
-    for step_k in range(start_day, start_day+steps_to_run-1):
+    for step_k in range(start_day, start_day + steps_to_run - 1):
         start_time = datetime.now()
 
         # Build or update the model for the current step
@@ -188,6 +195,7 @@ for start_day in range(1, end_day):
                 step_k=step_k,
                 init_conds=init_conditions,
             )
+
         build_times.append((datetime.now() - start_time).total_seconds())
 
         # Solve the model using HiGHS solver
@@ -206,9 +214,54 @@ for start_day in range(1, end_day):
             runtime=power_system_model[start_day].get_runtime(),
             objval=power_system_model[start_day].get_objval(),
             solution=power_system_model[start_day].get_solution(),
-            # lmp=power_system_model[start_day].solve_for_lmp(),
             step_k=step_k,
         )
+
+        # ========================================================================
+        # CRITICAL FIX: Extract hydro dispatch at t=24 for next iteration
+        # ========================================================================
+        if step_k == start_day:
+            # Get the solution DataFrame
+            first_solution = power_system_model[start_day].get_solution()
+
+            # Initialize dictionary to store hydro dispatch at t=24
+            initial_phydro = {}
+
+            # Iterate through all variables to find phydro at t=24
+            for idx, row in first_solution.iterrows():
+                varname = row['varname']
+
+                # Check if this is a phydro variable
+                if varname.startswith('phydro['):
+                    # Extract unit and timestep using string operations
+                    # Format: phydro[unit, timestep]
+                    try:
+                        # Remove 'phydro[' prefix and ']' suffix
+                        content = varname[7:-1]  # Skip 'phydro[' and ']'
+
+                        # Split by comma
+                        parts = content.split(', ')
+
+                        if len(parts) == 2:
+                            unit = parts[0].strip()
+                            timestep = int(parts[1].strip())
+
+                            # Only keep values at t=24
+                            if timestep == 24:
+                                initial_phydro[unit] = row['value']
+                    except (ValueError, IndexError) as e:
+                        print(f"⚠️  Warning: Could not parse varname '{varname}': {e}")
+                        continue
+
+            # Update init_conditions if we found any hydro dispatch values
+            if initial_phydro:
+                init_conditions['initial_phydro'] = initial_phydro
+                print(f"✓ Initialized hydro ramping for {len(initial_phydro)} units at step {step_k}")
+                print(f"  Sample values: {dict(list(initial_phydro.items())[:3])}")
+            else:
+                print(f"⚠️  Warning: No hydro dispatch found at t=24 for step {step_k}")
+
+        # Update initial conditions from record for subsequent iterations
         init_conditions = record.get_init_conds()
 
         #########################################
@@ -231,6 +284,129 @@ for start_day in range(1, end_day):
         output_folder = "./results/cumberland/"
         os.makedirs(output_folder, exist_ok=True)
         export_results[start_day].to_csv(output_folder + f'results_day_{str(start_day)}.csv', index=False)
+
+####################################
+##### Quick hydro ramping check ####
+####################################
+
+import matplotlib.pyplot as plt
+
+# Extract hydro dispatch from last solved day
+final_day_results = export_results[start_day + steps_to_run - 2]
+hydro_data = final_day_results[final_day_results['vartype'] == 'phydro']
+
+if not hydro_data.empty:
+    # ========================================================================
+    # CRITICAL FIX: Convert 'hour' to numeric and sort before pivoting
+    # ========================================================================
+    hydro_data = hydro_data.copy()
+    hydro_data['hour'] = pd.to_numeric(hydro_data['hour'], errors='coerce')
+
+    # Drop any rows where hour couldn't be converted
+    hydro_data = hydro_data.dropna(subset=['hour'])
+
+    # Convert to integer
+    hydro_data['hour'] = hydro_data['hour'].astype(int)
+
+    # Sort by hour before pivoting
+    hydro_data = hydro_data.sort_values('hour')
+
+    # Now pivot
+    hydro_pivot = hydro_data.pivot(columns='unit', index='hour', values='value')
+
+    # ========================================================================
+    # VERIFY: Check if index is properly sorted
+    # ========================================================================
+    print(f"\n📊 Hydro dispatch index check:")
+    print(f"   First 5 hours: {hydro_pivot.index[:5].tolist()}")
+    print(f"   Last 5 hours: {hydro_pivot.index[-5:].tolist()}")
+    print(f"   Is sorted: {hydro_pivot.index.is_monotonic_increasing}")
+
+    for unit in hydro_pivot.columns:
+        dispatch = hydro_pivot[unit]
+
+        # ========================================================================
+        # CRITICAL: Ensure dispatch is sorted by index before diff()
+        # ========================================================================
+        dispatch = dispatch.sort_index()
+        ramp_changes = dispatch.diff()
+
+        # ========================================================================
+        # DIAGNOSTIC: Check for ramping violations
+        # ========================================================================
+        ramp_up_limit = inputs.hydro_RU.get(unit, 1e6)
+        ramp_down_limit = inputs.hydro_RD.get(unit, 1e6)
+
+        violations_up = (ramp_changes > ramp_up_limit).sum()
+        violations_down = (ramp_changes < -ramp_down_limit).sum()
+
+        if violations_up > 0 or violations_down > 0:
+            print(f"\n⚠️  RAMPING VIOLATIONS DETECTED for {unit}:")
+            print(f"   Ramp-up violations: {violations_up}")
+            print(f"   Ramp-down violations: {violations_down}")
+            print(f"   Max ramp change: {ramp_changes.max():.2f} MW/h (limit: {ramp_up_limit:.2f})")
+            print(f"   Min ramp change: {ramp_changes.min():.2f} MW/h (limit: -{ramp_down_limit:.2f})")
+
+            # Show the specific violations
+            violation_hours = ramp_changes[
+                (ramp_changes > ramp_up_limit) | (ramp_changes < -ramp_down_limit)
+                ]
+            print(f"   Violation details:\n{violation_hours}")
+
+        # ========================================================================
+        # PLOTTING
+        # ========================================================================
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+
+        # Dispatch
+        ax1.plot(dispatch.index, dispatch.values, 'b-', linewidth=2, marker='o', markersize=3)
+        ax1.set_ylabel('Power (MW)', fontsize=12)
+        ax1.set_title(f'{unit} - Dispatch and Ramping', fontsize=14, weight='bold')
+        ax1.grid(True, alpha=0.3)
+
+        # Ramp changes with proper coloring
+        colors = []
+        for c in ramp_changes.values[1:]:  # Skip first NaN
+            if abs(c) > ramp_up_limit:
+                colors.append('red')
+            else:
+                colors.append('green')
+
+        # Plot bars
+        ax2.bar(ramp_changes.index[1:], ramp_changes.values[1:],
+                color=colors, alpha=0.7, edgecolor='black', linewidth=0.5)
+
+        # Add limit lines
+        ax2.axhline(ramp_up_limit, color='darkred', linestyle='--', linewidth=2,
+                    label=f'Ramp-up limit ({ramp_up_limit:.0f} MW/h)')
+        ax2.axhline(-ramp_down_limit, color='darkred', linestyle='--', linewidth=2,
+                    label=f'Ramp-down limit ({ramp_down_limit:.0f} MW/h)')
+        ax2.axhline(0, color='black', linestyle='-', linewidth=0.8)
+
+        ax2.set_xlabel('Hour', fontsize=12)
+        ax2.set_ylabel('Ramp (MW/h)', fontsize=12)
+        ax2.set_title('Hour-to-Hour Changes', fontsize=12)
+        ax2.legend(loc='upper right')
+        ax2.grid(True, alpha=0.3, axis='y')
+
+        # Add text annotation for violations
+        if violations_up > 0 or violations_down > 0:
+            ax2.text(0.02, 0.98,
+                     f'⚠️ Violations: {violations_up + violations_down} ({violations_up} up, {violations_down} down)',
+                     transform=ax2.transAxes, fontsize=11, weight='bold',
+                     verticalalignment='top',
+                     bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.8))
+        else:
+            ax2.text(0.02, 0.98,
+                     '✓ All ramps within limits',
+                     transform=ax2.transAxes, fontsize=11, weight='bold',
+                     verticalalignment='top',
+                     bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
+
+        plt.tight_layout()
+        plt.savefig(f'{output_folder}/{unit}_ramping_check.png',
+                    dpi=300, bbox_inches='tight')
+        plt.show()
 
 # for i in range(1,6):
 #     print(export_results[i][(export_results[i]['vartype'] == 'phydro') & (export_results[i]['unit'] == 'Barkley')]['value'].sum())

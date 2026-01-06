@@ -64,6 +64,11 @@ class HydroUnitBuilder(ComponentBuilder):
 
         self.c_link_hydro_pu = gp.tupledict()
 
+        self.c_hydro_ramp_up_init = gp.tupledict()
+        self.c_hydro_ramp_up = gp.tupledict()
+        self.c_hydro_ramp_down_init = gp.tupledict()
+        self.c_hydro_ramp_down = gp.tupledict()
+
     def add_variables(self, step_k: int) -> None:
         """Add variables to the model for hydro units.
 
@@ -129,6 +134,7 @@ class HydroUnitBuilder(ComponentBuilder):
                 name="uhydro",
             )
 
+#TODO add fixed ramping cost term to the objective
     def get_fixed_objective_terms(self) -> gp.LinExpr:
         """Hydropower units have no fixed objective terms."""
         return self.total_fixed_objective_expr
@@ -155,6 +161,7 @@ class HydroUnitBuilder(ComponentBuilder):
 
         return self.total_energy_cost_expr
 
+# TODO check if you can just add the ramp constr here
     def add_constraints(self, step_k: int, init_conds: dict, **kwargs) -> None:
         # Hourly upper bound
         # Limited by contracted capacity
@@ -217,6 +224,39 @@ class HydroUnitBuilder(ComponentBuilder):
                 contracted_capacity_dict=self.inputs.hydro_contracted_capacity,
             )
 
+        # Hydro ramping constraints
+        self.c_hydro_ramp_up_init = nondispatch_constr.add_c_hydro_ramp_up_init(
+            model=self.model,
+            phydro=self.phydro,
+            hydro_units=self.inputs.hydro_units,
+            initial_phydro=init_conds.get("initial_phydro", {}),
+            hydro_RU=self.inputs.hydro_RU,
+        )
+
+        self.c_hydro_ramp_up = nondispatch_constr.add_c_hydro_ramp_up(
+            model=self.model,
+            phydro=self.phydro,
+            sim_horizon=self.inputs.sim_horizon,
+            hydro_units=self.inputs.hydro_units,
+            hydro_RU=self.inputs.hydro_RU,
+        )
+
+        self.c_hydro_ramp_down_init = nondispatch_constr.add_c_hydro_ramp_down_init(
+            model=self.model,
+            phydro=self.phydro,
+            hydro_units=self.inputs.hydro_units,
+            initial_phydro=init_conds.get("initial_phydro", {}),
+            hydro_RD=self.inputs.hydro_RD,
+        )
+
+        self.c_hydro_ramp_down = nondispatch_constr.add_c_hydro_ramp_down(
+            model=self.model,
+            phydro=self.phydro,
+            sim_horizon=self.inputs.sim_horizon,
+            hydro_units=self.inputs.hydro_units,
+            hydro_RD=self.inputs.hydro_RD,
+        )
+
     def update_variables(self, step_k: int) -> None:
         "Some hydropower units have hourly upper bounds."
         # Update the time-dependent upper bound of the variable
@@ -225,6 +265,7 @@ class HydroUnitBuilder(ComponentBuilder):
             step_k=step_k,
             capacity_df=self.inputs.hydro_capacity,
         )
+
 
     def update_constraints(self, step_k: int, init_conds: dict, **kwargs) -> None:
         """Update constraints for hydro units.
@@ -267,6 +308,27 @@ class HydroUnitBuilder(ComponentBuilder):
                 hydro_units=self.inputs.weekly_hydro_unit_node.keys(),
                 hydro_capacity_min=self.inputs.hydro_min_capacity,
             )
+
+        # Remove old ramping constraints
+        self.model.remove(self.c_hydro_ramp_up_init)
+        self.model.remove(self.c_hydro_ramp_down_init)
+
+        # Re-add with new initial conditions
+        self.c_hydro_ramp_up_init = nondispatch_constr.add_c_hydro_ramp_up_init(
+            model=self.model,
+            phydro=self.phydro,
+            hydro_units=self.inputs.hydro_units,
+            initial_phydro=init_conds.get("initial_phydro", {}),
+            hydro_RU=self.inputs.hydro_RU,
+        )
+
+        self.c_hydro_ramp_down_init = nondispatch_constr.add_c_hydro_ramp_down_init(
+            model=self.model,
+            phydro=self.phydro,
+            hydro_units=self.inputs.hydro_units,
+            initial_phydro=init_conds.get("initial_phydro", {}),
+            hydro_RD=self.inputs.hydro_RD,
+        )
 
     def update_daily_hydropower_capacity(
         self, step_k: int, new_capacity: dict[tuple[str, int], float]

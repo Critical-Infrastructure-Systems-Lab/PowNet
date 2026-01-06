@@ -64,6 +64,7 @@ class SystemRecord:
         self.current_min_on: dict[str] = {}
         self.current_min_off: dict[str] = {}
         self.current_charge_state: dict[str] = {}
+        self.current_phydro: dict[str] = {}
 
     def keep(
         self,
@@ -134,6 +135,11 @@ class SystemRecord:
             TD=self.inputs.TD,
         )
 
+        # Extract hydro dispatch at t=24
+        self.current_phydro = _extract_vartype_data(node_vars, "phydro")
+
+        if not self.current_phydro:
+            logger.warning(f"Step {step_k}: No phydro values extracted!")
         ##################
         # Locational Marginal Prices (LMP)
         ##################
@@ -202,6 +208,7 @@ class SystemRecord:
             "initial_min_on": self.current_min_on,
             "initial_min_off": self.current_min_off,
             "initial_charge_state": self.current_charge_state,
+            "initial_phydro": self.current_phydro,
         }
 
     def write_init_conds(self, output_folder: str) -> None:
