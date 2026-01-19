@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 
 import networkx as nx
 import numpy as np
@@ -82,77 +83,103 @@ class DataProcessor:
         ].copy()
 
     def calc_stability_limit(
-        self,
-        source_kv: int,
-        sink_kv: int,
-        distance: float,
-        n_circuits: int,
-    ) -> float:
-        """Calculates the theoretical steady-state stability limit of a transmission line.
+            self,source_kv: int,sink_kv: int,distance: float, n_circuits: int,
+        ) -> int:
+        """Calculates the theoretical steady-state stability limit of the transmission line.
         
-        This function uses the fundamental power transfer formula based on total line 
-        reactance, as shown in "Power System Analysis and Design" (Eq. 5.4.27):
+        This method applies the classical Power Transfer Equation for a lossless line
+        (Chapter 5 of Power System Analysis and Design, Eq. 5.4.27).
 
-            P_max = (V_S * V_R) / X'
+        Formula:
+        P_max_circuit = (V_S * V_R) / X_total
 
-        where:
-            P_max is the stability limit in MW.
-            V_S and V_R are the sending and receiving end voltages in kV.
-            X' is the total line reactance in ohms.
+        Where:
+        P_max_circuit: The maximum Real Power transfer per circuit in MW.
+                    (Assumes Power Factor = 1.0, so MW = MVA).
+        V_S, V_R:      The Line-to-Line voltages at sending and receiving ends in kV.
+        X_total:       The total reactance of the line in Ohms.
+                    Calculated as (Reactance_per_km * distance).
+
+        Note on "Perfect Condition":
+        This calculates the static stability limit (steady-state). Practical operations 
+        typically constrain flow to a safety margin (e.g., 30-45 degrees load angle) 
+        well below this theoretical maximum.
 
         Args:
             source_kv (int): Voltage level of the source bus in kV.
             sink_kv (int): Voltage level of the sink bus in kV.
-            distance (float): Distance between the two buses in km.
-            n_circuits (int): Number of circuits in the transmission line.
+            distance (float): Length of the transmission line in km.
+            n_circuits (int): Number of parallel circuits (e.g., 2 for double-circuit).
 
         Returns:
-            float: The stability limit of the transmission line in MW.
+            int: The combined stability limit for all circuits in MW.
+                Returns infinity if distance is 0 (co-located buses).
         """
-        # Get the reactance per kilometer for the line's voltage level.
+        # Determine the voltage class to look up line parameters
+        # Use the higher voltage if they differ to determine line construction
         max_kv = max(source_kv, sink_kv)
+        
+        # Retrieve Reactance per km (Ohms/km) from database
         reactance_per_km = self.transmission_params["reactance_ohms_per_km"][max_kv]
 
-        # 1. Calculate the TOTAL line reactance.
+        # 1. Calculate TOTAL line reactance (X_total)
         total_reactance = reactance_per_km * distance
 
-        # Avoid division by zero for co-located buses (distance = 0).
+        # Handle co-located buses (Zero Impedance)
         if total_reactance == 0:
-            return float('inf')
+            return sys.maxsize  # Represents infinity
 
-        # 2. Calculate the stability limit per circuit.
-        # The result is in MW because (kV * kV) / ohms = MVA. We assume a 
-        # power factor of 1 (MW = MVA).
+        # 2. Calculate stability limit per circuit (MW)
+        # P = (kV * kV) / Ohms = MW
         stability_limit_per_circuit = (source_kv * sink_kv) / total_reactance
 
-        # 3. Return the total limit for all circuits.
+        # 3. Return total limit sum for all parallel circuits
         return int(n_circuits * stability_limit_per_circuit)
 
     def calc_thermal_limit(
         self, source_kv: int, sink_kv: int, n_circuits: int
-    ) -> float:
-        """From Chapter 5 of Power System Analysis and Design 5th. See Example 5.6b.
-        The full-load current at 1 per-unit factor is
+    ) -> int:
+        """Calculates the thermal rating (MVA) of the transmission line based on
+        conductor ampacity (Chapter 5 of Power System Analysis and Design 5th
+        See Example 5.6b).
+        
+        Let 'n_conductors' parameter in 'transmission_params' represents the number
+        of sub-conductors per phase (bundling factor).
 
-            I = P/(sqrt(3) * V)
+        Formula: 
+        S_thermal = sqrt(3) * V_line_LL * I_phase_max
 
-        Here, P is the surge impedance factor (SIL) and V is the voltage of the
-        receiving bus. This voltage is the minimum voltage between the two ends.
+        Where:
+        S_thermal:   The total Apparent Power capacity of the circuit in MVA. 
+                     (Note: S_thermal = P_real_power only when Power Factor = 1.0)
+        V_line_LL:   The Line-to-Line voltage in kV (the standard voltage rating, e.g., 115 kV).
+        I_phase_max: The maximum current capacity per phase in kilo-Amps (kA).
+                     Calculated as (Ampacity per wire * Bundling Factor).
 
         Args:
-            source_kv (int): Voltage level of the source bus
-            sink_kv (int): Voltage level of the sink bus
-            n_circuits (int): Number of circuits in the transmission line
+        source_kv (int): Voltage level of the source bus (kV).
+        sink_kv (int): Voltage level of the sink bus (kV).
+        n_circuits (int): Number of distinct circuits (e.g., double circuit tower = 2).
 
         Returns:
-            float: The thermal limit of the transmission line in MW
+        int: The maximum thermal capacity in MVA.
         """
         max_kv = max(source_kv, sink_kv)
-        n_conductors = self.transmission_params["n_conductors"][max_kv]
-        # in Amps
-        current_capacity = self.transmission_params["current_capacity_amps"][max_kv]
-        total_current_capacity = n_conductors * current_capacity / 1000  # in kilo-A
-        thermal_limit_per_circuit = total_current_capacity * np.sqrt(3) * max_kv
+        
+        # Retrieve bundle size (e.g., 1 for 115kV, 2 for 345kV)
+        # This is the count of sub-conductors per phase.
+        n_conductors_per_phase = self.transmission_params["n_conductors"][max_kv]
+        
+        # Ampacity per individual sub-conductor wire (in Amps)
+        current_capacity_amps = self.transmission_params["current_capacity_amps"][max_kv]
+        
+        # Calculate total current capacity per phase in kilo-Amps (kA)
+        total_current_capacity_kA = (n_conductors_per_phase * current_capacity_amps) / 1000
+        
+        # Calculate 3-Phase Power Capacity per circuit
+        # S = sqrt(3) * V_LL * I_Line
+        thermal_limit_per_circuit = np.sqrt(3) * max_kv * total_current_capacity_kA
+
         return int(n_circuits * thermal_limit_per_circuit)
 
     def calc_line_capacity(self) -> None:
