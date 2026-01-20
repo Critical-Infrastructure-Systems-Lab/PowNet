@@ -131,7 +131,7 @@ class Reservoir:
 
         self.upstream_flow = upstream_flow
 
-    def simulate(self) -> None:
+    def simulate(self, initial_storage: float = None) -> None:
         """Simulate the operation of the reservoir. This method calculates the release,
         spill, storage, level, and daily hydropower.
         """
@@ -152,13 +152,17 @@ class Reservoir:
 
         # Simulate the reservoir operation to extract the release, spill, and storage
         # Assume the initial storage equals to the target storage in the first day
+
+        if initial_storage is None:
+            initial_storage = self.target_storage[1]
+
         self.release, self.spill, self.storage, _ = solve_release_from_target_storage(
             reservoir_name=self.name,
             start_day=1,
             end_day=self.sim_days,
             max_release=self.max_release,
             max_storage=self.max_storage,
-            initial_storage=self.target_storage[1],
+            initial_storage=initial_storage,
             target_storage=self.target_storage,
             minflow=self.minflow_ts,
             total_inflow=self.inflow_ts + self.upstream_flow,
@@ -465,7 +469,7 @@ class Reservoir:
         """Return the reoperated daily hydropower values."""
         return self.reop_daily_hydropower
 
-    def plot_state(self, output_folder: str = None) -> None:
+    def plot_state(self, year: int = None, output_folder: str = None) -> None:
         fig, ax = plt.subplots(figsize=(13, 7), layout="constrained", dpi=350)
         ax.plot(self.inflow_ts + self.upstream_flow, label="Total inflow (m3/day)")
         ax.plot(self.release, label="Release (m3/day)")
@@ -477,7 +481,7 @@ class Reservoir:
         )
         ax.set_xlabel("Day")
         ax.set_ylabel("Flow rate (m3/day)")
-        ax.set_title(self.name)
+        ax.set_title(f"{self.name} {year}")
 
         ax2 = ax.twinx()
         ax2.plot(self.storage, label="Storage (m3)", color="k", linewidth=1)

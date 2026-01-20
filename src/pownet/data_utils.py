@@ -308,8 +308,11 @@ def parse_node_variables(
 
     node_var_pattern = r"(\w+)\[(.+),(\d+)\]"
     current_node_vars = solution[solution["varname"].str.match(node_var_pattern)].copy()
+
     # Flow should not be included in the node variables
-    current_node_vars = current_node_vars[current_node_vars["vartype"] != "flow"]
+    current_node_vars = current_node_vars[
+        ~current_node_vars["vartype"].isin(["flow_fwd", "flow_bwd"])
+        ]
 
     current_node_vars[["node", "timestep"]] = current_node_vars["varname"].str.extract(
         node_var_pattern, expand=True

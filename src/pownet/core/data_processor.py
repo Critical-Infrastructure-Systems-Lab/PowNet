@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 
 import networkx as nx
 import numpy as np
@@ -82,71 +83,103 @@ class DataProcessor:
         ].copy()
 
     def calc_stability_limit(
-        self,
-        source_kv: int,
-        sink_kv: int,
-        distance: float,
-        wavelength: int,
-        n_circuits: int,
-    ) -> float:
-        """This function calculates the steady-state stability limit of a transmission line.
-        From Chapter 5 of Power System Analysis and Design 5th (EQ 5.4.30)
+            self,source_kv: int,sink_kv: int,distance: float, n_circuits: int,
+        ) -> int:
+        """Calculates the theoretical steady-state stability limit of the transmission line.
+        
+        This method applies the classical Power Transfer Equation for a lossless line
+        (Chapter 5 of Power System Analysis and Design, Eq. 5.4.27).
 
-        The stability limit per circuit is given by:
+        Formula:
+        P_max_circuit = (V_S * V_R) / X_total
 
-            P = V1 * V2 / X * sin(2 * pi * d / lambda)
+        Where:
+        P_max_circuit: The maximum Real Power transfer per circuit in MW.
+                    (Assumes Power Factor = 1.0, so MW = MVA).
+        V_S, V_R:      The Line-to-Line voltages at sending and receiving ends in kV.
+        X_total:       The total reactance of the line in Ohms.
+                    Calculated as (Reactance_per_km * distance).
 
-        where:
-            P is the stability limit in MW
-            V1 and V2 are the voltages at the two ends of the line
-            X is the reactance of the line in ohms per km
-            d is the distance between the two ends of the line in km
-            lambda is the wavelength of the system in km
+        Note on "Perfect Condition":
+        This calculates the static stability limit (steady-state). Practical operations 
+        typically constrain flow to a safety margin (e.g., 30-45 degrees load angle) 
+        well below this theoretical maximum.
 
         Args:
-            source_kv (int): Voltage level of the source bus
-            sink_kv (int): Voltage level of the sink bus
-            distance (float): Distance between the two buses in km
-            wavelength (int): Wavelength of the system in km
-            n_circuits (int): Number of circuits in the transmission line
+            source_kv (int): Voltage level of the source bus in kV.
+            sink_kv (int): Voltage level of the sink bus in kV.
+            distance (float): Length of the transmission line in km.
+            n_circuits (int): Number of parallel circuits (e.g., 2 for double-circuit).
 
         Returns:
-            float: The stability limit of the transmission line in MW
+            int: The combined stability limit for all circuits in MW.
+                Returns infinity if distance is 0 (co-located buses).
         """
-        # The reactance of the line is a function of the maximum voltage level
-        # of the two buses.
+        # Determine the voltage class to look up line parameters
+        # Use the higher voltage if they differ to determine line construction
         max_kv = max(source_kv, sink_kv)
+        
+        # Retrieve Reactance per km (Ohms/km) from database
         reactance_per_km = self.transmission_params["reactance_ohms_per_km"][max_kv]
-        # Calculate the Surge Impedance Limit (SIL)
-        sil = source_kv * sink_kv / reactance_per_km / 1000  # Divide by 1000 to get MW
-        stability_limit_per_circuit = sil / np.sin(2 * np.pi * distance / wavelength)
+
+        # 1. Calculate TOTAL line reactance (X_total)
+        total_reactance = reactance_per_km * distance
+
+        # Handle co-located buses (Zero Impedance)
+        if total_reactance == 0:
+            return sys.maxsize  # Represents infinity
+
+        # 2. Calculate stability limit per circuit (MW)
+        # P = (kV * kV) / Ohms = MW
+        stability_limit_per_circuit = (source_kv * sink_kv) / total_reactance
+
+        # 3. Return total limit sum for all parallel circuits
         return int(n_circuits * stability_limit_per_circuit)
 
     def calc_thermal_limit(
         self, source_kv: int, sink_kv: int, n_circuits: int
-    ) -> float:
-        """From Chapter 5 of Power System Analysis and Design 5th. See Example 5.6b.
-        The full-load current at 1 per-unit factor is
+    ) -> int:
+        """Calculates the thermal rating (MVA) of the transmission line based on
+        conductor ampacity (Chapter 5 of Power System Analysis and Design 5th
+        See Example 5.6b).
+        
+        Let 'n_conductors' parameter in 'transmission_params' represents the number
+        of sub-conductors per phase (bundling factor).
 
-            I = P/(sqrt(3) * V)
+        Formula: 
+        S_thermal = sqrt(3) * V_line_LL * I_phase_max
 
-        Here, P is the surge impedance factor (SIL) and V is the voltage of the
-        receiving bus. This voltage is the minimum voltage between the two ends.
+        Where:
+        S_thermal:   The total Apparent Power capacity of the circuit in MVA. 
+                     (Note: S_thermal = P_real_power only when Power Factor = 1.0)
+        V_line_LL:   The Line-to-Line voltage in kV (the standard voltage rating, e.g., 115 kV).
+        I_phase_max: The maximum current capacity per phase in kilo-Amps (kA).
+                     Calculated as (Ampacity per wire * Bundling Factor).
 
         Args:
-            source_kv (int): Voltage level of the source bus
-            sink_kv (int): Voltage level of the sink bus
-            n_circuits (int): Number of circuits in the transmission line
+        source_kv (int): Voltage level of the source bus (kV).
+        sink_kv (int): Voltage level of the sink bus (kV).
+        n_circuits (int): Number of distinct circuits (e.g., double circuit tower = 2).
 
         Returns:
-            float: The thermal limit of the transmission line in MW
+        int: The maximum thermal capacity in MVA.
         """
         max_kv = max(source_kv, sink_kv)
-        n_conductors = self.transmission_params["n_conductors"][max_kv]
-        # in Amps
-        current_capacity = self.transmission_params["current_capacity_amps"][max_kv]
-        total_current_capacity = n_conductors * current_capacity / 1000  # in kilo-A
-        thermal_limit_per_circuit = total_current_capacity * np.sqrt(3) * max_kv
+        
+        # Retrieve bundle size (e.g., 1 for 115kV, 2 for 345kV)
+        # This is the count of sub-conductors per phase.
+        n_conductors_per_phase = self.transmission_params["n_conductors"][max_kv]
+        
+        # Ampacity per individual sub-conductor wire (in Amps)
+        current_capacity_amps = self.transmission_params["current_capacity_amps"][max_kv]
+        
+        # Calculate total current capacity per phase in kilo-Amps (kA)
+        total_current_capacity_kA = (n_conductors_per_phase * current_capacity_amps) / 1000
+        
+        # Calculate 3-Phase Power Capacity per circuit
+        # S = sqrt(3) * V_LL * I_Line
+        thermal_limit_per_circuit = np.sqrt(3) * max_kv * total_current_capacity_kA
+
         return int(n_circuits * thermal_limit_per_circuit)
 
     def calc_line_capacity(self) -> None:
@@ -162,7 +195,6 @@ class DataProcessor:
                 x["source_kv"],
                 x["sink_kv"],
                 x["distance"],
-                self.wavelength,
                 x["n_circuits"],
             ),
             axis=1,
@@ -196,6 +228,10 @@ class DataProcessor:
 
     def calc_line_susceptance(self) -> None:
         """Calculate the susceptance of line segments. The unit is in Siemens (S)."""
+
+        # TODO: This is a misnomer as we are calculating the maximum power that
+        # can be transferred over the line, not the susceptance.
+
         # Assume reactance based on the maximum voltage level of the two buses
         self.transmission_data["max_kv"] = self.user_transmission.apply(
             lambda x: max(x["source_kv"], x["sink_kv"]), axis=1
@@ -216,22 +252,29 @@ class DataProcessor:
             axis=1,
         )
 
-        # Replace with user-specified values
-        excluded_values = [-1, None]
-        user_specified_susceptance = self.user_transmission.loc[
-            ~self.user_transmission["user_susceptance"].isin(excluded_values),
-            ["source", "sink", "user_susceptance"],
-        ]
-        user_specified_susceptance = user_specified_susceptance.set_index(
-            ["source", "sink"]
-        )
-        # Change from float to int
-        user_specified_susceptance = user_specified_susceptance.astype(
-            {"user_susceptance": int}
-        )
+        # Raise an error if there are other values other than -1 or None
+        if not self.user_transmission["user_susceptance"].isin([-1, None]).all():
+            raise ValueError(
+                "Currently does not support user specified susceptance values."
+            )
+
+        # TODO: Revise the following code
+        # # Replace with user-specified values
+        # excluded_values = [-1, None]
+        # user_specified_susceptance = self.user_transmission.loc[
+        #     ~self.user_transmission["user_susceptance"].isin(excluded_values),
+        #     ["source", "sink", "user_susceptance"],
+        # ]
+        # user_specified_susceptance = user_specified_susceptance.set_index(
+        #     ["source", "sink"]
+        # )
+        # # Change from float to int
+        # user_specified_susceptance = user_specified_susceptance.astype(
+        #     {"user_susceptance": int}
+        # )
 
         self.transmission_data = self.transmission_data.set_index(["source", "sink"])
-        self.transmission_data.update(user_specified_susceptance)
+        # self.transmission_data.update(user_specified_susceptance)
         self.transmission_data = self.transmission_data.reset_index()
 
     def write_transmission_data(self) -> None:

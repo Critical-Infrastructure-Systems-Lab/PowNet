@@ -145,6 +145,7 @@ class OutputProcessor:
 
     def get_monthly_demand(self, input_demand: pd.DataFrame) -> pd.Series:
         monthly_demand = self.get_hourly_demand(input_demand)
+        monthly_demand = monthly_demand.to_frame()
         monthly_demand["month"] = self.dates["date"].dt.to_period("M")
         monthly_demand = monthly_demand.groupby("month").sum()
         monthly_demand.index = monthly_demand.index.strftime("%b")
@@ -501,7 +502,7 @@ class OutputProcessor:
         )
 
         return power_variables[["contract", "hour", "value"]].pivot_table(
-            index="hour", columns="contract", values="value"
+            index="hour", columns="contract", values="value", aggfunc="sum"
         )
 
     def get_contract_generation(

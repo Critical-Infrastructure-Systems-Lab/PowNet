@@ -1059,7 +1059,7 @@ class SystemInput:
         for nodes, node_type in nodes_to_check:
             if not set(getattr(self, nodes).values()).issubset(self.nodes):
                 raise ValueError(
-                    f"PowNet: {node_type} must be connected to the grid: {set(getattr(self, nodes)) - self.nodes}"
+                    f"PowNet: {node_type} must be connected to the grid: {set(getattr(self, nodes).values()) - self.nodes}"
                 )
 
         ##################################
@@ -1108,6 +1108,23 @@ class SystemInput:
             raise ValueError(
                 f"PowNet: Weekly hydropower timeseries must be of length {self.num_sim_days}."
             )
+        
+        ##################################
+        # Capacities are non-negative
+        ##################################
+
+        attrs_to_check = [
+            "solar_capacity",
+            "wind_capacity",
+            "import_capacity",
+            "hydro_capacity",
+            "susceptance",
+            "line_capacity",
+        ]
+        for attr in attrs_to_check:
+            temp_df = getattr(self, attr)
+            if (not temp_df.empty) and (temp_df < 0).any().any():
+                raise ValueError(f"PowNet: {attr} must be non-negative.")
 
         ##################################
         # The derated capacities of thermal units must be above its minimum capacity
@@ -1340,7 +1357,7 @@ class SystemInput:
             ValueError: If the timeseries does not contain all units of the given type.
         """
 
-        allowed_unit_types = ["hydro", "solar", "wind", "import"]
+        allowed_unit_types = ["hydro", "daily_hydro","solar", "wind", "import"]
         if unit_type not in allowed_unit_types:
             raise ValueError(f"Given unit type: {unit_type} not supported.")
 
@@ -1350,10 +1367,17 @@ class SystemInput:
             raise ValueError(
                 "PowNet: The length of the hydropower timeseries must remain the same."
             )
+        
+        # Check that index matches
+        if not capacity_df.index.equals(current_capacity.index):
+            raise ValueError(
+                "PowNet: The index of the hydropower timeseries must remain the same."
+            )
+        
         # Check that all hydropower units are present
         if set(capacity_df.columns) != set(current_capacity.columns):
             raise ValueError(
-                "PowNet: The hydropower timeseries must contain all hydropower units."
+                "PowNet: Unit names in the capacity timeseries must remain the same."
             )
         # Save a copy to prevent unintended changes
         setattr(self, f"{unit_type}_capacity", capacity_df.copy())
