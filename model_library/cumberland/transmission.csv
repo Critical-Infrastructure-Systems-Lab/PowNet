@@ -1,0 +1,10 @@
+source,sink,user_line_cap,type,n_circuits,source_kv,sink_kv,distance,source_lon,source_lat,sink_lon,sink_lat,user_susceptance
+Barkley,Node1,-1,acsr,1,275,275,10,-50.01,42.01,-50,42,-1
+Center_Hill,Node1,-1,acsr,1,275,275,10,-50.02,42.02,-50,42,-1
+Cheatham,Node1,-1,acsr,1,275,275,10,-50.03,42.03,-50,42,-1
+Cordell_Hull,Node1,-1,acsr,1,275,275,10,-50.04,42.04,-50,42,-1
+Dale_Hollow,Node1,-1,acsr,1,275,275,10,-50.05,42.05,-50,42,-1
+J_Percy_Priest,Node1,-1,acsr,1,275,275,10,-50.06,42.06,-50,42,-1
+Old_Hickory,Node1,-1,acsr,1,275,275,10,-50.07,42.07,-50,42,-1
+Wolf_Creek,Node1,-1,acsr,1,275,275,10,-50.08,42.08,-50,42,-1
+Supplier,Node1,-1,acsr,2,275,275,20,50.09,42.09,-50,42,-1

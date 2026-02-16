@@ -1,0 +1,10 @@
+name,node,type,max_capacity,min_capacity,contracted_capacity,contracted_capacity_min,must_take,contract,ramp_up,ramp_down,ramp_penalty
+Supplier,Node1,supplier,,,1000,,0,supplier,,,
+Barkley,Node1,hydro,130,0,130,,0,hydro,39,78,0.1
+Center_Hill,Node1,hydro,140,0,140,,0,hydro,42,84,
+Cheatham,Node1,hydro,36,0,36,,0,hydro,10.8,21.6,100
+Cordell_Hull,Node1,hydro,99.9,0,99.9,,0,hydro,29.97,59.94,
+Dale_Hollow,Node1,hydro,54,0,54,,0,hydro,16.2,32.4,
+J_Percy_Priest,Node1,hydro,28,0,28,,0,hydro,8.4,16.8,
+Old_Hickory,Node1,hydro,103.7,0,103.7,,0,hydro,31.11,62.22,
+Wolf_Creek,Node1,hydro,270,0,270,,0,hydro,81,162,
